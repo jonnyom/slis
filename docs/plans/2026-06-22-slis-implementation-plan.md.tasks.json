@@ -4,7 +4,7 @@
   "tasks": [
     {"id": "0",  "subject": "Skeleton: go module, layout, Makefile, CI", "status": "completed"},
     {"id": "1",  "subject": "Config types + workspace.yaml loader (root + repos)", "status": "completed", "blockedBy": ["0"]},
-    {"id": "2",  "subject": "XDG state/config paths", "status": "pending", "blockedBy": ["0"]},
+    {"id": "2",  "subject": "XDG state/config paths", "status": "completed", "blockedBy": ["0"]},
     {"id": "2b", "subject": "slis init: repo scan + multi-select picker -> workspace.yaml", "status": "pending", "blockedBy": ["1", "2"]},
     {"id": "3",  "subject": "git argv builder, exec wrapper, temp-repo testutil", "status": "pending", "blockedBy": ["0"]},
     {"id": "4",  "subject": "worktree --porcelain -z parser", "status": "pending", "blockedBy": ["3"]},
