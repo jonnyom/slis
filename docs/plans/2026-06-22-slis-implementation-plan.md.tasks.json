@@ -27,13 +27,13 @@
     {"id": "21", "subject": "combined per-slice diff data", "status": "completed", "blockedBy": ["4"]},
     {"id": "22", "subject": "diff viewer pane + open-external", "status": "completed", "blockedBy": ["20", "21"]},
     {"id": "23", "subject": "tmux session create/attach/list", "status": "completed", "blockedBy": ["6"]},
-    {"id": "24", "subject": "session-status badges in slice list", "status": "pending", "blockedBy": ["23", "27"]},
+    {"id": "24", "subject": "session-status badges + sessions tab + attach + root launches TUI", "status": "completed", "blockedBy": ["23", "27"]},
     {"id": "25", "subject": "per-pane process sampler + kill (verify gopsutil API)", "status": "completed", "blockedBy": ["23"]},
-    {"id": "26", "subject": "process view + CPU overlay + kill", "status": "pending", "blockedBy": ["25", "20"]},
+    {"id": "26", "subject": "process view + CPU overlay + kill", "status": "completed", "blockedBy": ["25", "20"]},
     {"id": "27", "subject": "claude hook handler + event store", "status": "completed", "blockedBy": ["7"]},
-    {"id": "28", "subject": "opt-in init-hooks installer", "status": "pending", "blockedBy": ["27"]},
-    {"id": "29", "subject": "event watch + desktop notification", "status": "pending", "blockedBy": ["27", "19"]},
-    {"id": "30", "subject": "slice summary (commit + claude -p)", "status": "pending", "blockedBy": ["21"]},
+    {"id": "28", "subject": "opt-in init-hooks installer", "status": "completed", "blockedBy": ["27"]},
+    {"id": "29", "subject": "event watch + desktop notification", "status": "completed", "blockedBy": ["27", "19"]},
+    {"id": "30", "subject": "slice summary (commit + claude -p)", "status": "completed", "blockedBy": ["21"]},
     {"id": "31", "subject": "ship slis Claude skill", "status": "pending", "blockedBy": ["18"]},
     {"id": "32", "subject": "GoReleaser + Homebrew tap + README", "status": "pending", "blockedBy": ["0"]}
   ]
