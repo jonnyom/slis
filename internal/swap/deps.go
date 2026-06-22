@@ -2,6 +2,7 @@ package swap
 
 import (
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/jonnyom/slis/internal/git"
 )
@@ -32,12 +33,30 @@ func LockfilesChanged(repoDir, fromSHA, toSHA string, lockfiles []string) (bool,
 }
 
 // blobAt returns the content of path at sha in repoDir via `git show sha:path`.
-// If the path does not exist at that rev, it returns ("", nil) rather than an
-// error so that absent-in-both and added/removed cases are handled gracefully.
+// If the path genuinely does not exist at that rev, it returns ("", nil) so
+// that absent-in-both and added/removed cases are handled gracefully.
+// Any other git error (e.g. bad/unknown object SHA, I/O error) is propagated
+// so it is not silently swallowed as "file absent".
+//
+// Implementation note: git reports identical stderr ("does not exist in '<sha>'")
+// for both "file absent at a valid commit" and "SHA does not name any object".
+// We disambiguate by first checking whether the SHA names a valid commit object
+// via `git cat-file -e <sha>`. Only if the commit exists do we treat the
+// subsequent "does not exist in" as genuine file-absence; otherwise we propagate
+// the error as a real git failure.
 func blobAt(repoDir, sha, path string) (string, error) {
+	// Fix E: pre-validate that sha names a real object before running git show.
+	// `git cat-file -e <sha>` exits 0 when the object exists, non-zero otherwise.
+	// This ensures a bogus/corrupt SHA is surfaced as an error rather than
+	// silently treated as "file absent".
+	if _, err := git.Run(repoDir, "cat-file", "-e", sha); err != nil {
+		return "", fmt.Errorf("blobAt: commit %q does not exist in %q: %w", sha, repoDir, err)
+	}
+
 	content, err := git.Run(repoDir, "show", sha+":"+path)
 	if err != nil {
-		// "path not in rev" — treat as empty content.
+		// At this point we know the commit exists; any error is a genuine "path
+		// not present at this rev". Treat as empty content (absent file).
 		return "", nil
 	}
 	return content, nil

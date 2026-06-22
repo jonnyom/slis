@@ -566,6 +566,134 @@ func TestDepReconcileInvokesInstaller(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// New tests for adversarial-review fixes
+// ---------------------------------------------------------------------------
+
+// TestDeactivateConflictKeepsJournal verifies that when a stash pop conflicts
+// during Deactivate, the journal is NOT cleared. Instead, it is rewritten to
+// contain only the repos that failed to restore, so `slis deactivate` can be
+// re-run to resume.
+func TestDeactivateConflictKeepsJournal(t *testing.T) {
+	r, _ := setupRepoWithWorktree(t)
+
+	// Commit a tracked file on main so stash works on a tracked file.
+	sharedPath := filepath.Join(r, "shared.txt")
+	if err := os.WriteFile(sharedPath, []byte("base"), 0o644); err != nil {
+		t.Fatalf("write shared.txt: %v", err)
+	}
+	if _, err := git.Run(r, "add", "shared.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := git.Run(r, "commit", "-q", "-m", "add shared.txt"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	// Dirty edit on main (will be stashed during activate).
+	if err := os.WriteFile(sharedPath, []byte("wip"), 0o644); err != nil {
+		t.Fatalf("write wip: %v", err)
+	}
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+	repos := []RepoActivation{
+		{Repo: "r", Primary: r, Branch: "feat"},
+	}
+
+	_, err := Activate("myslice", repos, journalPath, ActivateOptions{Stash: true})
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	// Advance main to a conflicting commit via a second worktree so the stash
+	// pop will conflict when we deactivate.
+	main2Path := filepath.Join(t.TempDir(), "main2")
+	if _, err := git.Run(r, "worktree", "add", main2Path, "main"); err != nil {
+		t.Fatalf("worktree add main2: %v", err)
+	}
+	shared2 := filepath.Join(main2Path, "shared.txt")
+	if err := os.WriteFile(shared2, []byte("conflict"), 0o644); err != nil {
+		t.Fatalf("write conflict: %v", err)
+	}
+	if _, err := git.Run(main2Path, "add", "shared.txt"); err != nil {
+		t.Fatalf("git add in main2: %v", err)
+	}
+	if _, err := git.Run(main2Path, "commit", "-q", "-m", "conflict commit"); err != nil {
+		t.Fatalf("git commit in main2: %v", err)
+	}
+	if _, err := git.Run(r, "worktree", "remove", "--force", main2Path); err != nil {
+		t.Fatalf("worktree remove main2: %v", err)
+	}
+
+	// Deactivate should return a non-nil error (stash conflict).
+	deactivateErr := Deactivate(journalPath)
+	if deactivateErr == nil {
+		t.Fatal("Deactivate: expected error on stash conflict, got nil")
+	}
+
+	// The journal must NOT have been cleared — it must still be loadable.
+	loaded, err := Load(journalPath)
+	if err != nil {
+		t.Fatalf("Load after failed Deactivate: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("journal was cleared after a failed Deactivate — it must be kept for resumability")
+	}
+
+	// The surviving journal must contain the conflicted repo.
+	found := false
+	for _, rs := range loaded.Repos {
+		if rs.Repo == "r" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("conflicted repo %q not found in surviving journal: %+v", "r", loaded.Repos)
+	}
+}
+
+// TestReconciledFalseOnInstallerError verifies that when the installer returns
+// an error, RepoState.Reconciled is left false, and Activate returns a non-nil
+// error alongside a non-nil journal (the swap itself succeeded).
+func TestReconciledFalseOnInstallerError(t *testing.T) {
+	primary, _ := setupRepoWithLockfileDelta(t)
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	installerErr := errors.New("pnpm install failed")
+	installer := func(dir string) error { return installerErr }
+
+	repos := []RepoActivation{
+		{Repo: "x", Primary: primary, Branch: "feat", Lockfiles: []string{"pnpm-lock.yaml"}},
+	}
+
+	j, err := Activate("myslice", repos, journalPath, ActivateOptions{Installer: installer})
+
+	// Activate must return a non-nil error (the installer failed).
+	if err == nil {
+		t.Fatal("Activate: expected non-nil error when installer fails, got nil")
+	}
+
+	// But it must also return a non-nil journal (the swap itself succeeded).
+	if j == nil {
+		t.Fatal("Activate: expected non-nil journal even when installer fails")
+	}
+
+	// Load the on-disk journal and verify Reconciled is false.
+	loaded, loadErr := Load(journalPath)
+	if loadErr != nil {
+		t.Fatalf("Load: %v", loadErr)
+	}
+	if loaded == nil {
+		t.Fatal("journal was not written despite successful swap")
+	}
+	if len(loaded.Repos) == 0 {
+		t.Fatal("journal has no repos")
+	}
+	if loaded.Repos[0].Reconciled {
+		t.Errorf("RepoState.Reconciled: want false when installer errors, got true")
+	}
+}
+
 // TestActivateStashesDirty verifies that a dirty primary with Stash:true
 // succeeds: the primary is detached at feat tip, StashRef is set, and
 // the primary working tree is clean.

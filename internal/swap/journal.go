@@ -16,6 +16,7 @@ type RepoState struct {
 	PriorBranch string `json:"prior_branch"` // branch the primary was on before activate ("" if it was detached)
 	PriorSHA    string `json:"prior_sha"`    // HEAD sha before activate (for detached-prior restore)
 	StashRef    string `json:"stash_ref"`    // pinned stash commit sha, "" if nothing stashed
+	StashMsg    string `json:"stash_msg"`    // unique stash message used during activation, "" if nothing stashed
 	TargetSHA   string `json:"target_sha"`   // the slice branch tip we checked out
 	Reconciled  bool   `json:"reconciled"`   // whether a dep install ran during activate
 }

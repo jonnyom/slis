@@ -80,3 +80,22 @@ func TestLockfilesChanged_AbsentBoth(t *testing.T) {
 		t.Error("LockfilesChanged = true, want false (lockfile absent in both commits)")
 	}
 }
+
+// TestLockfilesChangedPropagatesRealError verifies Fix E: a bogus from-SHA
+// (one that does not name a real object in the repository) must cause
+// LockfilesChanged to return a non-nil error rather than silently returning
+// (false, nil) as though the file were merely absent.
+func TestLockfilesChangedPropagatesRealError(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	// Create a real commit so we have a valid toSHA.
+	validSHA := commitFile(t, repo, "pnpm-lock.yaml", "v1\n")
+
+	// 0000...0000 is a 40-char hex string that is valid SHA syntax but does
+	// NOT name any object in the git object database.
+	bogusSHA := "0000000000000000000000000000000000000000"
+
+	_, err := LockfilesChanged(repo, bogusSHA, validSHA, []string{"pnpm-lock.yaml"})
+	if err == nil {
+		t.Error("LockfilesChanged: expected non-nil error for bogus from-SHA, got nil")
+	}
+}
