@@ -11,6 +11,7 @@ import (
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/swap"
 )
 
@@ -36,6 +37,13 @@ type Model struct {
 	diffs        map[string][]diff.RepoDiff     // slice name → repo diffs
 	diffLoading  map[string]bool                // slice name → diff loading in progress
 	viewport     viewport.Model                 // scrollable viewport for Changes tab
+	// Process overlay fields.
+	procs           map[string][]proc.ProcInfo // slice name → sampled procs
+	procLoading     map[string]bool            // slice name → proc load in progress
+	showProcOverlay bool                       // true when [P] overlay is open
+	overlaySel      int                        // selected row in overlay
+	overlayProcs    []proc.ProcInfo            // flattened+sorted procs for overlay
+	pendingKill     *killReq                   // non-nil when confirm prompt is shown
 }
 
 // New returns an initial Model with loading=true.
@@ -47,6 +55,8 @@ func New(ws config.Workspace) Model {
 		stackLoading: make(map[string]bool),
 		diffs:        make(map[string][]diff.RepoDiff),
 		diffLoading:  make(map[string]bool),
+		procs:        make(map[string][]proc.ProcInfo),
+		procLoading:  make(map[string]bool),
 	}
 }
 
@@ -114,6 +124,43 @@ func (m *Model) maybeLoadDiff() tea.Cmd {
 	return loadDiffCmd(sl, sliceBase(sl))
 }
 
+// maybeLoadProcs returns a loadProcsCmd for the focused slice if its proc data
+// is not already cached or being loaded. Returns nil if no load is needed.
+func (m *Model) maybeLoadProcs() tea.Cmd {
+	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return nil
+	}
+	sl := m.slices[m.focus]
+	if _, cached := m.procs[sl.Name]; cached {
+		return nil
+	}
+	if m.procLoading[sl.Name] {
+		return nil
+	}
+	m.procLoading[sl.Name] = true
+	return loadProcsCmd(sl.Name)
+}
+
+// batchLoadAllProcs returns a tea.Batch of loadProcsCmd for every slice that is
+// not yet cached or being loaded. Used when the overlay opens.
+func (m *Model) batchLoadAllProcs() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, sl := range m.slices {
+		if _, cached := m.procs[sl.Name]; cached {
+			continue
+		}
+		if m.procLoading[sl.Name] {
+			continue
+		}
+		m.procLoading[sl.Name] = true
+		cmds = append(cmds, loadProcsCmd(sl.Name))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
 // Update handles incoming messages and returns the updated model and next command.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -171,7 +218,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(diffContent(m))
 		}
 
+	case procsLoadedMsg:
+		m.procs[msg.slice] = msg.procs
+		delete(m.procLoading, msg.slice)
+		// If the overlay is open, rebuild its flattened proc list.
+		if m.showProcOverlay {
+			m.overlayProcs = flattenProcs(m.procs)
+			// Clamp selection.
+			if m.overlaySel >= len(m.overlayProcs) {
+				m.overlaySel = len(m.overlayProcs) - 1
+			}
+			if m.overlaySel < 0 {
+				m.overlaySel = 0
+			}
+		}
+
+	case procKilledMsg:
+		// After a kill, refresh procs for all slices.
+		return m, m.batchLoadAllProcs()
+
 	case tea.KeyMsg:
+		// ── Overlay key handling — takes full priority when overlay is open. ──
+		if m.showProcOverlay {
+			return m.updateOverlayKeys(msg)
+		}
+
 		// Viewport scroll keys — only when on Changes tab.
 		if m.activeTab == TabChanges {
 			switch msg.String() {
@@ -191,6 +262,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
+		case "P":
+			// Open the proc overlay.
+			m.showProcOverlay = true
+			m.overlaySel = 0
+			m.overlayProcs = flattenProcs(m.procs)
+			return m, m.batchLoadAllProcs()
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "j", "down":
@@ -207,6 +284,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, cmd
 					}
 				}
+				if m.activeTab == TabProcesses {
+					if cmd := m.maybeLoadProcs(); cmd != nil {
+						return m, cmd
+					}
+				}
 			}
 		case "k", "up":
 			if m.focus > 0 {
@@ -219,6 +301,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activeTab == TabChanges {
 					m.viewport.SetContent(diffContent(m))
 					if cmd := m.maybeLoadDiff(); cmd != nil {
+						return m, cmd
+					}
+				}
+				if m.activeTab == TabProcesses {
+					if cmd := m.maybeLoadProcs(); cmd != nil {
 						return m, cmd
 					}
 				}
@@ -239,6 +326,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 			}
+			if m.activeTab == TabProcesses {
+				if cmd := m.maybeLoadProcs(); cmd != nil {
+					return m, cmd
+				}
+			}
 		case "shift+tab", "h":
 			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
 			if m.activeTab == TabChanges {
@@ -247,9 +339,58 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 			}
+			if m.activeTab == TabProcesses {
+				if cmd := m.maybeLoadProcs(); cmd != nil {
+					return m, cmd
+				}
+			}
 		case "?":
 			m.showHelp = !m.showHelp
 		}
+	}
+
+	return m, nil
+}
+
+// updateOverlayKeys handles key events while the proc overlay is open.
+// It returns (model, cmd) so it can be returned directly from Update.
+func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	n := len(m.overlayProcs)
+
+	// If a kill is pending, only y/n/esc are accepted.
+	if m.pendingKill != nil {
+		switch msg.String() {
+		case "y":
+			req := *m.pendingKill
+			m.pendingKill = nil
+			// Run the kill, then reload procs for all slices.
+			return m, tea.Batch(killCmd(req), m.batchLoadAllProcs())
+		case "n", "esc":
+			m.pendingKill = nil
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "j", "down":
+		if n > 0 && m.overlaySel < n-1 {
+			m.overlaySel++
+		}
+	case "k", "up":
+		if m.overlaySel > 0 {
+			m.overlaySel--
+		}
+	case "x":
+		if n > 0 && m.overlaySel >= 0 && m.overlaySel < n {
+			m.pendingKill = &killReq{pid: m.overlayProcs[m.overlaySel].PID, subtree: false}
+		}
+	case "X":
+		if n > 0 && m.overlaySel >= 0 && m.overlaySel < n {
+			m.pendingKill = &killReq{pid: m.overlayProcs[m.overlaySel].PID, subtree: true}
+		}
+	case "P", "esc":
+		m.showProcOverlay = false
+		m.pendingKill = nil
 	}
 
 	return m, nil
@@ -265,6 +406,9 @@ func (m Model) View() string {
 	}
 	if m.showHelp {
 		return renderHelp()
+	}
+	if m.showProcOverlay {
+		return renderProcOverlay(m)
 	}
 
 	left := renderSliceList(m)

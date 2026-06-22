@@ -26,7 +26,7 @@ func renderSliceList(m Model) string {
 		sb.WriteString("No slices found. Run 'slis init' to set up your workspace.\n")
 	} else {
 		for i, s := range m.slices {
-			sb.WriteString(renderSliceRow(i, s, i == m.focus))
+			sb.WriteString(renderSliceRowWithModel(i, s, i == m.focus, m))
 			sb.WriteString("\n")
 		}
 	}
@@ -38,7 +38,8 @@ func renderSliceList(m Model) string {
 	return sb.String()
 }
 
-// renderSliceRow renders a single slice row with focus and active markers.
+// renderSliceRow renders a single slice row with focus, active, and CPU markers.
+// m is the full model so we can check procs and threshold.
 func renderSliceRow(idx int, s model.Slice, focused bool) string {
 	// Focus marker: ">" when focused, " " otherwise.
 	focusMarker := " "
@@ -70,4 +71,20 @@ func renderSliceRow(idx int, s model.Slice, focused bool) string {
 		return focusStyle.Render(line)
 	}
 	return normalStyle.Render(line)
+}
+
+// renderSliceRowWithModel renders a slice row using the full model so the
+// CPU warning badge can be appended when the threshold is exceeded.
+func renderSliceRowWithModel(idx int, s model.Slice, focused bool, m Model) string {
+	base := renderSliceRow(idx, s, focused)
+
+	// Append CPU warning badge if procs are loaded and over threshold.
+	if procs, ok := m.procs[s.Name]; ok {
+		if overCPUThreshold(procs, m.ws.Processes.CPUWarnPct) {
+			badge := cpuWarnStyle.Render(" ⚠")
+			base += badge
+		}
+	}
+
+	return base
 }

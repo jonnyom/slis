@@ -101,6 +101,8 @@ func renderDetail(m Model) string {
 		sb.WriteString(renderStackTab(m))
 	case TabChanges:
 		sb.WriteString(m.viewport.View())
+	case TabProcesses:
+		sb.WriteString(renderProcessesTab(m))
 	default:
 		sb.WriteString(renderPlaceholder(m.activeTab))
 	}
@@ -161,6 +163,34 @@ func renderStackTab(m Model) string {
 	}
 
 	return sb.String()
+}
+
+// renderProcessesTab renders the Processes tab body for the focused slice.
+func renderProcessesTab(m Model) string {
+	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return "no slice selected\n"
+	}
+	sl := m.slices[m.focus]
+
+	if m.procLoading[sl.Name] {
+		return "loading…\n"
+	}
+
+	procs, ok := m.procs[sl.Name]
+	if !ok {
+		return "no tmux session (press [P] for global overlay)\n"
+	}
+	if len(procs) == 0 {
+		return "no processes found\n"
+	}
+
+	// Use the right-pane width if known; else a reasonable fallback.
+	tableWidth := m.width - 42 // 40 left + 1 sep + 1 padding
+	if tableWidth < 40 {
+		tableWidth = 80
+	}
+
+	return renderProcTable(procs, -1, tableWidth)
 }
 
 // renderPlaceholder renders a placeholder body for tabs not yet implemented.
