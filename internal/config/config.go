@@ -31,9 +31,11 @@ type Processes struct {
 	CPUWarnPct int `yaml:"cpu_warn_pct"`
 }
 
-// DepReconcile is a placeholder for swap dependency reconciliation config.
+// DepReconcile holds the lockfile list and install command for a single repo's
+// dependency reconciliation during slice activation.
 type DepReconcile struct {
-	Command string `yaml:"command"`
+	Lockfiles []string `yaml:"lockfiles"`
+	Install   string   `yaml:"install"`
 }
 
 // Swap holds post-activation hooks and dependency reconciliation config.

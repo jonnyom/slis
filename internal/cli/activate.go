@@ -1,0 +1,178 @@
+package cli
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+
+	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/discovery"
+	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/swap"
+	"github.com/spf13/cobra"
+)
+
+// buildActivations builds the []swap.RepoActivation slice from a workspace and
+// a model.Slice. It is factored out as a pure function so it can be unit-tested
+// without any git side-effects.
+func buildActivations(ws config.Workspace, sl model.Slice) []swap.RepoActivation {
+	result := make([]swap.RepoActivation, 0, len(sl.Members))
+	for _, m := range sl.Members {
+		repo := ws.Repos[m.Repo]
+		dr := ws.Swap.DepReconcile[m.Repo]
+		result = append(result, swap.RepoActivation{
+			Repo:      m.Repo,
+			Primary:   repo.Primary,
+			Branch:    m.Branch,
+			Lockfiles: dr.Lockfiles,
+		})
+	}
+	return result
+}
+
+var activateCmd = &cobra.Command{
+	Use:   "activate <slice>",
+	Short: "Activate a slice — detach all repo primaries to the slice's branch tips",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sliceName := args[0]
+		stash, _ := cmd.Flags().GetBool("stash")
+		noReconcile, _ := cmd.Flags().GetBool("no-reconcile")
+
+		ws, err := config.LoadWorkspace(config.WorkspacePath())
+		if err != nil {
+			return fmt.Errorf("workspace not found — run `slis init` first: %w", err)
+		}
+
+		sp := config.StatePaths()
+
+		// Check whether a swap is already active.
+		active, err := swap.RecoverState(sp.ActiveJournal)
+		if err != nil {
+			return fmt.Errorf("check active state: %w", err)
+		}
+		if active != nil {
+			if active.Slice == sliceName {
+				return fmt.Errorf("slice %q is already active; run `slis refresh` to update tips", sliceName)
+			}
+			return fmt.Errorf("slice %q already active; run `slis deactivate` first", active.Slice)
+		}
+
+		// Find the slice via discovery + overrides.
+		dtos, err := listSlices(ws, sp.Overrides, sp.ActiveJournal)
+		if err != nil {
+			return fmt.Errorf("list slices: %w", err)
+		}
+		var found *SliceDTO
+		for i := range dtos {
+			if dtos[i].Name == sliceName {
+				found = &dtos[i]
+				break
+			}
+		}
+		if found == nil {
+			return fmt.Errorf("slice %q not found", sliceName)
+		}
+
+		// Reconstruct model.Slice from the DTO so buildActivations can work on it.
+		sl := model.Slice{
+			Name:    found.Name,
+			Base:    found.Base,
+			Members: make(map[string]model.SliceMember, len(found.Members)),
+		}
+		for _, m := range found.Members {
+			sl.Members[m.Repo] = model.SliceMember{
+				Repo:         m.Repo,
+				Branch:       m.Branch,
+				WorktreePath: m.WorktreePath,
+				TipSHA:       m.TipSHA,
+			}
+		}
+
+		repos := buildActivations(ws, sl)
+
+		// Build primary→repoName and repoName→install lookups for the installer closure.
+		primaryToRepo := make(map[string]string, len(repos))
+		repoToInstall := make(map[string]string, len(repos))
+		for _, ra := range repos {
+			primaryToRepo[ra.Primary] = ra.Repo
+			if dr, ok := ws.Swap.DepReconcile[ra.Repo]; ok {
+				repoToInstall[ra.Repo] = dr.Install
+			}
+		}
+
+		var installer func(primaryDir string) error
+		if !noReconcile {
+			installer = func(primaryDir string) error {
+				repoName := primaryToRepo[primaryDir]
+				install := repoToInstall[repoName]
+				if install == "" {
+					return nil
+				}
+				fmt.Fprintf(os.Stdout, "slis: lockfile changed in %s, running: %s\n", repoName, install)
+				c := exec.Command("sh", "-c", install)
+				c.Dir = primaryDir
+				c.Stdout = os.Stdout
+				c.Stderr = os.Stderr
+				return c.Run()
+			}
+		}
+
+		opts := swap.ActivateOptions{
+			Stash:     stash,
+			Installer: installer,
+		}
+
+		j, err := swap.Activate(sliceName, repos, sp.ActiveJournal, opts)
+
+		// Print summary if we have a journal (activation succeeded, possibly with reconcile warning).
+		if j != nil {
+			fmt.Printf("activated slice %q:\n", sliceName)
+			for _, rs := range j.Repos {
+				fmt.Printf("  %s: detached at %s (branch: %s)\n", rs.Repo, rs.TargetSHA[:min(7, len(rs.TargetSHA))], rs.Branch)
+			}
+		}
+
+		if err != nil {
+			if j != nil {
+				// Swap succeeded; reconcile failed — warn but don't error out.
+				fmt.Fprintf(os.Stderr, "warning: dep-reconcile incomplete: %v\n", err)
+				return nil
+			}
+			return err
+		}
+
+		return nil
+	},
+}
+
+// min returns the smaller of a and b.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func init() {
+	activateCmd.Flags().Bool("stash", false, "Auto-stash dirty primaries before switching")
+	activateCmd.Flags().Bool("no-reconcile", false, "Skip dep-reconcile even if lockfiles changed")
+	rootCmd.AddCommand(activateCmd)
+}
+
+// findSliceByName looks up a slice from discovery+overrides without the DTO
+// layer. Used internally to get a raw model.Slice for inspection.
+func findSliceByName(ws config.Workspace, overridesPath, name string) (*model.Slice, error) {
+	slices, err := discovery.Discover(ws)
+	if err != nil {
+		return nil, err
+	}
+	ov, _ := discovery.LoadOverrides(overridesPath)
+	slices = discovery.Apply(slices, ov)
+	for i := range slices {
+		if slices[i].Name == name {
+			return &slices[i], nil
+		}
+	}
+	return nil, nil
+}
