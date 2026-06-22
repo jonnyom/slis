@@ -1,10 +1,17 @@
 package swap
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jonnyom/slis/internal/git"
 )
+
+// ErrStashConflict is returned by deactivateRepo when popping the stash
+// produces a merge conflict. The stash is intentionally left intact so the
+// user can resolve the conflict and pop it manually.
+var ErrStashConflict = errors.New("stash pop conflicted; resolve manually (stash left intact)")
 
 // RepoPlan describes a single-repo activation request.
 type RepoPlan struct {
@@ -90,4 +97,59 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 		StashRef:    stashRef,
 		TargetSHA:   target,
 	}, nil
+}
+
+// deactivateRepo restores the primary checkout to its state before activateRepo
+// was called. It is the exact inverse of activateRepo:
+//
+//  1. Switch the primary back to the prior branch (or detach at the prior SHA
+//     if the primary was detached before activation).
+//  2. If a stash was saved during activation, locate it by its pinned SHA and
+//     pop THAT exact entry. On conflict, return ErrStashConflict without
+//     dropping the stash (the user must resolve and pop manually).
+//
+// deactivateRepo never uses --force and never drops/clears the stash on the
+// conflict path.
+func deactivateRepo(st RepoState) error {
+	// 1. Restore the branch (or detached HEAD if prior was detached).
+	if st.PriorBranch != "" {
+		if _, err := git.Run(st.Primary, "switch", st.PriorBranch); err != nil {
+			return fmt.Errorf("switch to prior branch %q in %q: %w", st.PriorBranch, st.Primary, err)
+		}
+	} else {
+		if _, err := git.Run(st.Primary, "switch", "--detach", st.PriorSHA); err != nil {
+			return fmt.Errorf("switch --detach to prior SHA %q in %q: %w", st.PriorSHA, st.Primary, err)
+		}
+	}
+
+	// No stash to restore — done.
+	if st.StashRef == "" {
+		return nil
+	}
+
+	// 2. Locate the exact stash entry by the pinned commit SHA.
+	out, err := git.Run(st.Primary, "stash", "list", "--format=%H")
+	if err != nil {
+		return fmt.Errorf("stash list in %q: %w", st.Primary, err)
+	}
+
+	index := -1
+	for i, line := range strings.Split(out, "\n") {
+		if line == st.StashRef {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return fmt.Errorf("stash %s not found in %q", st.StashRef, st.Primary)
+	}
+
+	// 3. Pop that exact entry. On non-zero exit (conflict), git stash pop has
+	//    already applied the changes with conflict markers and left the stash
+	//    entry intact — so we just surface the error.
+	if _, err := git.Run(st.Primary, "stash", "pop", fmt.Sprintf("stash@{%d}", index)); err != nil {
+		return fmt.Errorf("%w: %v", ErrStashConflict, err)
+	}
+
+	return nil
 }
