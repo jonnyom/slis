@@ -2,10 +2,12 @@
 package tui
 
 import (
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
@@ -31,6 +33,9 @@ type Model struct {
 	showHelp     bool
 	stacks       map[string]map[string]gt.State // slice name → repo name → State
 	stackLoading map[string]bool                // slice name → loading in progress
+	diffs        map[string][]diff.RepoDiff     // slice name → repo diffs
+	diffLoading  map[string]bool                // slice name → diff loading in progress
+	viewport     viewport.Model                 // scrollable viewport for Changes tab
 }
 
 // New returns an initial Model with loading=true.
@@ -40,6 +45,8 @@ func New(ws config.Workspace) Model {
 		loading:      true,
 		stacks:       make(map[string]map[string]gt.State),
 		stackLoading: make(map[string]bool),
+		diffs:        make(map[string][]diff.RepoDiff),
+		diffLoading:  make(map[string]bool),
 	}
 }
 
@@ -90,12 +97,42 @@ func (m *Model) maybeLoadStack() tea.Cmd {
 	return loadStackCmd(sl)
 }
 
+// maybeLoadDiff returns a loadDiffCmd for the focused slice if its diff data is
+// not already cached or being loaded. Returns nil if no load is needed.
+func (m *Model) maybeLoadDiff() tea.Cmd {
+	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return nil
+	}
+	sl := m.slices[m.focus]
+	if _, cached := m.diffs[sl.Name]; cached {
+		return nil
+	}
+	if m.diffLoading[sl.Name] {
+		return nil
+	}
+	m.diffLoading[sl.Name] = true
+	return loadDiffCmd(sl, sliceBase(sl))
+}
+
 // Update handles incoming messages and returns the updated model and next command.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// Size the viewport to fill the right pane minus tabs+padding.
+		vpHeight := msg.Height - 4 // reserve space for tab bar + padding
+		if vpHeight < 1 {
+			vpHeight = 1
+		}
+		rightWidth := msg.Width - 41 // 40 left + 1 separator
+		if rightWidth < 1 {
+			rightWidth = msg.Width
+		}
+		m.viewport = viewport.New(rightWidth, vpHeight)
+		if m.activeTab == TabChanges {
+			m.viewport.SetContent(diffContent(m))
+		}
 
 	case slicesLoadedMsg:
 		m.loading = false
@@ -113,12 +150,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		// Kick off diff load if on Changes tab.
+		if m.activeTab == TabChanges {
+			if cmd := m.maybeLoadDiff(); cmd != nil {
+				return m, cmd
+			}
+		}
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
 		delete(m.stackLoading, msg.slice)
 
+	case diffLoadedMsg:
+		m.diffs[msg.slice] = msg.diffs
+		delete(m.diffLoading, msg.slice)
+		// Refresh viewport if the loaded slice is the focused one and we're on Changes.
+		if m.activeTab == TabChanges && len(m.slices) > 0 &&
+			m.focus >= 0 && m.focus < len(m.slices) &&
+			m.slices[m.focus].Name == msg.slice {
+			m.viewport.SetContent(diffContent(m))
+		}
+
 	case tea.KeyMsg:
+		// Viewport scroll keys — only when on Changes tab.
+		if m.activeTab == TabChanges {
+			switch msg.String() {
+			case "ctrl+d", "pgdown":
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			case "ctrl+u", "pgup":
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			case "o":
+				return m, openExternalCmd(m)
+			case "y":
+				return m, copyPatchCmd(m)
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -130,12 +201,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, cmd
 					}
 				}
+				if m.activeTab == TabChanges {
+					m.viewport.SetContent(diffContent(m))
+					if cmd := m.maybeLoadDiff(); cmd != nil {
+						return m, cmd
+					}
+				}
 			}
 		case "k", "up":
 			if m.focus > 0 {
 				m.focus--
 				if m.activeTab == TabStack {
 					if cmd := m.maybeLoadStack(); cmd != nil {
+						return m, cmd
+					}
+				}
+				if m.activeTab == TabChanges {
+					m.viewport.SetContent(diffContent(m))
+					if cmd := m.maybeLoadDiff(); cmd != nil {
 						return m, cmd
 					}
 				}
@@ -150,8 +233,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 			}
+			if m.activeTab == TabChanges {
+				m.viewport.SetContent(diffContent(m))
+				if cmd := m.maybeLoadDiff(); cmd != nil {
+					return m, cmd
+				}
+			}
 		case "shift+tab", "h":
 			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
+			if m.activeTab == TabChanges {
+				m.viewport.SetContent(diffContent(m))
+				if cmd := m.maybeLoadDiff(); cmd != nil {
+					return m, cmd
+				}
+			}
 		case "?":
 			m.showHelp = !m.showHelp
 		}

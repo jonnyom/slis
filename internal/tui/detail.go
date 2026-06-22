@@ -99,6 +99,8 @@ func renderDetail(m Model) string {
 	switch m.activeTab {
 	case TabStack:
 		sb.WriteString(renderStackTab(m))
+	case TabChanges:
+		sb.WriteString(m.viewport.View())
 	default:
 		sb.WriteString(renderPlaceholder(m.activeTab))
 	}
