@@ -1,0 +1,9 @@
+# golangci-lint configuration (v1.x schema).
+# Minimal linter set for the skeleton; expand as the project grows.
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - gofmt
