@@ -1,9 +1,9 @@
 {
   "planPath": "docs/plans/2026-06-22-slis-implementation-plan.md",
-  "lastUpdated": "2026-06-22",
+  "lastUpdated": "2026-06-22T00:00:02Z",
   "tasks": [
-    {"id": "0",  "subject": "Skeleton: go module, layout, Makefile, CI", "status": "pending"},
-    {"id": "1",  "subject": "Config types + workspace.yaml loader (root + repos)", "status": "pending", "blockedBy": ["0"]},
+    {"id": "0",  "subject": "Skeleton: go module, layout, Makefile, CI", "status": "completed"},
+    {"id": "1",  "subject": "Config types + workspace.yaml loader (root + repos)", "status": "completed", "blockedBy": ["0"]},
     {"id": "2",  "subject": "XDG state/config paths", "status": "pending", "blockedBy": ["0"]},
     {"id": "2b", "subject": "slis init: repo scan + multi-select picker -> workspace.yaml", "status": "pending", "blockedBy": ["1", "2"]},
     {"id": "3",  "subject": "git argv builder, exec wrapper, temp-repo testutil", "status": "pending", "blockedBy": ["0"]},
