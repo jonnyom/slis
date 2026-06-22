@@ -1,0 +1,123 @@
+// Package hooks maps Claude Code hook events to per-slice session statuses and
+// persists them to the event store so the TUI can surface which slice needs
+// user attention.
+package hooks
+
+import (
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/notify"
+)
+
+// hookInput is the subset of the Claude hook JSON payload we care about.
+type hookInput struct {
+	Cwd           string `json:"cwd"`
+	SessionID     string `json:"session_id"`
+	HookEventName string `json:"hook_event_name"`
+}
+
+// StatusForEvent maps a Claude hook event name to the corresponding
+// model.SessionStatus:
+//
+//	"Notification"  → SessWaitingInput
+//	"Stop" / "SubagentStop" → SessDone
+//	anything else   → SessRunning
+func StatusForEvent(event string) model.SessionStatus {
+	switch event {
+	case "Notification":
+		return model.SessWaitingInput
+	case "Stop", "SubagentStop":
+		return model.SessDone
+	default:
+		return model.SessRunning
+	}
+}
+
+// resolveSymlinks attempts to resolve symlinks for a path. On macOS /var is a
+// symlink to /private/var, so we need to resolve both sides before comparing.
+// If the full path doesn't exist, it walks up the tree to find the longest
+// existing prefix, resolves that, and re-appends the remaining suffix.
+func resolveSymlinks(p string) string {
+	p = filepath.Clean(p)
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	// Walk up to find a resolvable prefix, then re-append the rest.
+	dir := filepath.Dir(p)
+	suffix := filepath.Base(p)
+	for dir != p { // stop at filesystem root
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(r, suffix)
+		}
+		suffix = filepath.Join(filepath.Base(dir), suffix)
+		next := filepath.Dir(dir)
+		if next == dir {
+			break
+		}
+		dir = next
+	}
+	return p
+}
+
+// SliceForCwd returns the name of the first slice whose member's WorktreePath
+// is equal to, or is an ancestor directory of, cwd. Returns "" if none match.
+// Both sides are symlink-resolved for robustness on macOS.
+func SliceForCwd(slices []model.Slice, cwd string) string {
+	resolvedCwd := resolveSymlinks(cwd)
+	sep := string(os.PathSeparator)
+
+	for _, sl := range slices {
+		for _, m := range sl.Members {
+			if m.WorktreePath == "" {
+				continue
+			}
+			resolvedWt := resolveSymlinks(m.WorktreePath)
+			if resolvedCwd == resolvedWt {
+				return sl.Name
+			}
+			if strings.HasPrefix(resolvedCwd, resolvedWt+sep) {
+				return sl.Name
+			}
+		}
+	}
+	return ""
+}
+
+// HandleHook decodes the Claude hook JSON from r, maps cwd → slice, and writes
+// the slice's status to eventsDir. If the cwd cannot be matched to any slice,
+// the call is a no-op (returns nil). Decode errors are silently swallowed so a
+// misconfigured or empty hook payload never crashes the parent process.
+//
+// event is the hook event name supplied on the CLI; it takes precedence over
+// the hook_event_name field in the JSON payload.
+func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir string, timeNS int64) error {
+	var hi hookInput
+	if err := json.NewDecoder(r).Decode(&hi); err != nil {
+		// Tolerate empty or unparseable payloads — fail quiet.
+		return nil
+	}
+
+	cwd := hi.Cwd
+	if cwd == "" {
+		return nil
+	}
+
+	// Prefer the explicit event arg; fall back to the JSON field.
+	eName := event
+	if eName == "" {
+		eName = hi.HookEventName
+	}
+
+	sliceName := SliceForCwd(slices, cwd)
+	if sliceName == "" {
+		return nil
+	}
+
+	status := StatusForEvent(eName)
+	return notify.WriteStatus(eventsDir, sliceName, status, timeNS)
+}
