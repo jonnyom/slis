@@ -35,4 +35,5 @@ func init() {
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(showCmd)
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(summaryCmd)
 }

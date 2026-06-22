@@ -4,6 +4,7 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +17,7 @@ import (
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/proc"
+	"github.com/jonnyom/slis/internal/summary"
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
@@ -51,6 +53,9 @@ type Model struct {
 	overlaySel      int                        // selected row in overlay
 	overlayProcs    []proc.ProcInfo            // flattened+sorted procs for overlay
 	pendingKill     *killReq                   // non-nil when confirm prompt is shown
+	// Summary tab fields.
+	summaries      map[string]string // slice name → rendered commit summary text
+	summaryLoading map[string]bool   // slice name → load in progress
 	// fsnotify watcher for live event-file updates.
 	watcher   *fsnotify.Watcher
 	eventsDir string
@@ -72,17 +77,19 @@ func New(ws config.Workspace) Model {
 	}
 
 	return Model{
-		ws:            ws,
-		loading:       true,
-		stacks:        make(map[string]map[string]gt.State),
-		stackLoading:  make(map[string]bool),
-		diffs:         make(map[string][]diff.RepoDiff),
-		diffLoading:   make(map[string]bool),
-		procs:         make(map[string][]proc.ProcInfo),
-		procLoading:   make(map[string]bool),
-		sessionStatus: make(map[string]model.SessionStatus),
-		watcher:       w,
-		eventsDir:     eventsDir,
+		ws:             ws,
+		loading:        true,
+		stacks:         make(map[string]map[string]gt.State),
+		stackLoading:   make(map[string]bool),
+		diffs:          make(map[string][]diff.RepoDiff),
+		diffLoading:    make(map[string]bool),
+		procs:          make(map[string][]proc.ProcInfo),
+		procLoading:    make(map[string]bool),
+		sessionStatus:  make(map[string]model.SessionStatus),
+		summaries:      make(map[string]string),
+		summaryLoading: make(map[string]bool),
+		watcher:        w,
+		eventsDir:      eventsDir,
 	}
 }
 
@@ -174,6 +181,59 @@ func (m *Model) maybeLoadProcs() tea.Cmd {
 	return loadProcsCmd(sl.Name)
 }
 
+// summaryLoadedMsg is delivered when a commit or AI summary has been computed off-loop.
+type summaryLoadedMsg struct {
+	slice string
+	text  string
+}
+
+// loadSummaryCmd returns a Cmd that computes the commit summary for sl off the
+// UI goroutine and delivers a summaryLoadedMsg.
+func loadSummaryCmd(sl model.Slice, base string) tea.Cmd {
+	return func() tea.Msg {
+		byRepo, _ := summary.CommitSummary(sl, base)
+		md := summary.RenderCommitSummary(byRepo)
+		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdown(md)}
+	}
+}
+
+// aiSummaryCmd builds a combined diff and calls claude -p off the UI goroutine,
+// delivering a summaryLoadedMsg with the result (or an error note).
+func aiSummaryCmd(sl model.Slice, diffs []diff.RepoDiff) tea.Cmd {
+	return func() tea.Msg {
+		var sb strings.Builder
+		for _, rd := range diffs {
+			sb.WriteString("# repo: " + rd.Repo + "\n")
+			sb.WriteString(rd.Patch)
+			if rd.Patch != "" && !strings.HasSuffix(rd.Patch, "\n") {
+				sb.WriteString("\n")
+			}
+		}
+		out, err := summary.AISummary(sb.String(), summary.DefaultClaudeRunner)
+		if err != nil {
+			return summaryLoadedMsg{slice: sl.Name, text: "AI summary unavailable: " + err.Error()}
+		}
+		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdown(out)}
+	}
+}
+
+// maybeLoadSummary returns a loadSummaryCmd for the focused slice if its summary
+// is not already cached or being loaded. Returns nil if no load is needed.
+func (m *Model) maybeLoadSummary() tea.Cmd {
+	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return nil
+	}
+	sl := m.slices[m.focus]
+	if _, cached := m.summaries[sl.Name]; cached {
+		return nil
+	}
+	if m.summaryLoading[sl.Name] {
+		return nil
+	}
+	m.summaryLoading[sl.Name] = true
+	return loadSummaryCmd(sl, sliceBase(sl))
+}
+
 // batchLoadAllProcs returns a tea.Batch of loadProcsCmd for every slice that is
 // not yet cached or being loaded. Used when the overlay opens.
 func (m *Model) batchLoadAllProcs() tea.Cmd {
@@ -260,6 +320,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, sessCmd
 
+	case summaryLoadedMsg:
+		m.summaries[msg.slice] = msg.text
+		delete(m.summaryLoading, msg.slice)
+
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
 		delete(m.stackLoading, msg.slice)
@@ -317,6 +381,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// [s] on Summary tab triggers an AI summary (replaces cached commit summary).
+		if m.activeTab == TabSummary && msg.String() == "s" {
+			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
+				sl := m.slices[m.focus]
+				diffs, hasDiffs := m.diffs[sl.Name]
+				if !hasDiffs {
+					// Need to load diffs first — kick it off and mark summary loading.
+					m.summaryLoading[sl.Name] = true
+					return m, tea.Batch(
+						loadDiffCmd(sl, sliceBase(sl)),
+						// Summary will be triggered after diffs arrive via diffLoadedMsg
+					)
+				}
+				m.summaryLoading[sl.Name] = true
+				delete(m.summaries, sl.Name)
+				return m, aiSummaryCmd(sl, diffs)
+			}
+		}
+
 		switch msg.String() {
 		case "P":
 			// Open the proc overlay.
@@ -337,6 +420,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, cmd
 					}
 				}
+				if m.activeTab == TabSummary {
+					if cmd := m.maybeLoadSummary(); cmd != nil {
+						return m, cmd
+					}
+				}
 				if m.activeTab == TabChanges {
 					m.viewport.SetContent(diffContent(m))
 					if cmd := m.maybeLoadDiff(); cmd != nil {
@@ -354,6 +442,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus--
 				if m.activeTab == TabStack {
 					if cmd := m.maybeLoadStack(); cmd != nil {
+						return m, cmd
+					}
+				}
+				if m.activeTab == TabSummary {
+					if cmd := m.maybeLoadSummary(); cmd != nil {
 						return m, cmd
 					}
 				}
@@ -399,6 +492,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 			}
+			if m.activeTab == TabSummary {
+				if cmd := m.maybeLoadSummary(); cmd != nil {
+					return m, cmd
+				}
+			}
 			if m.activeTab == TabChanges {
 				m.viewport.SetContent(diffContent(m))
 				if cmd := m.maybeLoadDiff(); cmd != nil {
@@ -412,6 +510,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "shift+tab", "h":
 			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
+			if m.activeTab == TabSummary {
+				if cmd := m.maybeLoadSummary(); cmd != nil {
+					return m, cmd
+				}
+			}
 			if m.activeTab == TabChanges {
 				m.viewport.SetContent(diffContent(m))
 				if cmd := m.maybeLoadDiff(); cmd != nil {

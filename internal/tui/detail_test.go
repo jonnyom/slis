@@ -168,18 +168,30 @@ func TestRenderDetailStackTab(t *testing.T) {
 	}
 }
 
-// TestRenderDetailPlaceholder verifies non-implemented tabs show a placeholder message.
-// (TabSessions is now implemented — this test uses TabSummary instead.)
-func TestRenderDetailPlaceholder(t *testing.T) {
+// TestRenderDetailSummaryTab verifies the Summary tab shows a loading state when
+// no summary is cached, and renders the text when one is present.
+func TestRenderDetailSummaryTab(t *testing.T) {
 	m := modelWithSlices(t)
+	m.focus = 0
 	m.activeTab = TabSummary
 
+	// No summary cached yet → show loading.
 	output := renderDetail(m)
-
 	if !strings.Contains(output, "Summary") {
-		t.Errorf("placeholder should mention tab name 'Summary'; output:\n%s", output)
+		t.Errorf("tab bar should contain 'Summary'; output:\n%s", output)
 	}
-	if !strings.Contains(output, "coming soon") {
-		t.Errorf("placeholder should mention 'coming soon'; output:\n%s", output)
+	if !strings.Contains(output, "loading") {
+		t.Errorf("summary tab with no cache should show 'loading'; output:\n%s", output)
+	}
+
+	// Pre-populate the cache.
+	m.summaries["feature-a"] = "## web\n\n- feat: hello\n"
+	output = renderDetail(m)
+	if !strings.Contains(output, "feat: hello") {
+		t.Errorf("summary tab should show cached text; output:\n%s", output)
+	}
+	// Should show the [s] AI hint.
+	if !strings.Contains(output, "[s]") {
+		t.Errorf("summary tab should show '[s] AI summary' hint; output:\n%s", output)
 	}
 }

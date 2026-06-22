@@ -99,6 +99,8 @@ func renderDetail(m Model) string {
 	switch m.activeTab {
 	case TabStack:
 		sb.WriteString(renderStackTab(m))
+	case TabSummary:
+		sb.WriteString(renderSummaryTab(m))
 	case TabChanges:
 		sb.WriteString(m.viewport.View())
 	case TabSessions:
@@ -165,6 +167,28 @@ func renderStackTab(m Model) string {
 	}
 
 	return sb.String()
+}
+
+// renderSummaryTab renders the Summary tab body for the focused slice.
+// It shows a lazily-loaded commit summary; press [s] to replace with an AI summary.
+func renderSummaryTab(m Model) string {
+	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return "no slice selected\n"
+	}
+	sl := m.slices[m.focus]
+
+	if m.summaryLoading[sl.Name] {
+		return "loading…\n"
+	}
+
+	text, ok := m.summaries[sl.Name]
+	if !ok {
+		return "loading…\n"
+	}
+	if text == "" {
+		return "(no commits)\n"
+	}
+	return text + "\n\n[s] AI summary\n"
 }
 
 // renderProcessesTab renders the Processes tab body for the focused slice.
