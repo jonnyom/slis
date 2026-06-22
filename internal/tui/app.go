@@ -217,6 +217,21 @@ func aiSummaryCmd(sl model.Slice, diffs []diff.RepoDiff) tea.Cmd {
 	}
 }
 
+// aiSummaryFromSliceCmd builds a combined diff from scratch (no cached diff required)
+// and calls the AI summariser in a single off-loop command. This avoids the two-step
+// diff-then-summary chain that previously caused [s] to hang on "loading…".
+func aiSummaryFromSliceCmd(sl model.Slice) tea.Cmd {
+	return func() tea.Msg {
+		diffs, _ := diff.SliceDiff(sl, sliceBase(sl))
+		combined := combinedPatch(diffs)
+		out, err := summary.AISummary(combined, summary.DefaultClaudeRunner)
+		if err != nil {
+			return summaryLoadedMsg{slice: sl.Name, text: "AI summary unavailable: " + err.Error()}
+		}
+		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdown(out)}
+	}
+}
+
 // maybeLoadSummary returns a loadSummaryCmd for the focused slice if its summary
 // is not already cached or being loaded. Returns nil if no load is needed.
 func (m *Model) maybeLoadSummary() tea.Cmd {
@@ -382,21 +397,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// [s] on Summary tab triggers an AI summary (replaces cached commit summary).
+		// This is a single self-contained command: compute the diff and call the AI
+		// in one step, so there is no two-step diff-then-summary race.
 		if m.activeTab == TabSummary && msg.String() == "s" {
 			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
 				sl := m.slices[m.focus]
-				diffs, hasDiffs := m.diffs[sl.Name]
-				if !hasDiffs {
-					// Need to load diffs first — kick it off and mark summary loading.
-					m.summaryLoading[sl.Name] = true
-					return m, tea.Batch(
-						loadDiffCmd(sl, sliceBase(sl)),
-						// Summary will be triggered after diffs arrive via diffLoadedMsg
-					)
-				}
 				m.summaryLoading[sl.Name] = true
 				delete(m.summaries, sl.Name)
-				return m, aiSummaryCmd(sl, diffs)
+				return m, aiSummaryFromSliceCmd(sl)
 			}
 		}
 

@@ -107,8 +107,6 @@ func renderDetail(m Model) string {
 		sb.WriteString(renderSessionsTab(m))
 	case TabProcesses:
 		sb.WriteString(renderProcessesTab(m))
-	default:
-		sb.WriteString(renderPlaceholder(m.activeTab))
 	}
 
 	return detailPaneStyle.Render(sb.String())
@@ -129,9 +127,6 @@ func renderStackTab(m Model) string {
 
 	sliceStacks, loaded := m.stacks[sl.Name]
 	if !loaded {
-		if m.stackLoading[sl.Name] {
-			return "loading…\n"
-		}
 		return "loading…\n"
 	}
 
@@ -217,9 +212,4 @@ func renderProcessesTab(m Model) string {
 	}
 
 	return renderProcTable(procs, -1, tableWidth)
-}
-
-// renderPlaceholder renders a placeholder body for tabs not yet implemented.
-func renderPlaceholder(t Tab) string {
-	return fmt.Sprintf("%s: coming soon\n", t.String())
 }

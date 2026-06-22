@@ -6,7 +6,6 @@ import (
 	"os/exec"
 
 	"github.com/jonnyom/slis/internal/config"
-	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/spf13/cobra"
@@ -146,33 +145,8 @@ var activateCmd = &cobra.Command{
 	},
 }
 
-// min returns the smaller of a and b.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func init() {
 	activateCmd.Flags().Bool("stash", false, "Auto-stash dirty primaries before switching")
 	activateCmd.Flags().Bool("no-reconcile", false, "Skip dep-reconcile even if lockfiles changed")
 	rootCmd.AddCommand(activateCmd)
-}
-
-// findSliceByName looks up a slice from discovery+overrides without the DTO
-// layer. Used internally to get a raw model.Slice for inspection.
-func findSliceByName(ws config.Workspace, overridesPath, name string) (*model.Slice, error) {
-	slices, err := discovery.Discover(ws)
-	if err != nil {
-		return nil, err
-	}
-	ov, _ := discovery.LoadOverrides(overridesPath)
-	slices = discovery.Apply(slices, ov)
-	for i := range slices {
-		if slices[i].Name == name {
-			return &slices[i], nil
-		}
-	}
-	return nil, nil
 }

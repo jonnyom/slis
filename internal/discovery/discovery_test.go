@@ -119,10 +119,11 @@ func TestDiscover_BranchNameGrouping(t *testing.T) {
 		}
 	}
 
-	// Base and Active should be zero values (not set by Discover).
+	// Base should be populated from the member repo's DefaultBranch ("main" for
+	// all repos in this test). Active should be false (not set by Discover).
 	for _, s := range slices {
-		if s.Base != "" {
-			t.Errorf("slice %q: Base = %q, want empty", s.Name, s.Base)
+		if s.Base != "main" {
+			t.Errorf("slice %q: Base = %q, want \"main\"", s.Name, s.Base)
 		}
 		if s.Active {
 			t.Errorf("slice %q: Active = true, want false", s.Name)

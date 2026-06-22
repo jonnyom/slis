@@ -61,8 +61,8 @@ var summaryCmd = &cobra.Command{
 			return err
 		}
 
-		// Use slice's own Base if the --base flag was not changed from its default.
-		if base == "main" && sl.Base != "" {
+		// Respect an explicit --base override; otherwise use the slice's own Base.
+		if !cmd.Flags().Changed("base") && sl.Base != "" {
 			base = sl.Base
 		}
 

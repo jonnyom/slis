@@ -175,3 +175,36 @@ func TestViewEmptySlices(t *testing.T) {
 	// No panic expected with zero slices.
 	_ = m.View()
 }
+
+// TestSummaryLoadedMsg verifies that summaryLoadedMsg stores the text in the
+// cache, clears summaryLoading, and does not call claude (pure in-process test).
+func TestSummaryLoadedMsg(t *testing.T) {
+	m := threeSlices(t)
+
+	// Simulate the [s] key press side-effects: mark loading=true, clear cache.
+	m.summaryLoading["alpha"] = true
+	delete(m.summaries, "alpha")
+
+	// Deliver a summaryLoadedMsg (as the aiSummaryFromSliceCmd would).
+	next, cmd := m.Update(summaryLoadedMsg{slice: "alpha", text: "## Summary\n\n- feat: hello"})
+	m = next.(Model)
+
+	// cmd should be nil — no follow-up work needed.
+	if cmd != nil {
+		t.Errorf("after summaryLoadedMsg: want nil cmd, got non-nil")
+	}
+
+	// Cache must now contain the text.
+	text, ok := m.summaries["alpha"]
+	if !ok {
+		t.Fatal("summaries['alpha'] should be present after summaryLoadedMsg")
+	}
+	if text != "## Summary\n\n- feat: hello" {
+		t.Errorf("summaries['alpha'] = %q, want the delivered text", text)
+	}
+
+	// Loading flag must be cleared.
+	if m.summaryLoading["alpha"] {
+		t.Error("summaryLoading['alpha'] should be false after summaryLoadedMsg")
+	}
+}

@@ -59,8 +59,14 @@ func Discover(ws config.Workspace) ([]model.Slice, error) {
 			}
 
 			if _, ok := buckets[key]; !ok {
+				// Seed Base with this repo's DefaultBranch (first-seen wins).
+				base := repo.DefaultBranch
+				if base == "" {
+					base = "main"
+				}
 				buckets[key] = &model.Slice{
 					Name:    key,
+					Base:    base,
 					Members: make(map[string]model.SliceMember),
 				}
 			}

@@ -72,7 +72,7 @@ slis
 | `?` | Show/hide help |
 | `q` | Quit |
 
-The detail panel has tabs: **Info**, **Changes** (diff viewer), **Sessions**, **Processes**, **Summary** (commit log + optional AI prose).
+The detail panel has tabs: **Stack**, **Summary** (commit log + optional AI prose), **Changes** (diff viewer), **Sessions**, **Processes**.
 
 ---
 

@@ -7,6 +7,8 @@ import (
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
+	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/tmuxctl"
 	"github.com/spf13/cobra"
 )
 
@@ -71,7 +73,25 @@ var createCmd = &cobra.Command{
 			fmt.Printf("created worktree for %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
 		}
 
-		// TODO(task-23): start tmux session for slice sliceName
+		// Start a tmux session for the new slice (best-effort; skip if tmux is absent).
+		if !noWorktrees {
+			if !tmuxctl.Available() {
+				fmt.Println("note: tmux not found — skipping session creation")
+			} else {
+				members := make([]model.SliceMember, 0, len(plans))
+				for _, p := range plans {
+					members = append(members, model.SliceMember{
+						Repo:         p.Repo,
+						WorktreePath: p.Path,
+					})
+				}
+				if err := tmuxctl.EnsureSession(sliceName, members); err != nil {
+					fmt.Printf("note: could not start tmux session: %v\n", err)
+				} else {
+					fmt.Printf("started tmux session slis/%s\n", sliceName)
+				}
+			}
+		}
 
 		return nil
 	},
