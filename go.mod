@@ -1,4 +1,4 @@
-module github.com/jonnyomahony/slis
+module github.com/jonnyom/slis
 
 go 1.26.1
 

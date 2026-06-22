@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jonnyomahony/slis/internal/config"
+	"github.com/jonnyom/slis/internal/config"
 )
 
 // mustInitRepo creates dir and runs `git init -q` inside it.

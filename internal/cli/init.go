@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
-	"github.com/jonnyomahony/slis/internal/config"
+	"github.com/jonnyom/slis/internal/config"
 )
 
 // InitWithSelection scans root for git repos, filters to the repos named in
