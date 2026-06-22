@@ -1,0 +1,139 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Repo describes a single repository managed by slis.
+type Repo struct {
+	Primary       string `yaml:"primary"`
+	DefaultBranch string `yaml:"default_branch"`
+}
+
+// Grouping controls how worktrees are grouped into slices.
+type Grouping struct {
+	Strategy    string `yaml:"strategy"`
+	StripPrefix string `yaml:"strip_prefix"`
+}
+
+// Sessions holds session-related configuration.
+type Sessions struct {
+	AutostartClaude bool `yaml:"autostart_claude"`
+}
+
+// Processes holds process-monitoring thresholds.
+type Processes struct {
+	CPUWarnPct int `yaml:"cpu_warn_pct"`
+}
+
+// DepReconcile is a placeholder for swap dependency reconciliation config.
+type DepReconcile struct {
+	Command string `yaml:"command"`
+}
+
+// Swap holds post-activation hooks and dependency reconciliation config.
+type Swap struct {
+	DepReconcile map[string]DepReconcile `yaml:"dep_reconcile"`
+	PostActivate string                  `yaml:"post_activate"`
+}
+
+// NotifyChannel configures a single notification channel.
+type NotifyChannel struct {
+	Sound string `yaml:"sound"`
+}
+
+// Notify holds notification configuration.
+type Notify struct {
+	NeedsInput NotifyChannel `yaml:"needs_input"`
+	Done       NotifyChannel `yaml:"done"`
+}
+
+// Workspace is the top-level config loaded from workspace.yaml.
+type Workspace struct {
+	Root      string          `yaml:"root"`
+	Repos     map[string]Repo `yaml:"repos"`
+	Grouping  Grouping        `yaml:"grouping"`
+	Swap      Swap            `yaml:"swap"`
+	Sessions  Sessions        `yaml:"sessions"`
+	Notify    Notify          `yaml:"notify"`
+	Processes Processes       `yaml:"processes"`
+}
+
+// expandTilde replaces a leading "~" with the current user's home directory.
+// Empty strings are returned as-is.
+func expandTilde(path string) (string, error) {
+	if path == "" {
+		return path, nil
+	}
+	if !strings.HasPrefix(path, "~") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("expandTilde: %w", err)
+	}
+	return home + path[1:], nil
+}
+
+// LoadWorkspace reads and parses the workspace.yaml at path, expands ~ in
+// paths, applies defaults, and validates required fields.
+func LoadWorkspace(path string) (Workspace, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("LoadWorkspace: read %q: %w", path, err)
+	}
+
+	var ws Workspace
+	if err := yaml.Unmarshal(data, &ws); err != nil {
+		return Workspace{}, fmt.Errorf("LoadWorkspace: unmarshal %q: %w", path, err)
+	}
+
+	// Expand ~ in root.
+	ws.Root, err = expandTilde(ws.Root)
+	if err != nil {
+		return Workspace{}, err
+	}
+
+	// Expand ~ in each repo's primary path and validate it is non-empty.
+	for name, repo := range ws.Repos {
+		if repo.Primary == "" {
+			return Workspace{}, fmt.Errorf("repo %q: primary path is empty", name)
+		}
+		repo.Primary, err = expandTilde(repo.Primary)
+		if err != nil {
+			return Workspace{}, err
+		}
+		ws.Repos[name] = repo
+	}
+
+	// Apply defaults.
+	if ws.Processes.CPUWarnPct == 0 {
+		ws.Processes.CPUWarnPct = 150
+	}
+	if ws.Grouping.Strategy == "" {
+		ws.Grouping.Strategy = "branch-name"
+	}
+
+	return ws, nil
+}
+
+// SaveWorkspace marshals ws to YAML and writes it to path, creating any
+// parent directories as needed.
+func SaveWorkspace(path string, ws Workspace) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("SaveWorkspace: mkdir %q: %w", filepath.Dir(path), err)
+	}
+	data, err := yaml.Marshal(ws)
+	if err != nil {
+		return fmt.Errorf("SaveWorkspace: marshal: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("SaveWorkspace: write %q: %w", path, err)
+	}
+	return nil
+}
