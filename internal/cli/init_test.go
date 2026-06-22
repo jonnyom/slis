@@ -38,7 +38,7 @@ func TestInitNonInteractive(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 
-	writtenPath, err := Init(root, []string{"a", "c"})
+	writtenPath, err := Init(root, []string{"a", "c"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestInitWithSelection(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 
-	writtenPath, err := InitWithSelection(root, []string{"x", "z"})
+	writtenPath, err := InitWithSelection(root, []string{"x", "z"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +114,40 @@ func TestInitNonInteractiveNoMatchingRepos(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 
-	_, err := Init(root, []string{"nonexistent"})
+	_, err := Init(root, []string{"nonexistent"}, "")
 	if err == nil {
 		t.Fatal("expected error when no repos match selection, got nil")
+	}
+}
+
+// TestInitWithSelectionPersistsGroupingDefaults verifies that after
+// InitWithSelection, the written workspace.yaml contains the expected
+// grouping defaults and cpu_warn_pct.
+func TestInitWithSelectionPersistsGroupingDefaults(t *testing.T) {
+	root := t.TempDir()
+	mustInitRepo(t, filepath.Join(root, "a"))
+	mustInitRepo(t, filepath.Join(root, "c"))
+
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+
+	writtenPath, err := InitWithSelection(root, []string{"a", "c"}, "jonny/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := config.LoadWorkspace(writtenPath)
+	if err != nil {
+		t.Fatalf("LoadWorkspace(%q): %v", writtenPath, err)
+	}
+
+	if ws.Grouping.StripPrefix != "jonny/" {
+		t.Errorf("Grouping.StripPrefix = %q, want %q", ws.Grouping.StripPrefix, "jonny/")
+	}
+	if ws.Grouping.Strategy != "branch-name" {
+		t.Errorf("Grouping.Strategy = %q, want %q", ws.Grouping.Strategy, "branch-name")
+	}
+	if ws.Processes.CPUWarnPct != 150 {
+		t.Errorf("Processes.CPUWarnPct = %d, want 150", ws.Processes.CPUWarnPct)
 	}
 }

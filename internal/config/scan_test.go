@@ -69,6 +69,37 @@ func TestScanReposPathAndDefaultBranch(t *testing.T) {
 	}
 }
 
+func TestBuildWorkspaceDefaults(t *testing.T) {
+	root := t.TempDir()
+	candidates := []Candidate{
+		{Name: "alpha", Path: filepath.Join(root, "alpha"), DefaultBranch: "main"},
+	}
+
+	ws := BuildWorkspace(root, candidates, "jonny/")
+
+	if ws.Root != root {
+		t.Errorf("Root = %q, want %q", ws.Root, root)
+	}
+	if len(ws.Repos) != 1 {
+		t.Fatalf("len(Repos) = %d, want 1", len(ws.Repos))
+	}
+	if ws.Grouping.Strategy != "branch-name" {
+		t.Errorf("Grouping.Strategy = %q, want %q", ws.Grouping.Strategy, "branch-name")
+	}
+	if ws.Grouping.StripPrefix != "jonny/" {
+		t.Errorf("Grouping.StripPrefix = %q, want %q", ws.Grouping.StripPrefix, "jonny/")
+	}
+	if ws.Processes.CPUWarnPct != 150 {
+		t.Errorf("Processes.CPUWarnPct = %d, want 150", ws.Processes.CPUWarnPct)
+	}
+
+	// Verify empty strip prefix is preserved.
+	ws2 := BuildWorkspace(root, candidates, "")
+	if ws2.Grouping.StripPrefix != "" {
+		t.Errorf("Grouping.StripPrefix = %q, want empty", ws2.Grouping.StripPrefix)
+	}
+}
+
 func TestScanReposSorted(t *testing.T) {
 	root := t.TempDir()
 	// Create in reverse alphabetical order to confirm sorting

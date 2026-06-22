@@ -13,9 +13,10 @@ import (
 // InitWithSelection scans root for git repos, filters to the repos named in
 // selected, assembles a Workspace, saves it to config.WorkspacePath(), and
 // returns the written path. It returns an error if no candidates match the
-// selection or if saving fails. This function has no TTY dependency and is
+// selection or if saving fails. stripPrefix is written into the workspace's
+// grouping.strip_prefix field. This function has no TTY dependency and is
 // safe to call from tests and scripts.
-func InitWithSelection(root string, selected []string) (string, error) {
+func InitWithSelection(root string, selected []string, stripPrefix string) (string, error) {
 	candidates, err := config.ScanRepos(root)
 	if err != nil {
 		return "", fmt.Errorf("init: scan %q: %w", root, err)
@@ -38,7 +39,7 @@ func InitWithSelection(root string, selected []string) (string, error) {
 		return "", fmt.Errorf("init: no matching repos found for selection %v in %q", selected, root)
 	}
 
-	ws := config.BuildWorkspace(root, filtered)
+	ws := config.BuildWorkspace(root, filtered, stripPrefix)
 	destPath := config.WorkspacePath()
 	if err := config.SaveWorkspace(destPath, ws); err != nil {
 		return "", fmt.Errorf("init: save workspace: %w", err)
@@ -55,17 +56,20 @@ func InitWithSelection(root string, selected []string) (string, error) {
 // If selected is empty, a huh multiselect form is presented so the user can
 // pick which repos every slice spans. The existing workspace.yaml (if any) is
 // loaded to pre-check repos already present.
-func Init(root string, selected []string) (string, error) {
+//
+// stripPrefix is written into the workspace's grouping.strip_prefix field.
+func Init(root string, selected []string, stripPrefix string) (string, error) {
 	if len(selected) > 0 {
-		return InitWithSelection(root, selected)
+		return InitWithSelection(root, selected, stripPrefix)
 	}
 
-	return runInteractiveInit(root)
+	return runInteractiveInit(root, stripPrefix)
 }
 
-// runInteractiveInit presents a huh multiselect form to pick repos from root,
-// then delegates to InitWithSelection.
-func runInteractiveInit(root string) (string, error) {
+// runInteractiveInit presents a huh multiselect form to pick repos from root
+// and an input for the branch-name strip prefix, then delegates to
+// InitWithSelection. stripPrefix is used as the default value for the input.
+func runInteractiveInit(root string, stripPrefix string) (string, error) {
 	candidates, err := config.ScanRepos(root)
 	if err != nil {
 		return "", fmt.Errorf("init: scan %q: %w", root, err)
@@ -91,6 +95,7 @@ func runInteractiveInit(root string) (string, error) {
 	}
 
 	var picked []string
+	pickedStripPrefix := stripPrefix
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
@@ -98,6 +103,10 @@ func runInteractiveInit(root string) (string, error) {
 				Description("Space to toggle, Enter to confirm").
 				Options(options...).
 				Value(&picked),
+			huh.NewInput().
+				Title("Branch-name prefix to strip when naming slices").
+				Description("e.g. 'jonny/' to turn 'jonny/checkout-revamp' into 'checkout-revamp'. Leave empty to disable.").
+				Value(&pickedStripPrefix),
 		),
 	)
 
@@ -114,5 +123,5 @@ func runInteractiveInit(root string) (string, error) {
 		return "", fmt.Errorf("init: no repos selected")
 	}
 
-	return InitWithSelection(root, picked)
+	return InitWithSelection(root, picked, pickedStripPrefix)
 }

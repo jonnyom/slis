@@ -82,10 +82,12 @@ func detectDefaultBranch(dir string) string {
 	return "main"
 }
 
-// BuildWorkspace assembles a Workspace from a project root and the set of
-// selected Candidates. The returned Workspace has Root set to root and
-// Repos populated from the selected candidates only.
-func BuildWorkspace(root string, selected []Candidate) Workspace {
+// BuildWorkspace assembles a Workspace from a project root, the set of
+// selected Candidates, and a stripPrefix string. The returned Workspace has
+// Root and Repos populated from the arguments, plus sensible defaults for
+// Grouping (strategy "branch-name", strip_prefix set to stripPrefix) and
+// Processes (cpu_warn_pct 150) so the persisted file is clean and complete.
+func BuildWorkspace(root string, selected []Candidate, stripPrefix string) Workspace {
 	repos := make(map[string]Repo, len(selected))
 	for _, c := range selected {
 		repos[c.Name] = Repo{
@@ -96,5 +98,12 @@ func BuildWorkspace(root string, selected []Candidate) Workspace {
 	return Workspace{
 		Root:  root,
 		Repos: repos,
+		Grouping: Grouping{
+			Strategy:    "branch-name",
+			StripPrefix: stripPrefix,
+		},
+		Processes: Processes{
+			CPUWarnPct: 150,
+		},
 	}
 }

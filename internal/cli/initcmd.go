@@ -26,8 +26,9 @@ workspace.yaml. If --repos is provided the interactive picker is skipped.`,
 		}
 
 		repos, _ := cmd.Flags().GetStringSlice("repos")
+		stripPrefix, _ := cmd.Flags().GetString("strip-prefix")
 
-		writtenPath, err := Init(root, repos)
+		writtenPath, err := Init(root, repos, stripPrefix)
 		if err != nil {
 			return err
 		}
@@ -39,4 +40,5 @@ workspace.yaml. If --repos is provided the interactive picker is skipped.`,
 
 func init() {
 	initCmd.Flags().StringSlice("repos", nil, "Comma-separated list of repo names to include (non-interactive)")
+	initCmd.Flags().String("strip-prefix", "", "Branch-name prefix to strip when naming slices, e.g. 'jonny/'")
 }
