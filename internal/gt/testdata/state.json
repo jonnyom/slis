@@ -1,0 +1,15 @@
+{
+  "main": {
+    "trunk": true
+  },
+  "feat": {
+    "trunk": false,
+    "needs_restack": false,
+    "parents": [
+      {
+        "ref": "main",
+        "sha": "a31473161e2901cc829000ab9ba61280ec97b029"
+      }
+    ]
+  }
+}
