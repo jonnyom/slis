@@ -101,6 +101,8 @@ func renderDetail(m Model) string {
 		sb.WriteString(renderStackTab(m))
 	case TabChanges:
 		sb.WriteString(m.viewport.View())
+	case TabSessions:
+		sb.WriteString(renderSessionsTab(m))
 	case TabProcesses:
 		sb.WriteString(renderProcessesTab(m))
 	default:

@@ -32,7 +32,7 @@ func renderSliceList(m Model) string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(footerStyle.Render("[j/k] move  [r] refresh  [q] quit"))
+	sb.WriteString(footerStyle.Render("[j/k] move  [r] refresh  [a] attach  [q] quit  ○none ●run ⏸wait ✓done"))
 	sb.WriteString("\n")
 
 	return sb.String()
@@ -74,9 +74,16 @@ func renderSliceRow(idx int, s model.Slice, focused bool) string {
 }
 
 // renderSliceRowWithModel renders a slice row using the full model so the
-// CPU warning badge can be appended when the threshold is exceeded.
+// session-status badge and CPU warning badge can be appended.
 func renderSliceRowWithModel(idx int, s model.Slice, focused bool, m Model) string {
 	base := renderSliceRow(idx, s, focused)
+
+	// Prepend session status badge (append it before CPU badge for readability).
+	status := model.SessNone
+	if m.sessionStatus != nil {
+		status = m.sessionStatus[s.Name]
+	}
+	base = sessionBadge(status) + " " + base
 
 	// Append CPU warning badge if procs are loaded and over threshold.
 	if procs, ok := m.procs[s.Name]; ok {

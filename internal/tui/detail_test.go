@@ -168,15 +168,16 @@ func TestRenderDetailStackTab(t *testing.T) {
 	}
 }
 
-// TestRenderDetailPlaceholder verifies non-Stack tabs show a placeholder message.
+// TestRenderDetailPlaceholder verifies non-implemented tabs show a placeholder message.
+// (TabSessions is now implemented — this test uses TabSummary instead.)
 func TestRenderDetailPlaceholder(t *testing.T) {
 	m := modelWithSlices(t)
-	m.activeTab = TabSessions
+	m.activeTab = TabSummary
 
 	output := renderDetail(m)
 
-	if !strings.Contains(output, "Sessions") {
-		t.Errorf("placeholder should mention tab name 'Sessions'; output:\n%s", output)
+	if !strings.Contains(output, "Summary") {
+		t.Errorf("placeholder should mention tab name 'Summary'; output:\n%s", output)
 	}
 	if !strings.Contains(output, "coming soon") {
 		t.Errorf("placeholder should mention 'coming soon'; output:\n%s", output)

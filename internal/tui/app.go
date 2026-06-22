@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"os/exec"
+
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -13,6 +15,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/swap"
+	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
 // slicesLoadedMsg is sent by loadSlicesCmd when slice discovery completes.
@@ -37,6 +40,8 @@ type Model struct {
 	diffs        map[string][]diff.RepoDiff     // slice name → repo diffs
 	diffLoading  map[string]bool                // slice name → diff loading in progress
 	viewport     viewport.Model                 // scrollable viewport for Changes tab
+	// Session status badges.
+	sessionStatus map[string]model.SessionStatus // slice name → status
 	// Process overlay fields.
 	procs           map[string][]proc.ProcInfo // slice name → sampled procs
 	procLoading     map[string]bool            // slice name → proc load in progress
@@ -49,18 +54,21 @@ type Model struct {
 // New returns an initial Model with loading=true.
 func New(ws config.Workspace) Model {
 	return Model{
-		ws:           ws,
-		loading:      true,
-		stacks:       make(map[string]map[string]gt.State),
-		stackLoading: make(map[string]bool),
-		diffs:        make(map[string][]diff.RepoDiff),
-		diffLoading:  make(map[string]bool),
-		procs:        make(map[string][]proc.ProcInfo),
-		procLoading:  make(map[string]bool),
+		ws:            ws,
+		loading:       true,
+		stacks:        make(map[string]map[string]gt.State),
+		stackLoading:  make(map[string]bool),
+		diffs:         make(map[string][]diff.RepoDiff),
+		diffLoading:   make(map[string]bool),
+		procs:         make(map[string][]proc.ProcInfo),
+		procLoading:   make(map[string]bool),
+		sessionStatus: make(map[string]model.SessionStatus),
 	}
 }
 
 // Init returns the initial command: load slices in the background.
+// Session statuses are loaded after the slicesLoadedMsg arrives (since we need
+// the slice list to check tmux session existence per slice).
 func (m Model) Init() tea.Cmd {
 	return loadSlicesCmd(m.ws)
 }
@@ -181,6 +189,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(diffContent(m))
 		}
 
+	case sessionsLoadedMsg:
+		m.sessionStatus = msg.statuses
+
+	case sessionsRefreshMsg:
+		sp := config.StatePaths()
+		return m, loadSessionsCmd(m.slices, sp.EventsDir)
+
 	case slicesLoadedMsg:
 		m.loading = false
 		m.err = msg.err
@@ -191,18 +206,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.focus >= len(m.slices) {
 			m.focus = len(m.slices) - 1
 		}
+		// Kick off session status load alongside other tab loads.
+		sp := config.StatePaths()
+		sessCmd := loadSessionsCmd(m.slices, sp.EventsDir)
 		// Kick off stack load for the currently focused slice if on Stack tab.
 		if m.activeTab == TabStack {
 			if cmd := m.maybeLoadStack(); cmd != nil {
-				return m, cmd
+				return m, tea.Batch(sessCmd, cmd)
 			}
 		}
 		// Kick off diff load if on Changes tab.
 		if m.activeTab == TabChanges {
 			if cmd := m.maybeLoadDiff(); cmd != nil {
-				return m, cmd
+				return m, tea.Batch(sessCmd, cmd)
 			}
 		}
+		return m, sessCmd
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
@@ -310,9 +329,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		case "a":
+			// Attach to (or create) the tmux session for the focused slice.
+			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
+				if !tmuxctl.Available() {
+					// tmux not available — no-op; the Sessions tab explains this.
+					return m, nil
+				}
+				sl := m.slices[m.focus]
+				// EnsureSession synchronously (fast — tmux new-session -d returns immediately),
+				// then hand the terminal to tmux via tea.ExecProcess.
+				if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl)); err != nil {
+					return m, nil
+				}
+				name, args := tmuxctl.AttachArgv(sl.Name, isInsideTmux())
+				c := exec.Command(name, args...)
+				return m, tea.ExecProcess(c, func(err error) tea.Msg {
+					return sessionsRefreshMsg{}
+				})
+			}
 		case "r":
 			m.loading = true
-			return m, loadSlicesCmd(m.ws)
+			sp := config.StatePaths()
+			return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 		case "tab", "l":
 			m.activeTab = (m.activeTab + 1) % tabCount
 			if m.activeTab == TabStack {
