@@ -1,6 +1,6 @@
 {
   "planPath": "docs/plans/2026-06-22-slis-implementation-plan.md",
-  "lastUpdated": "2026-06-23T00:00:00Z",
+  "lastUpdated": "2026-06-23T01:00:00Z",
   "tasks": [
     {"id": "0",  "subject": "Skeleton: go module, layout, Makefile, CI", "status": "completed"},
     {"id": "1",  "subject": "Config types + workspace.yaml loader (root + repos)", "status": "completed", "blockedBy": ["0"]},
@@ -34,7 +34,7 @@
     {"id": "28", "subject": "opt-in init-hooks installer", "status": "completed", "blockedBy": ["27"]},
     {"id": "29", "subject": "event watch + desktop notification", "status": "completed", "blockedBy": ["27", "19"]},
     {"id": "30", "subject": "slice summary (commit + claude -p)", "status": "completed", "blockedBy": ["21"]},
-    {"id": "31", "subject": "ship slis Claude skill", "status": "pending", "blockedBy": ["18"]},
-    {"id": "32", "subject": "GoReleaser + Homebrew tap + README", "status": "pending", "blockedBy": ["0"]}
+    {"id": "31", "subject": "ship slis Claude skill", "status": "completed", "blockedBy": ["18"]},
+    {"id": "32", "subject": "GoReleaser + Homebrew tap + README", "status": "completed", "blockedBy": ["0"]}
   ]
 }
