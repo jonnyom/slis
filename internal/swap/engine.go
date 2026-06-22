@@ -165,6 +165,59 @@ func Deactivate(journalPath string) error {
 	return errors.Join(errs...)
 }
 
+// RecoverState reads the journal at journalPath and returns the in-progress
+// *Journal, or (nil, nil) if no swap is currently active. A non-nil result
+// means a swap is recorded on disk — it may have been left behind by a crash
+// mid-activation. The caller should inspect the journal and decide whether to
+// resume or call Deactivate to roll back.
+func RecoverState(journalPath string) (*Journal, error) {
+	return Load(journalPath)
+}
+
+// Refresh re-resolves each member branch's tip and advances the primary's
+// detached HEAD to the new tip when the branch has received new commits since
+// the last Activate (or previous Refresh). It does NOT touch stashes, prior
+// branches, worktrees, or use --force. On success the journal's TargetSHA
+// fields are updated both in-memory and on disk.
+//
+// If no journal exists, Refresh returns (nil, nil) — there is nothing to
+// refresh.
+func Refresh(journalPath string) (*Journal, error) {
+	j, err := Load(journalPath)
+	if err != nil {
+		return nil, err
+	}
+	if j == nil {
+		return nil, nil // nothing active
+	}
+
+	changed := false
+	for i := range j.Repos {
+		rs := &j.Repos[i]
+		newTarget, err := git.RevParse(rs.Primary, rs.Branch)
+		if err != nil {
+			return nil, fmt.Errorf("refresh rev-parse %q in %q: %w", rs.Branch, rs.Primary, err)
+		}
+		if newTarget == rs.TargetSHA {
+			continue
+		}
+		// Advance the detached primary to the branch's new tip.
+		if _, err := git.Run(rs.Primary, "switch", "--detach", newTarget); err != nil {
+			return nil, fmt.Errorf("refresh switch --detach %q in %q: %w", newTarget, rs.Primary, err)
+		}
+		rs.TargetSHA = newTarget
+		changed = true
+	}
+
+	if changed {
+		if err := Save(journalPath, j); err != nil {
+			return nil, err
+		}
+	}
+
+	return j, nil
+}
+
 // ErrStashConflict is returned by deactivateRepo when popping the stash
 // produces a merge conflict. The stash is intentionally left intact so the
 // user can resolve the conflict and pop it manually.
@@ -252,6 +305,7 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 	return RepoState{
 		Repo:        plan.Repo,
 		Primary:     plan.Primary,
+		Branch:      plan.Branch,
 		PriorBranch: prior,
 		PriorSHA:    priorSHA,
 		StashRef:    stashRef,

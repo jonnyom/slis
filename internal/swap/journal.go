@@ -13,6 +13,7 @@ import (
 type RepoState struct {
 	Repo        string `json:"repo"`
 	Primary     string `json:"primary"`
+	Branch      string `json:"branch"`       // slice branch name (used by Refresh to re-resolve tip)
 	PriorBranch string `json:"prior_branch"` // branch the primary was on before activate ("" if it was detached)
 	PriorSHA    string `json:"prior_sha"`    // HEAD sha before activate (for detached-prior restore)
 	StashRef    string `json:"stash_ref"`    // pinned stash commit sha, "" if nothing stashed

@@ -694,6 +694,153 @@ func TestReconciledFalseOnInstallerError(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// TestRecoverState
+// ---------------------------------------------------------------------------
+
+// TestRecoverState verifies that RecoverState returns the in-progress journal
+// after Activate, and nil after Deactivate.
+func TestRecoverState(t *testing.T) {
+	rA, _ := setupRepoWithFeatBranch(t)
+	rB, _ := setupRepoWithFeatBranch(t)
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	repos := []RepoActivation{
+		{Repo: "a", Primary: rA, Branch: "feat"},
+		{Repo: "b", Primary: rB, Branch: "feat"},
+	}
+
+	if _, err := Activate("myslice", repos, journalPath, ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	// RecoverState must return a non-nil journal with the right slice + repos.
+	j, err := RecoverState(journalPath)
+	if err != nil {
+		t.Fatalf("RecoverState: %v", err)
+	}
+	if j == nil {
+		t.Fatal("RecoverState: want non-nil journal, got nil")
+	}
+	if j.Slice != "myslice" {
+		t.Errorf("RecoverState: Slice: want %q, got %q", "myslice", j.Slice)
+	}
+	if len(j.Repos) != 2 {
+		t.Errorf("RecoverState: len(Repos): want 2, got %d", len(j.Repos))
+	}
+
+	// After Deactivate, RecoverState must return nil.
+	if err := Deactivate(journalPath); err != nil {
+		t.Fatalf("Deactivate: %v", err)
+	}
+
+	j2, err := RecoverState(journalPath)
+	if err != nil {
+		t.Fatalf("RecoverState after Deactivate: %v", err)
+	}
+	if j2 != nil {
+		t.Errorf("RecoverState after Deactivate: want nil, got %+v", j2)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestRefreshMovesToNewTip
+// ---------------------------------------------------------------------------
+
+// TestRefreshMovesToNewTip verifies that after a new commit lands on the feat
+// branch (in the worktree), Refresh advances the primary's detached HEAD to
+// the new tip and persists the updated TargetSHA in the journal.
+func TestRefreshMovesToNewTip(t *testing.T) {
+	r, wt := setupRepoWithWorktree(t)
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	if _, err := Activate("s", []RepoActivation{{Repo: "a", Primary: r, Branch: "feat"}}, journalPath, ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	// Record the OLD feat tip (what the primary is currently detached at).
+	oldTip, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse primary HEAD before advance: %v", err)
+	}
+
+	// Advance feat: commit a new file in the worktree.
+	if err := os.WriteFile(filepath.Join(wt, "newfile.txt"), []byte("advance\n"), 0o644); err != nil {
+		t.Fatalf("write newfile.txt: %v", err)
+	}
+	if _, err := git.Run(wt, "add", "newfile.txt"); err != nil {
+		t.Fatalf("git add newfile.txt: %v", err)
+	}
+	if _, err := git.Run(wt, "commit", "-q", "-m", "advance feat"); err != nil {
+		t.Fatalf("git commit advance: %v", err)
+	}
+
+	// The new feat tip is the worktree HEAD.
+	newTip, err := git.RevParse(wt, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse wt HEAD: %v", err)
+	}
+
+	if newTip == oldTip {
+		t.Fatal("worktree HEAD did not advance — test setup error")
+	}
+
+	// Refresh must advance the primary to the new tip.
+	j2, err := Refresh(journalPath)
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if j2 == nil {
+		t.Fatal("Refresh: want non-nil journal, got nil")
+	}
+
+	// Primary HEAD must equal the new feat tip.
+	primaryHEAD, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse primary HEAD after Refresh: %v", err)
+	}
+	if primaryHEAD != newTip {
+		t.Errorf("primary HEAD after Refresh: want %q, got %q", newTip, primaryHEAD)
+	}
+
+	// In-memory journal TargetSHA must be updated.
+	if j2.Repos[0].TargetSHA != newTip {
+		t.Errorf("j2.Repos[0].TargetSHA: want %q, got %q", newTip, j2.Repos[0].TargetSHA)
+	}
+
+	// On-disk journal must also have the updated TargetSHA.
+	loaded, err := Load(journalPath)
+	if err != nil {
+		t.Fatalf("Load after Refresh: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Load after Refresh: journal cleared — unexpected")
+	}
+	if loaded.Repos[0].TargetSHA != newTip {
+		t.Errorf("loaded.Repos[0].TargetSHA: want %q, got %q", newTip, loaded.Repos[0].TargetSHA)
+	}
+
+	// Worktree must still be on branch feat (untouched).
+	wtBranch, err := git.CurrentBranch(wt)
+	if err != nil {
+		t.Fatalf("CurrentBranch(wt): %v", err)
+	}
+	if wtBranch != "feat" {
+		t.Errorf("worktree branch after Refresh: want %q, got %q", "feat", wtBranch)
+	}
+
+	// Primary must still be detached.
+	primaryBranch, err := git.CurrentBranch(r)
+	if err != nil {
+		t.Fatalf("CurrentBranch(primary): %v", err)
+	}
+	if primaryBranch != "" {
+		t.Errorf("primary after Refresh: want detached HEAD, got branch %q", primaryBranch)
+	}
+}
+
 // TestActivateStashesDirty verifies that a dirty primary with Stash:true
 // succeeds: the primary is detached at feat tip, StashRef is set, and
 // the primary working tree is clean.
