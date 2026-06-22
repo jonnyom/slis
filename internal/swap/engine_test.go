@@ -298,6 +298,274 @@ func splitLines(s string) []string {
 	return lines
 }
 
+// ---------------------------------------------------------------------------
+// Multi-repo Activate / Deactivate helpers
+// ---------------------------------------------------------------------------
+
+// setupRepoWithFeatBranch creates a bare repo + worktree on "feat" with one
+// commit on feat, and returns (primaryDir, wtDir). The primary stays on "main".
+func setupRepoWithFeatBranch(t *testing.T) (primary, wt string) {
+	t.Helper()
+	return setupRepoWithWorktree(t)
+}
+
+// ---------------------------------------------------------------------------
+// TestActivateSliceWritesJournal
+// ---------------------------------------------------------------------------
+
+func TestActivateSliceWritesJournal(t *testing.T) {
+	rA, _ := setupRepoWithFeatBranch(t)
+	rB, _ := setupRepoWithFeatBranch(t)
+	rC, _ := setupRepoWithFeatBranch(t)
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	repos := []RepoActivation{
+		{Repo: "a", Primary: rA, Branch: "feat"},
+		{Repo: "b", Primary: rB, Branch: "feat"},
+		{Repo: "c", Primary: rC, Branch: "feat"},
+	}
+
+	j, err := Activate("myslice", repos, journalPath, ActivateOptions{})
+	if err != nil {
+		t.Fatalf("Activate: unexpected error: %v", err)
+	}
+
+	// Journal returned in-memory must have 3 repos.
+	if len(j.Repos) != 3 {
+		t.Errorf("j.Repos: want 3, got %d", len(j.Repos))
+	}
+	if j.Slice != "myslice" {
+		t.Errorf("j.Slice: want %q, got %q", "myslice", j.Slice)
+	}
+
+	// Journal on disk must also have 3 repos.
+	loaded, err := Load(journalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Load returned nil — journal not written")
+	}
+	if len(loaded.Repos) != 3 {
+		t.Errorf("loaded.Repos: want 3, got %d", len(loaded.Repos))
+	}
+
+	// Each primary must be detached at its feat tip.
+	for _, ra := range repos {
+		branch, err := git.CurrentBranch(ra.Primary)
+		if err != nil {
+			t.Fatalf("CurrentBranch(%s): %v", ra.Repo, err)
+		}
+		if branch != "" {
+			t.Errorf("repo %s: want detached HEAD, got branch %q", ra.Repo, branch)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestActivateSliceAtomicRollback
+// ---------------------------------------------------------------------------
+
+func TestActivateSliceAtomicRollback(t *testing.T) {
+	rA, _ := setupRepoWithFeatBranch(t)
+	rB, _ := setupRepoWithFeatBranch(t)
+	rC, _ := setupRepoWithFeatBranch(t)
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	// Record prior HEADs.
+	headA, err := git.RevParse(rA, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse A: %v", err)
+	}
+	headB, err := git.RevParse(rB, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse B: %v", err)
+	}
+
+	// Repo C gets a non-existent branch — will fail.
+	repos := []RepoActivation{
+		{Repo: "a", Primary: rA, Branch: "feat"},
+		{Repo: "b", Primary: rB, Branch: "feat"},
+		{Repo: "c", Primary: rC, Branch: "does-not-exist"},
+	}
+
+	_, err = Activate("myslice", repos, journalPath, ActivateOptions{})
+	if err == nil {
+		t.Fatal("Activate: expected error for bad branch, got nil")
+	}
+
+	// Repos A and B must be rolled back to "main" at their prior HEADs.
+	for _, tc := range []struct {
+		name     string
+		primary  string
+		priorHEA string
+	}{
+		{"a", rA, headA},
+		{"b", rB, headB},
+	} {
+		branch, err := git.CurrentBranch(tc.primary)
+		if err != nil {
+			t.Fatalf("CurrentBranch(%s): %v", tc.name, err)
+		}
+		if branch != "main" {
+			t.Errorf("repo %s after rollback: want branch %q, got %q", tc.name, "main", branch)
+		}
+
+		head, err := git.RevParse(tc.primary, "HEAD")
+		if err != nil {
+			t.Fatalf("RevParse(%s): %v", tc.name, err)
+		}
+		if head != tc.priorHEA {
+			t.Errorf("repo %s HEAD after rollback: want %q, got %q", tc.name, tc.priorHEA, head)
+		}
+	}
+
+	// No journal must have been written.
+	loaded, err := Load(journalPath)
+	if err != nil {
+		t.Fatalf("Load after failed Activate: %v", err)
+	}
+	if loaded != nil {
+		t.Error("journal was written on failed Activate — must not write journal on rollback")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDeactivateSliceClearsJournal
+// ---------------------------------------------------------------------------
+
+func TestDeactivateSliceClearsJournal(t *testing.T) {
+	rA, _ := setupRepoWithFeatBranch(t)
+	rB, _ := setupRepoWithFeatBranch(t)
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	repos := []RepoActivation{
+		{Repo: "a", Primary: rA, Branch: "feat"},
+		{Repo: "b", Primary: rB, Branch: "feat"},
+	}
+
+	if _, err := Activate("myslice", repos, journalPath, ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	if err := Deactivate(journalPath); err != nil {
+		t.Fatalf("Deactivate: unexpected error: %v", err)
+	}
+
+	// Journal must be cleared.
+	loaded, err := Load(journalPath)
+	if err != nil {
+		t.Fatalf("Load after Deactivate: %v", err)
+	}
+	if loaded != nil {
+		t.Error("journal still present after Deactivate")
+	}
+
+	// Both primaries must be back on "main".
+	for _, ra := range repos {
+		branch, err := git.CurrentBranch(ra.Primary)
+		if err != nil {
+			t.Fatalf("CurrentBranch(%s): %v", ra.Repo, err)
+		}
+		if branch != "main" {
+			t.Errorf("repo %s after Deactivate: want branch %q, got %q", ra.Repo, "main", branch)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDepReconcileInvokesInstaller
+// ---------------------------------------------------------------------------
+
+// setupRepoWithLockfileDelta creates a repo where "main" has pnpm-lock.yaml="v1"
+// and "feat" worktree has pnpm-lock.yaml="v2", so LockfilesChanged returns true.
+func setupRepoWithLockfileDelta(t *testing.T) (primary, wt string) {
+	t.Helper()
+	r := testutil.NewRepo(t)
+
+	// Commit pnpm-lock.yaml on main.
+	if err := os.WriteFile(filepath.Join(r, "pnpm-lock.yaml"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatalf("write pnpm-lock.yaml: %v", err)
+	}
+	if _, err := git.Run(r, "add", "pnpm-lock.yaml"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := git.Run(r, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add lockfile"); err != nil {
+		t.Fatalf("git commit lockfile: %v", err)
+	}
+
+	// Create feat worktree.
+	wtPath := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, r, "feat", wtPath)
+
+	// Commit pnpm-lock.yaml="v2" on feat.
+	if err := os.WriteFile(filepath.Join(wtPath, "pnpm-lock.yaml"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatalf("write pnpm-lock.yaml feat: %v", err)
+	}
+	if _, err := git.Run(wtPath, "add", "pnpm-lock.yaml"); err != nil {
+		t.Fatalf("git add feat: %v", err)
+	}
+	if _, err := git.Run(wtPath, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "bump lockfile"); err != nil {
+		t.Fatalf("git commit feat lockfile: %v", err)
+	}
+
+	return r, wtPath
+}
+
+func TestDepReconcileInvokesInstaller(t *testing.T) {
+	t.Run("lockfile changed — installer called", func(t *testing.T) {
+		primary, _ := setupRepoWithLockfileDelta(t)
+		journalPath := filepath.Join(t.TempDir(), "active.json")
+
+		var calls []string
+		installer := func(dir string) error {
+			calls = append(calls, dir)
+			return nil
+		}
+
+		repos := []RepoActivation{
+			{Repo: "x", Primary: primary, Branch: "feat", Lockfiles: []string{"pnpm-lock.yaml"}},
+		}
+
+		_, err := Activate("myslice", repos, journalPath, ActivateOptions{Installer: installer})
+		if err != nil {
+			t.Fatalf("Activate: %v", err)
+		}
+
+		if len(calls) != 1 || calls[0] != primary {
+			t.Errorf("installer calls: want [%s], got %v", primary, calls)
+		}
+	})
+
+	t.Run("lockfile unchanged — installer not called", func(t *testing.T) {
+		// Use a plain repo+worktree with no lockfile changes.
+		primary, _ := setupRepoWithFeatBranch(t)
+		journalPath := filepath.Join(t.TempDir(), "active.json")
+
+		var calls []string
+		installer := func(dir string) error {
+			calls = append(calls, dir)
+			return nil
+		}
+
+		repos := []RepoActivation{
+			{Repo: "y", Primary: primary, Branch: "feat", Lockfiles: []string{"pnpm-lock.yaml"}},
+		}
+
+		_, err := Activate("myslice", repos, journalPath, ActivateOptions{Installer: installer})
+		if err != nil {
+			t.Fatalf("Activate: %v", err)
+		}
+
+		if len(calls) != 0 {
+			t.Errorf("installer should not have been called, but got calls: %v", calls)
+		}
+	})
+}
+
 // TestActivateStashesDirty verifies that a dirty primary with Stash:true
 // succeeds: the primary is detached at feat tip, StashRef is set, and
 // the primary working tree is clean.

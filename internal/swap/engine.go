@@ -8,6 +8,113 @@ import (
 	"github.com/jonnyom/slis/internal/git"
 )
 
+// RepoActivation is one repo's activation input. The CLI layer builds these
+// from the workspace config and a model.Slice.
+type RepoActivation struct {
+	Repo      string   // logical repo name
+	Primary   string   // primary checkout dir (absolute path)
+	Branch    string   // slice branch to activate
+	Lockfiles []string // lockfiles to diff for dep-reconcile (may be empty)
+}
+
+// ActivateOptions controls optional behaviour during Activate.
+type ActivateOptions struct {
+	// Stash auto-stashes a dirty primary before switching (passed through to
+	// each activateRepo call).
+	Stash bool
+	// Installer is called for a repo when its lockfiles changed between the
+	// prior HEAD and the slice branch tip. If nil, dep-reconcile is skipped.
+	Installer func(primaryDir string) error
+}
+
+// Activate switches every repo's primary to its slice branch tip atomically:
+// if any repo fails, all already-activated repos are rolled back and no journal
+// is written. On full success it writes the journal and runs dep-reconcile.
+//
+// Dep-reconcile errors are non-fatal (the swap itself succeeded and the journal
+// is saved); they are returned alongside a non-nil journal so the caller can
+// warn the user.
+func Activate(slice string, repos []RepoActivation, journalPath string, opts ActivateOptions) (*Journal, error) {
+	var done []RepoState
+
+	// Phase 1: activate each repo; roll back all on first failure.
+	for _, ra := range repos {
+		st, err := activateRepo(RepoPlan{
+			Repo:    ra.Repo,
+			Primary: ra.Primary,
+			Branch:  ra.Branch,
+			Stash:   opts.Stash,
+		})
+		if err != nil {
+			// Roll back already-activated repos in reverse order (best-effort).
+			for i := len(done) - 1; i >= 0; i-- {
+				_ = deactivateRepo(done[i]) // ignore rollback errors
+			}
+			return nil, fmt.Errorf("activate %q: %w", ra.Repo, err)
+		}
+		done = append(done, st)
+	}
+
+	// Phase 2: dep-reconcile (only when Installer is set).
+	var reconcileErr error
+	if opts.Installer != nil {
+		for i, ra := range repos {
+			if len(ra.Lockfiles) == 0 {
+				continue
+			}
+			changed, err := LockfilesChanged(ra.Primary, done[i].PriorSHA, done[i].TargetSHA, ra.Lockfiles)
+			if err != nil {
+				if reconcileErr == nil {
+					reconcileErr = fmt.Errorf("lockfiles-changed %q: %w", ra.Repo, err)
+				}
+				continue
+			}
+			if changed {
+				if e := opts.Installer(ra.Primary); e != nil {
+					if reconcileErr == nil {
+						reconcileErr = fmt.Errorf("installer %q: %w", ra.Repo, e)
+					}
+				}
+				done[i].Reconciled = true
+			}
+		}
+	}
+
+	// Phase 3: write journal.
+	j := &Journal{Slice: slice, Repos: done}
+	if err := Save(journalPath, j); err != nil {
+		return nil, err
+	}
+
+	return j, reconcileErr
+}
+
+// Deactivate restores every repo recorded in the journal (best-effort: it
+// continues past ErrStashConflict and other per-repo errors, aggregating them),
+// then clears the journal file.
+func Deactivate(journalPath string) error {
+	j, err := Load(journalPath)
+	if err != nil {
+		return err
+	}
+	if j == nil {
+		return nil // nothing active
+	}
+
+	var errs []error
+	for _, st := range j.Repos {
+		if e := deactivateRepo(st); e != nil {
+			errs = append(errs, e)
+		}
+	}
+
+	if e := Clear(journalPath); e != nil {
+		errs = append(errs, e)
+	}
+
+	return errors.Join(errs...)
+}
+
 // ErrStashConflict is returned by deactivateRepo when popping the stash
 // produces a merge conflict. The stash is intentionally left intact so the
 // user can resolve the conflict and pop it manually.
