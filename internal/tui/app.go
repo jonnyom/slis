@@ -2,11 +2,13 @@
 package tui
 
 import (
+	"os"
 	"os/exec"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
@@ -49,10 +51,26 @@ type Model struct {
 	overlaySel      int                        // selected row in overlay
 	overlayProcs    []proc.ProcInfo            // flattened+sorted procs for overlay
 	pendingKill     *killReq                   // non-nil when confirm prompt is shown
+	// fsnotify watcher for live event-file updates.
+	watcher   *fsnotify.Watcher
+	eventsDir string
 }
 
 // New returns an initial Model with loading=true.
+// It creates an fsnotify watcher for the EventsDir so that Init can start
+// listening immediately.
 func New(ws config.Workspace) Model {
+	sp := config.StatePaths()
+	eventsDir := sp.EventsDir
+
+	// Create the watcher best-effort — if it fails we just won't watch.
+	var w *fsnotify.Watcher
+	if watcher, err := fsnotify.NewWatcher(); err == nil {
+		_ = os.MkdirAll(eventsDir, 0o755)
+		_ = watcher.Add(eventsDir)
+		w = watcher
+	}
+
 	return Model{
 		ws:            ws,
 		loading:       true,
@@ -63,14 +81,21 @@ func New(ws config.Workspace) Model {
 		procs:         make(map[string][]proc.ProcInfo),
 		procLoading:   make(map[string]bool),
 		sessionStatus: make(map[string]model.SessionStatus),
+		watcher:       w,
+		eventsDir:     eventsDir,
 	}
 }
 
-// Init returns the initial command: load slices in the background.
+// Init returns the initial command: load slices in the background, and start
+// the fsnotify watch loop for live event-file updates.
 // Session statuses are loaded after the slicesLoadedMsg arrives (since we need
 // the slice list to check tmux session existence per slice).
 func (m Model) Init() tea.Cmd {
-	return loadSlicesCmd(m.ws)
+	watchCmd := waitForEventCmd(m.watcher)
+	if watchCmd == nil {
+		return loadSlicesCmd(m.ws)
+	}
+	return tea.Batch(loadSlicesCmd(m.ws), watchCmd)
 }
 
 // loadSlicesCmd returns a Cmd that discovers slices off the UI goroutine.
@@ -189,8 +214,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(diffContent(m))
 		}
 
+	case eventsChangedMsg:
+		// An event-file changed — reload statuses and keep watching.
+		return m, tea.Batch(
+			loadSessionsCmd(m.slices, m.eventsDir),
+			waitForEventCmd(m.watcher),
+		)
+
 	case sessionsLoadedMsg:
+		// Detect transitions to WaitingInput before updating stored statuses.
+		newly := NewlyWaiting(m.sessionStatus, msg.statuses)
 		m.sessionStatus = msg.statuses
+		if len(newly) > 0 {
+			return m, notifyCmd(newly)
+		}
 
 	case sessionsRefreshMsg:
 		sp := config.StatePaths()
@@ -288,6 +325,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overlayProcs = flattenProcs(m.procs)
 			return m, m.batchLoadAllProcs()
 		case "q", "ctrl+c":
+			if m.watcher != nil {
+				_ = m.watcher.Close()
+			}
 			return m, tea.Quit
 		case "j", "down":
 			if len(m.slices) > 0 && m.focus < len(m.slices)-1 {
