@@ -1,0 +1,15 @@
+# Binaries
+/slis
+/dist/
+*.exe
+*.out
+
+# Go
+/vendor/
+*.test
+coverage.*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
