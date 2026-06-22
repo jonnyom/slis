@@ -13,9 +13,13 @@ import (
 	"github.com/jonnyom/slis/internal/tui"
 )
 
+// Version is set at build time via ldflags: -X github.com/jonnyom/slis/internal/cli.Version=<tag>
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "slis",
-	Short: "Multi-repo worktree cockpit",
+	Use:     "slis",
+	Short:   "Multi-repo worktree cockpit",
+	Version: Version,
 	// When invoked with no subcommand, launch the TUI.
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
