@@ -25,7 +25,57 @@ var (
 	colHeadStyle  = lipgloss.NewStyle().Faint(true).Bold(true)
 	waitStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // needs-input
 	liveStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
+	mergedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))            // a merged PR
+	readyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag
 )
+
+// mergeState summarises a slice's PRs for the "ready to clean up" signal.
+type mergeState int
+
+const (
+	mergeNone    mergeState = iota // no PRs loaded/found
+	mergeOpen                      // PRs exist, none merged
+	mergePartial                   // some merged, some not
+	mergeReady                     // every member PR is merged → ready to clear
+)
+
+// sliceMergeState reports whether a slice's PRs are all merged.
+func (m Model) sliceMergeState(s model.Slice) mergeState {
+	slicePRs, ok := m.prs[s.Name]
+	if !ok {
+		return mergeNone
+	}
+	prs, merged := 0, 0
+	for _, repo := range s.Repos() {
+		if pr := slicePRs[repo]; pr != nil {
+			prs++
+			if strings.EqualFold(pr.State, "MERGED") {
+				merged++
+			}
+		}
+	}
+	switch {
+	case prs == 0:
+		return mergeNone
+	case merged == prs:
+		return mergeReady
+	case merged == 0:
+		return mergeOpen
+	default:
+		return mergePartial
+	}
+}
+
+// readyCount counts slices whose PRs are all merged (ready to clear).
+func (m Model) readyCount() int {
+	n := 0
+	for _, s := range m.slices {
+		if m.sliceMergeState(s) == mergeReady {
+			n++
+		}
+	}
+	return n
+}
 
 // sliceCard is the lazily-computed browser summary of a slice: what it's about
 // (latest commit subject), its diffstat, commit count, and stack health. PR
@@ -181,6 +231,9 @@ func renderBrowser(m Model) string {
 	if w := m.waitingCount(); w > 0 {
 		head.WriteString("   " + waitStyle.Render(fmt.Sprintf("⏸ %d need input", w)))
 	}
+	if r := m.readyCount(); r > 0 {
+		head.WriteString("   " + readyStyle.Render(fmt.Sprintf("♻ %d ready to clear", r)))
+	}
 	if m.filtering || m.filter != "" {
 		cur := ""
 		if m.filtering {
@@ -287,7 +340,10 @@ func renderCard(m Model, idx int, focused, spacer bool) string {
 		padCol(repoTags(s), reposW) + " " +
 		padCol(stackBadge(m, s), stackW) + " " +
 		padCol(prBadge(m, s), prW) + " " +
-		sessionCell(status)
+		padCol(sessionCell(status), 9)
+	if m.sliceMergeState(s) == mergeReady {
+		line1 += "  " + readyStyle.Render("♻ ready to clear")
+	}
 
 	out := clip(line1, m.width) + "\n" + clip("    "+overviewStyle.Render(cardOverview(m, s)), m.width) + "\n"
 	if spacer {
@@ -327,6 +383,9 @@ func prBadge(m Model, s model.Slice) string {
 	}
 	for _, repo := range s.Repos() {
 		if pr := slicePRs[repo]; pr != nil {
+			if strings.EqualFold(pr.State, "MERGED") {
+				return mergedStyle.Render(fmt.Sprintf("#%d merged", pr.Number))
+			}
 			overall, _, _, _ := pr.CISummary()
 			return fmt.Sprintf("#%d %s", pr.Number, forge.CIEmoji(overall))
 		}

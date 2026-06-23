@@ -322,9 +322,12 @@ func prsPanelContent(m Model, sl model.Slice) string {
 			line += cockpitDimStyle.Render("PR: loading…")
 		case loaded:
 			pr := slicePRs[repo]
-			if pr == nil {
+			switch {
+			case pr == nil:
 				line += cockpitDimStyle.Render("(no PR)")
-			} else {
+			case strings.EqualFold(pr.State, "MERGED"):
+				line += fmt.Sprintf("#%d ", pr.Number) + mergedStyle.Render("merged") + fmt.Sprintf(" 💬%d", len(pr.Comments))
+			default:
 				overall, _, _, _ := pr.CISummary()
 				line += fmt.Sprintf("#%d %s 💬%d", pr.Number, forge.CIEmoji(overall), len(pr.Comments))
 			}
