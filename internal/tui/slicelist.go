@@ -757,12 +757,16 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Empty workspace: only [c] (create) is useful; ignore other browser keys
-	// (q / r / ? still work — handled globally). Status was cleared in handleKey.
+	// Empty workspace: [c] (create) and [i] (adopt an existing branch) are the
+	// useful keys; ignore other browser keys (q / r / ? still work — handled
+	// globally). Status was cleared in handleKey.
 	if len(m.slices) == 0 {
-		if msg.String() == "c" {
+		switch msg.String() {
+		case "c":
 			m.creating = true
 			m.createName = ""
+		case "i":
+			return m, slisAdoptCmd()
 		}
 		return m, nil
 	}
@@ -877,6 +881,8 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.creating = true
 		m.createName = ""
 		return m, nil
+	case "i":
+		return m, slisAdoptCmd()
 	case "w":
 		m.requestSwap()
 		return m, nil

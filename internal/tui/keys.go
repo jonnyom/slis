@@ -22,6 +22,7 @@ var browserBindings = []Binding{
 	{[]string{"g", "G"}, "first / last slice"},
 	{[]string{"enter", "l"}, "open slice cockpit"},
 	{[]string{"c"}, "create a new slice (worktrees across repos)"},
+	{[]string{"i"}, "adopt an existing branch as a slice (interactive picker)"},
 	{[]string{"C"}, "launch the agent (claude) in the session + attach"},
 	{[]string{"a"}, "attach tmux session  ·  detach with C-b d (not Ctrl-D)"},
 	{[]string{"w"}, "set as live (swap into primaries) / deactivate"},

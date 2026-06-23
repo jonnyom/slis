@@ -975,6 +975,19 @@ func slisCreateCmd(name string) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
+// slisAdoptCmd hands the terminal to the interactive `slis adopt` picker (which
+// lists adoptable existing branches), then reloads so a newly-adopted slice
+// appears in the hub. ExecProcess suspends the TUI so the picker owns the
+// terminal — the same approach used for create/submit/merge.
+func slisAdoptCmd() tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	c := exec.Command(self, "adopt") //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
 // updateSwapKeys handles the activate/deactivate confirmation prompt.
 func (m Model) updateSwapKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	req := *m.pendingSwap

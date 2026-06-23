@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -172,6 +173,9 @@ func pickAdoptCandidate(candidates []adoptCandidate) (string, error) {
 		),
 	)
 	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return "", nil // cancelled — not an error
+		}
 		return "", err
 	}
 	return chosen, nil
