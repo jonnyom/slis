@@ -106,3 +106,5 @@ When you run `slis activate <slice>`, slis reads each repo's primary worktree pa
 - The Homebrew tap (`jonnyom/homebrew-tap`) must be created as a public GitHub repo before `brew install jonnyom/tap/slis` will work.
 - The release workflow (`release.yml`) uses `GITHUB_TOKEN` for the GitHub release and needs a `HOMEBREW_TAP_GITHUB_TOKEN` repository secret (a PAT with `repo` write access to the tap) to push the updated Homebrew formula.
 - Requires `tmux` for session features; `claude` CLI for AI summaries.
+
+<!-- demo PR for slis PR-integration features -->
