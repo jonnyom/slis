@@ -28,9 +28,13 @@ func TestScanReposFindsOnlyGitDirs(t *testing.T) {
 	root := t.TempDir()
 	mustInitRepo(t, filepath.Join(root, "a"))
 	mustInitRepo(t, filepath.Join(root, "b"))
-	os.MkdirAll(filepath.Join(root, "c"), 0o755) // not a repo
+	if err := os.MkdirAll(filepath.Join(root, "c"), 0o755); err != nil { // not a repo
+		t.Fatal(err)
+	}
 	// also a loose file to confirm it is not returned
-	os.WriteFile(filepath.Join(root, "loose.txt"), []byte("x"), 0o644)
+	if err := os.WriteFile(filepath.Join(root, "loose.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := ScanRepos(root)
 	if err != nil {

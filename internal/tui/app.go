@@ -4,7 +4,6 @@ package tui
 import (
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -194,26 +193,6 @@ func loadSummaryCmd(sl model.Slice, base string) tea.Cmd {
 		byRepo, _ := summary.CommitSummary(sl, base)
 		md := summary.RenderCommitSummary(byRepo)
 		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdownFixed(md, 0)}
-	}
-}
-
-// aiSummaryCmd builds a combined diff and calls claude -p off the UI goroutine,
-// delivering a summaryLoadedMsg with the result (or an error note).
-func aiSummaryCmd(sl model.Slice, diffs []diff.RepoDiff) tea.Cmd {
-	return func() tea.Msg {
-		var sb strings.Builder
-		for _, rd := range diffs {
-			sb.WriteString("# repo: " + rd.Repo + "\n")
-			sb.WriteString(rd.Patch)
-			if rd.Patch != "" && !strings.HasSuffix(rd.Patch, "\n") {
-				sb.WriteString("\n")
-			}
-		}
-		out, err := summary.AISummary(sb.String(), summary.DefaultClaudeRunner)
-		if err != nil {
-			return summaryLoadedMsg{slice: sl.Name, text: "AI summary unavailable: " + err.Error()}
-		}
-		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdownFixed(out, 0)}
 	}
 }
 

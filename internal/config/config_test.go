@@ -9,7 +9,7 @@ import (
 func TestLoadWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "workspace.yaml")
-	os.WriteFile(p, []byte(`
+	if err := os.WriteFile(p, []byte(`
 root: ~/code
 repos:
   web: { primary: ~/code/web, default_branch: main }
@@ -21,7 +21,9 @@ sessions:
   autostart_claude: false
 processes:
   cpu_warn_pct: 150
-`), 0o644)
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ws, err := LoadWorkspace(p)
 	if err != nil {
@@ -45,11 +47,13 @@ processes:
 func TestLoadWorkspaceDefaults(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "workspace.yaml")
-	os.WriteFile(p, []byte(`
+	if err := os.WriteFile(p, []byte(`
 root: ~/code
 repos:
   web: { primary: ~/code/web, default_branch: main }
-`), 0o644)
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ws, err := LoadWorkspace(p)
 	if err != nil {
@@ -66,11 +70,13 @@ repos:
 func TestLoadWorkspaceEmptyPrimary(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "workspace.yaml")
-	os.WriteFile(p, []byte(`
+	if err := os.WriteFile(p, []byte(`
 root: ~/code
 repos:
   web: { default_branch: main }
-`), 0o644)
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := LoadWorkspace(p)
 	if err == nil {
