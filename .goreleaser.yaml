@@ -22,14 +22,10 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-brews:
-  - repository:
-      owner: jonnyom
-      name: homebrew-tap
-    homepage: "https://github.com/jonnyom/slis"
-    description: "Multi-repo worktree cockpit"
-    install: |
-      bin.install "slis"
+# Homebrew distribution is hand-managed in the jonnyom/homebrew-tap repo via a
+# source-build formula (git clone + go build), so a private repo installs with
+# no tokens/secrets. See that repo's Formula/slis.rb. GoReleaser here only builds
+# downloadable binary archives + GitHub releases.
 
 release:
   github:

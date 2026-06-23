@@ -8,18 +8,27 @@ A **slice** is the unit of work in slis: it groups together the matching worktre
 
 ## Install
 
-**Homebrew** (recommended):
-```sh
-brew install jonnyom/tap/slis
-```
-> Note: the tap repo `jonnyom/homebrew-tap` must exist for this to work. See [Status](#status--disclaimer).
+`slis` is currently a **private** repo, so installs build from source using your
+own GitHub access — no tokens or secrets needed.
 
-**Go install**:
+**Homebrew** (source build, tracks `main`):
 ```sh
-go install github.com/jonnyom/slis/cmd/slis@latest
+brew install --HEAD jonnyom/homebrew-tap/slis
+# update later:
+brew upgrade --fetch-HEAD slis
+```
+Requires read access to `jonnyom/slis` plus working `gh`/git auth — Homebrew
+clones the repo and builds it with Go (installed automatically as a build dep).
+
+**Go install** (also needs auth for the private module):
+```sh
+GOPRIVATE=github.com/jonnyom/slis go install github.com/jonnyom/slis/cmd/slis@latest
 ```
 
-**Release binary**: download a pre-built tarball from the [Releases](https://github.com/jonnyom/slis/releases) page and place `slis` on your `$PATH`.
+> **When open-sourced:** flip the repo public, tag a release (the GoReleaser
+> workflow builds darwin/linux binaries), then point the tap formula at those
+> prebuilt binaries — anyone can then `brew install jonnyom/homebrew-tap/slis`
+> with no build step and no auth.
 
 ---
 
