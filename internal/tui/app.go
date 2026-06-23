@@ -566,6 +566,17 @@ func slisSubmitCmd(slice string) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
+// slisMergeCmd hands the terminal to `slis merge <slice>` (`gt merge` per repo)
+// — Graphite merges the stack server-side, so slis just triggers it and reloads.
+func slisMergeCmd(slice string) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	c := exec.Command(self, "merge", slice) //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
 // slisSyncCmd hands the terminal to `slis sync <slice>` (interactive `gt sync`
 // per repo) so the user can answer its delete/overwrite-trunk prompts.
 func slisSyncCmd(slice string) tea.Cmd {
@@ -911,6 +922,12 @@ func (m Model) updateStackKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(slices) > 0 {
 			delete(m.prs, slices[0]) // force PR reload after submit
 			return m, slisSubmitCmd(slices[0])
+		}
+	case "m":
+		m.pendingStack = nil
+		if len(slices) > 0 {
+			delete(m.prs, slices[0]) // PR state flips once Graphite's queue lands
+			return m, slisMergeCmd(slices[0])
 		}
 	case "s":
 		m.pendingStack = nil

@@ -612,11 +612,11 @@ func renderStackOverlay(m Model) string {
 	key := panelTitleFocusStyle.Render
 	var sb strings.Builder
 	sb.WriteString(cockpitHeaderStyle.Render("Stack actions — "+targetLabel(m.pendingStack.slices)) + "\n\n")
-	sb.WriteString("Restack rebases each repo's branch onto its parent (slice-scoped; dirty\n")
-	sb.WriteString("worktrees skipped, conflicts left for you to resolve). Submit pushes the\n")
-	sb.WriteString("stack and opens/updates PRs (interactive). Sync is repo-wide: `gt sync`\n")
-	sb.WriteString("(may overwrite trunk, delete merged branches). Submit/sync act on the first target.\n\n")
-	sb.WriteString(key("[r]") + " restack     " + key("[p]") + " submit (stack→PRs)     " + key("[s]") + " sync repos     " + key("[n]") + " cancel\n")
+	sb.WriteString("Restack rebases each branch onto its parent (dirty skipped, conflicts left\n")
+	sb.WriteString("for you). Submit pushes the stack + opens/updates PRs. Merge hands off to\n")
+	sb.WriteString("Graphite's server-side queue (squash/merge/restack handled for you — no\n")
+	sb.WriteString("local waiting). Sync is repo-wide. Submit/merge/sync act on the first target.\n\n")
+	sb.WriteString(key("[r]") + " restack   " + key("[p]") + " submit   " + key("[m]") + " merge (Graphite)   " + key("[s]") + " sync   " + key("[n]") + " cancel\n")
 	return helpBoxStyle.Render(sb.String())
 }
 

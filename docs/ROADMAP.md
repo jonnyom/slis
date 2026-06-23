@@ -6,9 +6,9 @@
 - **Inbox / triage queue** — `n`/`N` jump to the next/prev slice needing you (waiting-input → CI-red → needs-restack → ready); "Inbox" state filter, urgency-sorted.
 - **Batch actions** — `space`/`A` select; `d` clear and `R` restack act on the selection (else focused). Clear-all-ready in a few keys.
 
-## Phase 2 — Close the loop to shipped
-- **`gt submit`** — create/update a slice's PRs from its Graphite stack, from slis. (mutating gt; mirrors `restack`)
-- **Review → merge** — approve + `gh pr merge` a slice's stack in Graphite order, CI-gated, behind confirm. idea→PR→merged never leaves slis.
+## Phase 2 — Close the loop to shipped ✅ shipped
+- **`gt submit`** — create/update a slice's PRs from its Graphite stack (`R` → `[p]`).
+- **`gt merge`** — merge the stack via **Graphite's server-side queue** (`R` → `[m]`). Chosen over local `gh pr merge`: Graphite handles squash/merge/restack on its servers, so slis triggers and walks away — no local waiting/reloading. Also `gt sync` (`R` → `[s]`).
 
 ## Phase 3 — Prevent pain + scale the fleet
 - **Cross-slice conflict radar** — warn when two in-flight slices edit the same files across repos, before merge (uses the multi-repo diffs slis already computes).
