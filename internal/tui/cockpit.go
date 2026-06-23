@@ -204,9 +204,20 @@ func renderLeftColumn(m Model, sl model.Slice, w, totalH int) string {
 
 // cockpitFooter renders the context key hints and any transient status message.
 func cockpitFooter(m Model) string {
-	hint := "[tab] panel  [s]ummary  [a]ttach  [o]pen  [y]ank  [c]omments  [F]ix-ci  [⏶⏷ ^d/^u] scroll"
-	if m.panel == panelProcs {
-		hint = "[tab] panel  [j/k] select  [x] kill  [X] kill tree  [a]ttach  [esc] back"
+	var hint string
+	switch m.panel {
+	case panelStack:
+		split := "[t]split"
+		if m.splitDiff {
+			split = "[t]unified"
+		}
+		hint = "[tab]panel [w]swap [s]ummary [a]ttach [o]pen [y]ank " + split + " [⏶⏷ ^d/^u]scroll [esc]back"
+	case panelProcs:
+		hint = "[tab]panel [j/k]select [x]kill [X]kill-tree [w]swap [a]ttach [esc]back"
+	case panelSession:
+		hint = "[tab]panel [a]ttach [r]refresh [w]swap [esc]back"
+	default:
+		hint = "[tab]panel [w]swap [s]ummary [a]ttach [c]omments [Y]copy-stack [F]ix-ci [esc]back"
 	}
 	if m.status != "" {
 		return clip(statusErrStyle.Render(m.status), m.width)
@@ -426,7 +437,12 @@ func repoDiffContent(m Model, sl model.Slice) string {
 		}
 	}
 	if rd.Patch != "" {
-		sb.WriteString("\n" + colorizePatch(rd.Patch) + "\n")
+		sb.WriteString("\n")
+		if m.splitDiff {
+			sb.WriteString(renderSplitDiff(rd.Patch, m.viewport.Width) + "\n")
+		} else {
+			sb.WriteString(colorizePatch(rd.Patch) + "\n")
+		}
 	}
 	return sb.String()
 }
@@ -485,7 +501,22 @@ func sessionDetailContent(m Model, sl model.Slice) string {
 	for _, repo := range sl.Repos() {
 		fmt.Fprintf(&sb, "  %s  %s\n", repo, sl.Members[repo].WorktreePath)
 	}
-	sb.WriteString("\n[a] attach / create session\n")
+	sb.WriteString("\n[a] attach   [r] refresh capture\n")
+
+	// Live peek at what's running in the session (e.g. a Claude prompt) so you
+	// can tell when it needs attention without attaching.
+	if m.captureLoading[sl.Name] {
+		sb.WriteString("\ncapturing session output…\n")
+	} else if cap, ok := m.captures[sl.Name]; ok {
+		sb.WriteString("\n─────── session output ───────\n")
+		if strings.TrimSpace(cap) == "" {
+			sb.WriteString("(empty / no session)\n")
+		} else {
+			sb.WriteString(cap)
+		}
+	} else if status == model.SessNone {
+		sb.WriteString("\n(no session — press [a] to start one)\n")
+	}
 	return sb.String()
 }
 
@@ -521,6 +552,29 @@ func summaryContent(m Model, sl model.Slice) string {
 	return text + "\n[s] AI summary\n"
 }
 
+// renderSwapOverlay renders the activate/deactivate confirmation modal.
+func renderSwapOverlay(m Model) string {
+	if m.pendingSwap == nil {
+		return ""
+	}
+	req := *m.pendingSwap
+	key := panelTitleFocusStyle.Render
+	var sb strings.Builder
+	if req.deactivate {
+		sb.WriteString(cockpitHeaderStyle.Render("Deactivate "+req.slice) + "\n\n")
+		sb.WriteString("Restore every repo's primary checkout to where it was before this\n")
+		sb.WriteString("slice was swapped in.\n\n")
+		sb.WriteString(key("[y]") + " deactivate     " + key("[n]") + " cancel\n")
+	} else {
+		sb.WriteString(cockpitHeaderStyle.Render("Set running code → "+req.slice) + "\n\n")
+		sb.WriteString("Detach each repo's primary HEAD to this slice's branch tips so running\n")
+		sb.WriteString("dev servers rebuild this feature. Reversible; worktrees are untouched.\n")
+		sb.WriteString("A dirty primary needs " + cockpitDimStyle.Render("--stash") + ".\n\n")
+		sb.WriteString(key("[y]") + " activate     " + key("[s]") + " activate + stash dirty     " + key("[n]") + " cancel\n")
+	}
+	return helpBoxStyle.Render(sb.String())
+}
+
 // shortBranch trims an optional grouping prefix for display.
 func shortBranch(b, prefix string) string {
 	if prefix != "" {
@@ -553,6 +607,8 @@ func (m *Model) loadForPanel() tea.Cmd {
 		return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff()})...)
 	case panelPRs:
 		return m.maybeLoadPRs()
+	case panelSession:
+		return m.maybeLoadCapture()
 	case panelProcs:
 		return m.maybeLoadProcs()
 	}
@@ -669,6 +725,13 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		delete(m.summaries, sl.Name)
 		m.refreshRight()
 		return m, aiSummaryFromSliceCmd(sl)
+	case "w":
+		m.requestSwap()
+		return m, nil
+	case "t":
+		m.splitDiff = !m.splitDiff
+		m.refreshRight()
+		return m, nil
 	case "a":
 		return m, m.attachCmd()
 	case "o":

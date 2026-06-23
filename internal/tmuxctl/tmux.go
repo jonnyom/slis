@@ -78,6 +78,34 @@ func EnsureSession(slice string, members []model.SliceMember) error {
 	return nil
 }
 
+// CapturePane returns the visible contents of each window's active pane in the
+// slice's session, prefixed by a "── <window> ──" header — a read-only peek at
+// what is running (e.g. a Claude session) without attaching. Returns an error
+// if the session does not exist.
+func CapturePane(slice string) (string, error) {
+	name := SessionName(slice)
+	out, err := exec.Command("tmux", "list-windows", "-t", name, "-F", "#{window_index}\t#{window_name}").Output()
+	if err != nil {
+		return "", fmt.Errorf("tmux list-windows: %w", err)
+	}
+
+	var sb strings.Builder
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		idx, wname, _ := strings.Cut(line, "\t")
+		captured, _ := exec.Command("tmux", "capture-pane", "-p", "-t", name+":"+idx).Output()
+		sb.WriteString("── " + wname + " ──\n")
+		sb.Write(captured)
+		if !strings.HasSuffix(string(captured), "\n") {
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String(), nil
+}
+
 // PanePIDs returns the pane PIDs across all windows of the slice's session.
 func PanePIDs(slice string) ([]int, error) {
 	name := SessionName(slice)

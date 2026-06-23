@@ -58,13 +58,21 @@ type Model struct {
 	height  int
 	loading bool
 
-	view  viewMode // browser or cockpit
-	panel panel    // focused left panel within the cockpit
-	zoom  bool     // cockpit: right pane expanded full-width
+	view      viewMode // browser or cockpit
+	panel     panel    // focused left panel within the cockpit
+	zoom      bool     // cockpit: right pane expanded full-width
+	splitDiff bool     // cockpit: side-by-side diff instead of unified
 
 	// Browser filter ("/" to type a substring; matches slice names).
 	filter    string
 	filtering bool
+
+	// Pending slice-swap confirmation (activate/deactivate the focused slice).
+	pendingSwap *swapReq
+
+	// tmux pane capture for the focused slice's Session panel (what Claude is doing).
+	captures       map[string]string // slice name → captured pane text
+	captureLoading map[string]bool
 
 	// Per-panel selection within the cockpit.
 	repoSel int // selected member in the Repos & Stack panel (drives right-pane diff)
@@ -145,6 +153,8 @@ func New(ws config.Workspace) Model {
 		summaryLoading: make(map[string]bool),
 		prs:            make(map[string]map[string]*forge.PR),
 		prLoading:      make(map[string]bool),
+		captures:       make(map[string]string),
+		captureLoading: make(map[string]bool),
 		watcher:        w,
 		eventsDir:      eventsDir,
 	}
@@ -301,6 +311,80 @@ func (m *Model) batchLoadAllProcs() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// swapReq is a pending activate/deactivate confirmation for a slice.
+type swapReq struct {
+	slice      string
+	deactivate bool // true = restore primaries; false = swap the slice in
+}
+
+// swapFinishedMsg is delivered after a `slis activate/deactivate` subprocess exits.
+type swapFinishedMsg struct{}
+
+// slisSwapCmd shells out to the slis binary to (de)activate a slice, reusing the
+// data-safety-critical CLI engine rather than duplicating it in the TUI (which
+// must not import internal/cli). ExecProcess shows the command's output so
+// activate progress and errors (e.g. a dirty primary) are visible on screen.
+func slisSwapCmd(req swapReq, stash bool) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	args := []string{"deactivate"}
+	if !req.deactivate {
+		args = []string{"activate", req.slice}
+		if stash {
+			args = append(args, "--stash")
+		}
+	}
+	c := exec.Command(self, args...) //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
+// batchLoadAllPRs loads PR/CI data for every not-yet-loaded slice so CI status
+// is visible across the whole browser without visiting each row.
+func (m *Model) batchLoadAllPRs() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, sl := range m.slices {
+		if _, ok := m.prs[sl.Name]; ok {
+			continue
+		}
+		if m.prLoading[sl.Name] {
+			continue
+		}
+		m.prLoading[sl.Name] = true
+		cmds = append(cmds, loadPRsCmd(sl))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+// captureLoadedMsg carries a tmux pane capture for a slice.
+type captureLoadedMsg struct {
+	slice string
+	text  string
+}
+
+// loadCaptureCmd captures the slice's tmux panes off the UI goroutine.
+func loadCaptureCmd(slice string) tea.Cmd {
+	return func() tea.Msg {
+		text, _ := tmuxctl.CapturePane(slice)
+		return captureLoadedMsg{slice: slice, text: text}
+	}
+}
+
+// maybeLoadCapture (re)loads the focused slice's pane capture unless one is
+// already in flight. Calling it again after completion refreshes the capture.
+func (m *Model) maybeLoadCapture() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok || m.captureLoading[sl.Name] {
+		return nil
+	}
+	m.captureLoading[sl.Name] = true
+	return loadCaptureCmd(sl.Name)
+}
+
 // Update handles incoming messages and returns the updated model and next command.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -337,7 +421,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = len(m.slices) - 1
 		}
 		sp := config.StatePaths()
-		return m, tea.Batch(loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards())
+		return m, tea.Batch(loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.batchLoadAllPRs())
 
 	case cardLoadedMsg:
 		m.cards[msg.slice] = msg.card
@@ -375,6 +459,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case procKilledMsg:
 		return m, m.batchLoadAllProcs()
 
+	case captureLoadedMsg:
+		m.captures[msg.slice] = msg.text
+		delete(m.captureLoading, msg.slice)
+		m.refreshRight()
+
+	case swapFinishedMsg:
+		m.pendingSwap = nil
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -385,6 +479,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKey routes a key press to overlays, then to the active view.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Overlays take priority.
+	if m.pendingSwap != nil {
+		return m.updateSwapKeys(msg)
+	}
 	if m.showProcOverlay {
 		return m.updateOverlayKeys(msg)
 	}
@@ -414,6 +511,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.overlayProcs = flattenProcs(m.procs)
 		return m, m.batchLoadAllProcs()
 	case "r":
+		// On the cockpit Session panel, [r] refreshes the live pane capture
+		// rather than reloading the whole workspace.
+		if m.view == viewCockpit && m.panel == panelSession {
+			return m, m.maybeLoadCapture()
+		}
 		m.loading = true
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
@@ -446,6 +548,31 @@ func (m *Model) attachCmd() tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg {
 		return sessionsRefreshMsg{}
 	})
+}
+
+// updateSwapKeys handles the activate/deactivate confirmation prompt.
+func (m Model) updateSwapKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	req := *m.pendingSwap
+	switch msg.String() {
+	case "y":
+		m.pendingSwap = nil
+		return m, slisSwapCmd(req, false)
+	case "s":
+		if !req.deactivate { // stash dirty primaries, then activate
+			m.pendingSwap = nil
+			return m, slisSwapCmd(req, true)
+		}
+	case "n", "esc":
+		m.pendingSwap = nil
+	}
+	return m, nil
+}
+
+// requestSwap sets up the activate/deactivate confirmation for the focused slice.
+func (m *Model) requestSwap() {
+	if sl, ok := m.currentSlice(); ok {
+		m.pendingSwap = &swapReq{slice: sl.Name, deactivate: sl.Active}
+	}
 }
 
 // updateOverlayKeys handles key events while the proc overlay is open.
@@ -523,6 +650,9 @@ func (m Model) View() string {
 	}
 	if m.showHelp {
 		return renderHelp(m.view)
+	}
+	if m.pendingSwap != nil {
+		return renderSwapOverlay(m)
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)

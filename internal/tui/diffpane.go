@@ -1,16 +1,12 @@
 package tui
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2/formatters"
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -42,57 +38,109 @@ func sliceBase(sl model.Slice) string {
 	return sl.Base
 }
 
-// colorizePatch applies chroma diff syntax coloring to a git patch string.
-// On any chroma error, it falls back to simple lipgloss-based coloring.
-func colorizePatch(patch string) string {
-	lexer := lexers.Get("diff")
-	if lexer == nil {
-		return manualColorPatch(patch)
-	}
-	formatter := formatters.Get("terminal256")
-	style := styles.Get("github")
-	if style == nil {
-		style = styles.Fallback
-	}
-
-	it, err := lexer.Tokenise(nil, patch)
-	if err != nil {
-		return manualColorPatch(patch)
-	}
-
-	var buf bytes.Buffer
-	if err := formatter.Format(&buf, style, it); err != nil {
-		return manualColorPatch(patch)
-	}
-	return buf.String()
-}
-
 var (
-	addStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))            // green
-	delStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))            // red
-	hunkStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true) // cyan+bold
-	plainStyle = lipgloss.NewStyle()
+	diffAddStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))            // green (fg only)
+	diffDelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))           // red (fg only)
+	diffHunkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Bold(true) // blue, bold
+	diffHdrStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))           // dim file headers
+	diffCtxStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))           // context lines
 )
 
-// manualColorPatch colorizes diff output using lipgloss when chroma is unavailable.
-func manualColorPatch(patch string) string {
+// isDiffHeader reports whether a line is a file/metadata header (not a +/- change).
+func isDiffHeader(line string) bool {
+	for _, p := range []string{"diff ", "index ", "+++", "---", "new file", "deleted file", "rename ", "similarity ", "old mode", "new mode", "Binary "} {
+		if strings.HasPrefix(line, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// colorizePatch colorizes a unified git patch using FOREGROUND colors only — no
+// background fills, which read poorly on dark terminals. Headers are dimmed,
+// hunks blue, additions green, deletions red, context neutral.
+func colorizePatch(patch string) string {
 	var sb strings.Builder
 	for _, line := range strings.Split(patch, "\n") {
 		switch {
-		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
-			sb.WriteString(plainStyle.Render(line))
-		case strings.HasPrefix(line, "+"):
-			sb.WriteString(addStyle.Render(line))
-		case strings.HasPrefix(line, "-"):
-			sb.WriteString(delStyle.Render(line))
+		case isDiffHeader(line):
+			sb.WriteString(diffHdrStyle.Render(line))
 		case strings.HasPrefix(line, "@@"):
-			sb.WriteString(hunkStyle.Render(line))
+			sb.WriteString(diffHunkStyle.Render(line))
+		case strings.HasPrefix(line, "+"):
+			sb.WriteString(diffAddStyle.Render(line))
+		case strings.HasPrefix(line, "-"):
+			sb.WriteString(diffDelStyle.Render(line))
 		default:
-			sb.WriteString(plainStyle.Render(line))
+			sb.WriteString(diffCtxStyle.Render(line))
 		}
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+var splitSepStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+// renderSplitDiff renders a unified git patch as a side-by-side (split) view:
+// deletions on the left, additions on the right, paired within each change
+// block. Falls back to the unified renderer when the pane is too narrow.
+func renderSplitDiff(patch string, width int) string {
+	colW := (width - 3) / 2 // 3 cells for " │ "
+	if colW < 12 {
+		return colorizePatch(patch)
+	}
+
+	var sb strings.Builder
+	var dels, adds []string
+
+	flush := func() {
+		n := max(len(dels), len(adds))
+		for i := 0; i < n; i++ {
+			l, r := "", ""
+			ls, rs := diffCtxStyle, diffCtxStyle
+			if i < len(dels) {
+				l, ls = dels[i], diffDelStyle
+			}
+			if i < len(adds) {
+				r, rs = adds[i], diffAddStyle
+			}
+			sb.WriteString(padCell(ls.Render(clip(l, colW)), colW))
+			sb.WriteString(splitSepStyle.Render(" │ "))
+			sb.WriteString(rs.Render(clip(r, colW)))
+			sb.WriteString("\n")
+		}
+		dels, adds = nil, nil
+	}
+
+	for _, line := range strings.Split(patch, "\n") {
+		switch {
+		case isDiffHeader(line):
+			flush()
+			sb.WriteString(diffHdrStyle.Render(clip(line, width)) + "\n")
+		case strings.HasPrefix(line, "@@"):
+			flush()
+			sb.WriteString(diffHunkStyle.Render(clip(line, width)) + "\n")
+		case strings.HasPrefix(line, "-"):
+			dels = append(dels, line)
+		case strings.HasPrefix(line, "+"):
+			adds = append(adds, line)
+		default:
+			flush()
+			c := diffCtxStyle.Render(clip(line, colW))
+			sb.WriteString(padCell(c, colW) + splitSepStyle.Render(" │ ") + c + "\n")
+		}
+	}
+	flush()
+	return sb.String()
+}
+
+// padCell right-pads an already-styled string to w display cells.
+func padCell(colored string, w int) string {
+	gap := w - lipgloss.Width(colored)
+	if gap < 0 {
+		gap = 0
+	}
+	return colored + strings.Repeat(" ", gap)
 }
 
 // combinedPatch concatenates all repo patches into a single string, each
