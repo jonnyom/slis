@@ -515,6 +515,12 @@ func previewContent(m Model, sl model.Slice) string {
 
 	sb.WriteString("\n" + overviewStyle.Render(cardOverview(m, sl)) + "\n")
 
+	// Most recent Claude/session output (live), when a session exists.
+	if cap, ok := m.captures[sl.Name]; ok && strings.TrimSpace(cap) != "" {
+		sb.WriteString("\n" + colHeadStyle.Render("── recent session output (live) ──") + "\n")
+		sb.WriteString(tailLines(cap, 10) + "\n")
+	}
+
 	sb.WriteString("\n" + colHeadStyle.Render("── recent changes ──") + "\n")
 	switch {
 	case m.diffLoading[sl.Name]:
@@ -732,8 +738,8 @@ func (m *Model) snapFocusToFilter() {
 	}
 }
 
-// loadPreview lazily loads the stack, diff and PRs for the focused slice so the
-// right-hand preview pane can render it.
+// loadPreview lazily loads the stack, diff, PRs and tmux capture for the focused
+// slice so the right-hand preview pane can render it.
 func (m *Model) loadPreview() tea.Cmd {
-	return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.maybeLoadPRs()})...)
+	return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.maybeLoadPRs(), m.maybeLoadCapture()})...)
 }

@@ -182,7 +182,7 @@ func renderCockpit(m Model) string {
 func renderLeftColumn(m Model, sl model.Slice, w, totalH int) string {
 	repos := sl.Repos()
 
-	sessionH, procsH := 4, 5
+	sessionH, procsH := 5, 5
 	prsH := clamp(len(repos)+3, 5, 9)
 	stackH := totalH - sessionH - procsH - prsH
 	if stackH < 4 { // squeeze PRs panel first on short terminals
@@ -339,14 +339,32 @@ func prsPanelContent(m Model, sl model.Slice) string {
 	return sb.String()
 }
 
-// sessionPanelContent renders a compact session summary (badge + window count).
+// sessionPanelContent renders a compact session summary (badge + window count)
+// plus the most recent line of session output for a glance.
 func sessionPanelContent(m Model, sl model.Slice) string {
 	status := model.SessNone
 	if m.sessionStatus != nil {
 		status = m.sessionStatus[sl.Name]
 	}
-	windows := len(sl.Repos())
-	return fmt.Sprintf("%s %s · %d windows", sessionBadge(status), status.String(), windows)
+	out := fmt.Sprintf("%s %s · %d windows", sessionBadge(status), status.String(), len(sl.Repos()))
+	if cap, ok := m.captures[sl.Name]; ok {
+		if last := tailLines(cap, 1); last != "" {
+			out += "\n" + cockpitDimStyle.Render(last)
+		}
+	}
+	return out
+}
+
+// tailLines returns the last n lines of s, ignoring trailing blank lines.
+func tailLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // procsPanelContent renders the top processes by CPU with a warning badge.
@@ -511,7 +529,7 @@ func sessionDetailContent(m Model, sl model.Slice) string {
 	if m.captureLoading[sl.Name] {
 		sb.WriteString("\ncapturing session output…\n")
 	} else if cap, ok := m.captures[sl.Name]; ok {
-		sb.WriteString("\n─────── session output ───────\n")
+		sb.WriteString("\n─── session output (live) ───\n")
 		if strings.TrimSpace(cap) == "" {
 			sb.WriteString("(empty / no session)\n")
 		} else {

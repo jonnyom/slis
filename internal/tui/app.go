@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -180,13 +181,36 @@ func New(ws config.Workspace) Model {
 	}
 }
 
-// Init loads slices in the background and starts the fsnotify watch loop.
+// captureTickMsg drives periodic refresh of the focused slice's tmux capture so
+// the session view (hub preview / cockpit Session panel) feels live.
+type captureTickMsg struct{}
+
+// captureTickCmd schedules the next capture refresh.
+func captureTickCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return captureTickMsg{} })
+}
+
+// Init loads slices in the background, starts the fsnotify watch loop, and the
+// capture-refresh ticker.
 func (m Model) Init() tea.Cmd {
-	watchCmd := waitForEventCmd(m.watcher)
-	if watchCmd == nil {
-		return loadSlicesCmd(m.ws)
+	cmds := []tea.Cmd{loadSlicesCmd(m.ws), captureTickCmd()}
+	if watchCmd := waitForEventCmd(m.watcher); watchCmd != nil {
+		cmds = append(cmds, watchCmd)
 	}
-	return tea.Batch(loadSlicesCmd(m.ws), watchCmd)
+	return tea.Batch(cmds...)
+}
+
+// shouldShowCapture reports whether the current view shows the focused slice's
+// tmux capture (so the ticker should refresh it).
+func (m Model) shouldShowCapture() bool {
+	sl, ok := m.currentSlice()
+	if !ok || m.sessionStatus[sl.Name] == model.SessNone {
+		return false
+	}
+	if m.view == viewCockpit {
+		return m.panel == panelSession
+	}
+	return m.view == viewBrowser // hub preview shows recent session output
 }
 
 // loadSlicesCmd discovers slices off the UI goroutine.
@@ -611,6 +635,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.captures[msg.slice] = msg.text
 		delete(m.captureLoading, msg.slice)
 		m.refreshRight()
+
+	case captureTickMsg:
+		var cmd tea.Cmd
+		if m.shouldShowCapture() {
+			cmd = m.maybeLoadCapture()
+		}
+		return m, tea.Batch(cmd, captureTickCmd())
 
 	case swapFinishedMsg:
 		m.pendingSwap = nil
