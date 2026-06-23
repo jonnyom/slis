@@ -93,7 +93,7 @@ var (
 	// Selected row: a subtle dark band with a soft magenta text accent — NOT a
 	// full-width reversed block (the old Reverse(true) painted the whole row, and
 	// any newlines, e.g. claude's --system-prompt, smeared pink across lines).
-	procTableSelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212")).Background(lipgloss.Color("236"))
+	procTableSelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75")).Background(lipgloss.Color("236"))
 	procTableNormalStyle = lipgloss.NewStyle()
 	procOverlayBoxStyle  = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).

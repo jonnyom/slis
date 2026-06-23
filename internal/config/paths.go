@@ -15,6 +15,8 @@ type Paths struct {
 	ActiveJournal string
 	// EventsDir is the directory where hook events are stored.
 	EventsDir string
+	// Prefs is the path to the small UI-preferences file (persistent toggles).
+	Prefs string
 }
 
 // stateBase returns the base directory for XDG state, honouring XDG_STATE_HOME
@@ -52,6 +54,7 @@ func StatePaths() Paths {
 		Overrides:     filepath.Join(stateDir, "overrides.yaml"),
 		ActiveJournal: filepath.Join(stateDir, "active.json"),
 		EventsDir:     filepath.Join(stateDir, "events"),
+		Prefs:         filepath.Join(stateDir, "prefs.json"),
 	}
 }
 

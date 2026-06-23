@@ -166,10 +166,14 @@ func New(ws config.Workspace) Model {
 		w = watcher
 	}
 
+	prefs := config.LoadPrefs(sp.Prefs) // remembered diff-view toggles
+
 	return Model{
 		ws:             ws,
 		loading:        true,
 		view:           viewBrowser,
+		splitDiff:      prefs.SplitDiff,
+		diffVsTrunk:    prefs.DiffVsTrunk,
 		stacks:         make(map[string]map[string]gt.State),
 		stackLoading:   make(map[string]bool),
 		diffs:          make(map[string][]diff.RepoDiff),
@@ -797,9 +801,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleMouse routes wheel events to the pane under the cursor: the right pane
 // (diff) scrolls; over the left rail the wheel moves the panel/slice selection.
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if msg.Action != tea.MouseActionPress {
-		return m, nil
-	}
+	// Detect the wheel by button, not by Action — some terminals/tmux deliver
+	// wheel events with an Action other than Press, and gating on Press dropped
+	// them (mouse scroll appeared dead).
 	up := msg.Button == tea.MouseButtonWheelUp
 	down := msg.Button == tea.MouseButtonWheelDown
 	if !up && !down {
@@ -993,6 +997,14 @@ func slisCreateCmd(name string) tea.Cmd {
 	}
 	c := exec.Command(self, "create", name) //nolint:gosec
 	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
+// savePrefs persists the remembered UI toggles (best-effort).
+func (m Model) savePrefs() {
+	_ = config.SavePrefs(config.StatePaths().Prefs, config.Prefs{
+		SplitDiff:   m.splitDiff,
+		DiffVsTrunk: m.diffVsTrunk,
+	})
 }
 
 // slisAdoptCmd hands the terminal to the interactive `slis adopt` picker (which

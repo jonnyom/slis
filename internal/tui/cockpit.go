@@ -50,10 +50,10 @@ const (
 
 var (
 	panelBorderStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240"))
-	panelBorderFocusStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("212"))
+	panelBorderFocusStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("75"))
 	panelTitleStyle       = lipgloss.NewStyle().Faint(true)
-	panelTitleFocusStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	cockpitHeaderStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	panelTitleFocusStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
+	cockpitHeaderStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
 	cockpitDimStyle       = lipgloss.NewStyle().Faint(true)
 	statusErrStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 	selRowStyle           = lipgloss.NewStyle().Bold(true)
@@ -807,12 +807,14 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "t":
 		m.splitDiff = !m.splitDiff
+		m.savePrefs()
 		m.refreshRight()
 		return m, nil
 	case "b":
 		// Toggle the diff base: this branch's changes (vs Graphite parent) ↔ the
 		// whole feature (vs trunk). Reload the diff with the new base.
 		m.diffVsTrunk = !m.diffVsTrunk
+		m.savePrefs()
 		if sl, ok := m.currentSlice(); ok {
 			delete(m.diffs, sl.Name)
 		}

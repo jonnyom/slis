@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,7 +12,28 @@ import (
 
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/safeterm"
 )
+
+var (
+	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`) // <!-- linear linkback etc -->
+	htmlTagRe     = regexp.MustCompile(`<[^>]+>`)        // <a …>, <img …>, …
+	mdImageRe     = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	mdLinkRe      = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`) // keep the link text
+)
+
+// cleanCommentBody turns a raw PR comment body into a single readable line:
+// bot comments (Graphite, Linear) embed HTML and markdown that otherwise render
+// as garbage. Strips HTML comments/tags and markdown image/link syntax, then
+// collapses whitespace and removes terminal escapes.
+func cleanCommentBody(s string) string {
+	s = htmlCommentRe.ReplaceAllString(s, "")
+	s = mdImageRe.ReplaceAllString(s, "")
+	s = mdLinkRe.ReplaceAllString(s, "$1") // keep link text, drop the URL
+	s = htmlTagRe.ReplaceAllString(s, "")
+	s = safeterm.Strip(s)
+	return strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+}
 
 // prsLoadedMsg is sent when PR data for a slice has been loaded off the UI goroutine.
 type prsLoadedMsg struct {
@@ -102,13 +124,21 @@ func fixCICmd(sl model.Slice) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return nil })
 }
 
-// commentLine flattens a single comment from a PR into a displayable line.
+// commentLine flattens a single comment from a PR into a clean displayable line.
 func commentLine(repo string, pr *forge.PR, c forge.Comment) string {
-	firstLine := c.Body
-	if idx := strings.IndexByte(firstLine, '\n'); idx >= 0 {
-		firstLine = firstLine[:idx]
+	body := cleanCommentBody(c.Body)
+	if body == "" {
+		body = "(no text)"
 	}
-	return fmt.Sprintf("%s #%d %s: %s", repo, pr.Number, c.Author, firstLine)
+	const maxLen = 120
+	if r := []rune(body); len(r) > maxLen {
+		body = string(r[:maxLen-1]) + "…"
+	}
+	author := c.Author
+	if author == "" {
+		author = "?"
+	}
+	return fmt.Sprintf("%s #%d %s: %s", repo, pr.Number, author, body)
 }
 
 // flattenComments returns all comment lines across the focused slice's PRs, in repo order.
@@ -140,7 +170,7 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				Padding(0, 1).
 				BorderForeground(lipgloss.Color("99"))
-	commentsOverlaySelStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212")).Reverse(true)
+	commentsOverlaySelStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75")).Reverse(true)
 	commentsOverlayNormStyle = lipgloss.NewStyle()
 )
 

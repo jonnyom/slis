@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
 	focusStyle    = lipgloss.NewStyle().Bold(true)
 	footerStyle   = lipgloss.NewStyle().Faint(true)
-	cursorBar     = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	cursorBar     = lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
 	syncedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("35"))
 	overviewStyle = lipgloss.NewStyle().Faint(true)
 	headerStyle   = lipgloss.NewStyle().Faint(true)
@@ -28,11 +28,11 @@ var (
 	// unmissable (the old faint label was easy to overlook).
 	createChipStyle = lipgloss.NewStyle().Bold(true).
 			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("198")).
+			Background(lipgloss.Color("33")).
 			Padding(0, 1)
-	createNameStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("213"))
+	createNameStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117"))
 	waitStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // needs-input
-	doneStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true) // finished a turn — your move
+	doneStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("87")).Bold(true)  // finished a turn — your move (cyan)
 	liveStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
 	mergedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))            // a merged PR
 	readyStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag

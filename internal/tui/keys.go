@@ -72,7 +72,7 @@ var (
 			Padding(1, 2).
 			BorderForeground(lipgloss.Color("62"))
 
-	helpKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	helpKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
 	helpDescStyle = lipgloss.NewStyle().Faint(true)
 )
 
