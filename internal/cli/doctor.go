@@ -63,6 +63,14 @@ func doubledPrefixFinding(slice, repo, branch, prefix string) *doctorFinding {
 	}
 }
 
+// plural returns "s" unless n == 1.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // deDoubledBranch collapses a doubled strip_prefix to one (jonnyjonny/X →
 // jonny/X), or returns "" when the branch isn't doubled.
 func deDoubledBranch(branch, prefix string) string {
@@ -152,29 +160,33 @@ func runDoctor() []doctorFinding {
 		return append(findings, doctorFinding{Level: lvlInfo, Title: "no slices discovered"})
 	}
 
+	prefix := ws.Grouping.StripPrefix
 	sliceIssues := 0
 	for _, d := range dtos {
+		var members []phantomMember
 		for _, m := range d.Members {
-			f := doubledPrefixFinding(d.Name, m.Repo, m.Branch, ws.Grouping.StripPrefix)
-			if f == nil {
+			if !strings.HasPrefix(m.Branch, prefix+prefix) || prefix == "" {
 				continue
 			}
-			sliceIssues++
-			// Capture per-member values for the fixer.
-			primary := ws.Repos[m.Repo].Primary
-			wtPath := m.WorktreePath
-			branch := m.Branch
-			target := deDoubledBranch(branch, ws.Grouping.StripPrefix)
-
-			if target != "" {
-				f.Detail += fmt.Sprintf(" --fix will adopt %q if it exists, else remove the phantom worktree (branch kept).", target)
-				f.fixDesc = fmt.Sprintf("adopt %q into the worktree (or prune the phantom)", target)
-			} else {
-				f.fixDesc = "remove the phantom worktree (branch kept)"
-			}
-			f.fix = makeWorktreeFixer(primary, wtPath, branch, target)
-			findings = append(findings, *f)
+			members = append(members, phantomMember{
+				repo:    m.Repo,
+				primary: ws.Repos[m.Repo].Primary,
+				wtPath:  m.WorktreePath,
+				branch:  m.Branch,
+				target:  deDoubledBranch(m.Branch, prefix),
+			})
 		}
+		if len(members) == 0 {
+			continue
+		}
+		sliceIssues++
+		findings = append(findings, doctorFinding{
+			Level:   lvlFail,
+			Title:   fmt.Sprintf("doubled branch prefix: %s (%d repo%s)", d.Name, len(members), plural(len(members))),
+			Detail:  "branch has strip_prefix applied twice — matches no PR, not in Graphite. --fix removes the phantom worktree(s) and adopts the real branch where possible.",
+			fixDesc: "remove phantom worktrees / adopt the real branch",
+			fix:     makeSliceWorktreeFixer(members),
+		})
 	}
 	if sliceIssues == 0 {
 		findings = append(findings, doctorFinding{Level: lvlOK,
@@ -188,25 +200,60 @@ func runDoctor() []doctorFinding {
 // worktree is re-pointed to it; otherwise the phantom worktree is removed. All
 // git operations are non-force (uncommitted work blocks removal) and no branch
 // is ever deleted, so nothing commits are lost.
-func makeWorktreeFixer(primary, wtPath, branch, target string) func() (string, error) {
+// phantomMember is one doubled-prefix worktree to repair.
+type phantomMember struct {
+	repo, primary, wtPath, branch, target string
+}
+
+// fixDoubledWorktree repairs one phantom worktree and returns a short outcome
+// phrase. It removes the phantom worktree (non-force — uncommitted work blocks
+// it), then adopts the de-doubled real branch when that branch exists and is
+// free; if the real branch is checked out in the primary it's left there (with
+// an adopt --move hint). No branch is ever deleted.
+func fixDoubledWorktree(pm phantomMember) (string, error) {
+	canAdopt := pm.target != "" && branchExists(pm.primary, pm.target)
+	targetInPrimary := false
+	if canAdopt {
+		if cur, _ := git.CurrentBranch(pm.primary); cur == pm.target {
+			targetInPrimary, canAdopt = true, false
+		}
+	}
+	if err := git.RemoveWorktree(pm.primary, pm.wtPath, false); err != nil {
+		return "", fmt.Errorf("kept — worktree has local changes or is locked")
+	}
+	switch {
+	case canAdopt:
+		if _, err := git.Run(pm.primary, "worktree", "add", "--", pm.wtPath, pm.target); err != nil {
+			return "removed (real branch in use elsewhere — `slis adopt --move`)", nil
+		}
+		return "re-pointed to the real branch", nil
+	case targetInPrimary:
+		return "removed (real branch is in your primary — `slis adopt --move`)", nil
+	default:
+		return "removed phantom worktree", nil
+	}
+}
+
+// makeSliceWorktreeFixer repairs all of a slice's phantom worktrees and returns
+// one concise per-repo summary. It errors only if every repo failed.
+func makeSliceWorktreeFixer(members []phantomMember) func() (string, error) {
 	return func() (string, error) {
-		if target != "" && branchExists(primary, target) {
-			if err := git.RemoveWorktree(primary, wtPath, false); err != nil {
-				return "", fmt.Errorf("can't move worktree (uncommitted changes? locked?): %w", err)
+		lines := make([]string, 0, len(members))
+		failures := 0
+		for _, pm := range members {
+			outcome, err := fixDoubledWorktree(pm)
+			if err != nil {
+				failures++
+				lines = append(lines, fmt.Sprintf("%s: %v", pm.repo, err))
+				continue
 			}
-			if _, err := git.Run(primary, "worktree", "add", "--", wtPath, target); err != nil {
-				return "", fmt.Errorf("removed phantom worktree but couldn't attach %q (checked out elsewhere, e.g. the primary?): %w", target, err)
-			}
-			return fmt.Sprintf("re-pointed worktree → %q (phantom branch %q left)", target, branch), nil
+			lines = append(lines, fmt.Sprintf("%s: %s", pm.repo, outcome))
 		}
-		if err := git.RemoveWorktree(primary, wtPath, false); err != nil {
-			return "", fmt.Errorf("can't remove phantom worktree (uncommitted changes? locked?): %w", err)
+		msg := strings.Join(lines, "; ")
+		if failures == len(members) {
+			return "", fmt.Errorf("%s", msg)
 		}
-		note := "no correct-named branch found"
-		if target != "" {
-			note = fmt.Sprintf("%q not found", target)
-		}
-		return fmt.Sprintf("removed phantom worktree (branch %q kept; %s)", branch, note), nil
+		return msg, nil
 	}
 }
 

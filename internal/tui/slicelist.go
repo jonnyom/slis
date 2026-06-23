@@ -55,7 +55,7 @@ func renderEmptyState(m Model) string {
 		hdr += renderCreatePrompt(m.createName)
 	}
 	header := clip(hdr, m.width)
-	hint := "[c] new slice   [r] refresh   [?] help   [q] quit"
+	hint := "[c] new slice   [i] adopt branch   [r] refresh   [?] help   [q] quit"
 	if m.status != "" {
 		hint = m.status
 	}
@@ -77,8 +77,8 @@ func renderEmptyState(m Model) string {
 		b.WriteString(readyStyle.Render("✦  All clear — no active slices") + "\n\n")
 		b.WriteString("A slice is a feature's git worktrees across your repos.\n")
 		b.WriteString("Start one with a worktree on a feature branch:\n\n")
-		b.WriteString(readyStyle.Render("press [c]") + " to create one across all repos, or by hand:\n")
-		b.WriteString(codeStyle.Render("git -C <repo> worktree add .worktrees/<name> -b <name>") + "\n\n")
+		b.WriteString(readyStyle.Render("press [c]") + " to create a new slice, or " + readyStyle.Render("[i]") + " to adopt\n")
+		b.WriteString("an existing branch (e.g. work you started in a primary checkout).\n\n")
 		b.WriteString(overviewStyle.Render("workspace:  ") + strings.Join(repos, " · ") + "\n\n")
 		b.WriteString(overviewStyle.Render("…then [r] to refresh."))
 	}
