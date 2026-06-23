@@ -1,5 +1,6 @@
-// Package gt provides a read-only reader for Graphite stack metadata via
-// `gt state`. It never mutates any Graphite metadata — it only parses output.
+// Package gt reads Graphite stack metadata via `gt state` (read-only parsing).
+// The sole mutating operation is Restack (see restack.go), which rebases a
+// stack and is always invoked behind an explicit user confirmation.
 package gt
 
 import (

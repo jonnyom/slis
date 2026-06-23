@@ -244,8 +244,20 @@ func hubFilters() []hubFilter {
 		{"In review", func(m Model, s model.Slice) bool { return m.workState(s) == stInReview }},
 		{"Ready", func(m Model, s model.Slice) bool { return m.workState(s) == stReady }},
 		{"In progress", func(m Model, s model.Slice) bool { return m.workState(s) == stInProgress }},
+		{"Needs restack", func(m Model, s model.Slice) bool { c, ok := m.cards[s.Name]; return ok && c.restack > 0 }},
 		{"Live", func(_ Model, s model.Slice) bool { return s.Active }},
 	}
+}
+
+// restackCount counts slices with at least one branch needing a restack.
+func (m Model) restackCount() int {
+	n := 0
+	for _, s := range m.slices {
+		if c, ok := m.cards[s.Name]; ok && c.restack > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 func (m Model) filterCount(i int) int {
@@ -326,6 +338,9 @@ func renderBrowser(m Model) string {
 	}
 	if r := m.readyCount(); r > 0 {
 		head.WriteString("   " + readyStyle.Render(fmt.Sprintf("♻ %d ready", r)))
+	}
+	if rs := m.restackCount(); rs > 0 {
+		head.WriteString("   " + needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", rs)))
 	}
 	if m.naming {
 		head.WriteString("   " + headerStyle.Render("group name: ") + m.groupName + "▏")
@@ -472,6 +487,9 @@ func previewContent(m Model, sl model.Slice) string {
 	}
 	if m.sessionStatus[sl.Name] == model.SessWaitingInput {
 		tags = append(tags, waitStyle.Render("⏸ needs you"))
+	}
+	if c, ok := m.cards[sl.Name]; ok && c.restack > 0 {
+		tags = append(tags, needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", c.restack)))
 	}
 	if len(tags) > 0 {
 		sb.WriteString(strings.Join(tags, "  ") + "\n\n")
@@ -666,6 +684,9 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "d":
 		m.requestRemove()
+		return m, nil
+	case "R":
+		m.requestStack()
 		return m, nil
 	case " ":
 		if sl, ok := m.currentSlice(); ok {

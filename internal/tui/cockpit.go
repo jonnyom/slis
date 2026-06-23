@@ -211,7 +211,7 @@ func cockpitFooter(m Model) string {
 		if m.splitDiff {
 			split = "[t]unified"
 		}
-		hint = "[tab]panel [w]swap [s]ummary [a]ttach [o]pen [y]ank " + split + " [⏶⏷ ^d/^u]scroll [esc]back"
+		hint = "[tab]panel [w]swap [R]restack [s]ummary [a]ttach [o]pen [y]ank " + split + " [⏶⏷^d/^u]scroll [esc]back"
 	case panelProcs:
 		hint = "[tab]panel [j/k]select [x]kill [X]kill-tree [w]swap [a]ttach [esc]back"
 	case panelSession:
@@ -578,6 +578,21 @@ func renderSwapOverlay(m Model) string {
 	return helpBoxStyle.Render(sb.String())
 }
 
+// renderStackOverlay renders the restack/sync action modal.
+func renderStackOverlay(m Model) string {
+	if m.pendingStack == nil {
+		return ""
+	}
+	key := panelTitleFocusStyle.Render
+	var sb strings.Builder
+	sb.WriteString(cockpitHeaderStyle.Render("Stack actions — "+m.pendingStack.slice) + "\n\n")
+	sb.WriteString("Restack rebases each repo's branch onto its parent (slice-scoped; dirty\n")
+	sb.WriteString("worktrees skipped, conflicts left for you to resolve). Sync is repo-wide:\n")
+	sb.WriteString("it runs `gt sync` interactively (may overwrite trunk, delete merged branches).\n\n")
+	sb.WriteString(key("[r]") + " restack slice     " + key("[s]") + " sync repos (interactive)     " + key("[n]") + " cancel\n")
+	return helpBoxStyle.Render(sb.String())
+}
+
 // renderRemoveOverlay renders the clear-finished-slice confirmation modal.
 func renderRemoveOverlay(m Model) string {
 	if m.pendingRemove == nil {
@@ -747,6 +762,9 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "d":
 		m.requestRemove()
+		return m, nil
+	case "R":
+		m.requestStack()
 		return m, nil
 	case "t":
 		m.splitDiff = !m.splitDiff

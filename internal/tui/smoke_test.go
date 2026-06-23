@@ -117,6 +117,19 @@ func TestSmokeOverlaysAndSelection(t *testing.T) {
 	m = base
 	m.requestSwap()
 	_ = m.View()
+
+	// Stack (restack/sync) overlay.
+	m = base
+	m.requestStack()
+	if m.pendingStack == nil {
+		t.Fatal("requestStack should set pendingStack")
+	}
+	_ = m.View()
+
+	// "Needs restack" state filter (index 6) renders.
+	m = base
+	m.filterIdx = 6
+	_ = m.View()
 }
 
 // TestSmokeDump prints a 120x40 browser and cockpit for manual eyeballing

@@ -31,6 +31,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
+	"github.com/jonnyom/slis/internal/restack"
 	"github.com/jonnyom/slis/internal/summary"
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/internal/tmuxctl"
@@ -79,6 +80,9 @@ type Model struct {
 
 	// Pending slice-removal confirmation (clear a finished slice).
 	pendingRemove *removeReq
+
+	// Pending stack-action confirmation (restack / sync the focused slice).
+	pendingStack *stackReq
 
 	// Browser multi-select + group-naming for manual grouping.
 	selected  map[string]bool
@@ -448,6 +452,42 @@ func (m Model) ungroupCmd(name string) tea.Cmd {
 	}
 }
 
+// stackReq is a pending restack/sync confirmation for a slice.
+type stackReq struct{ slice string }
+
+// stackDoneMsg carries the outcome of an in-process restack.
+type stackDoneMsg struct{ report restack.Report }
+
+// restackCmd restacks the slice's stack across its repos IN-PROCESS (refusing
+// dirty worktrees) and reports the result.
+func (m Model) restackCmd(sliceName string) tea.Cmd {
+	var sl model.Slice
+	found := false
+	for _, s := range m.slices {
+		if s.Name == sliceName {
+			sl, found = s, true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	return func() tea.Msg {
+		return stackDoneMsg{report: restack.Run(sl, gt.Restack)}
+	}
+}
+
+// slisSyncCmd hands the terminal to `slis sync <slice>` (interactive `gt sync`
+// per repo) so the user can answer its delete/overwrite-trunk prompts.
+func slisSyncCmd(slice string) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	c := exec.Command(self, "sync", slice) //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
 // batchLoadAllPRs loads PR/CI data for every not-yet-loaded slice so CI status
 // is visible across the whole browser without visiting each row.
 func (m *Model) batchLoadAllPRs() tea.Cmd {
@@ -593,6 +633,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 
+	case stackDoneMsg:
+		conflict, dirty, done := "", "", 0
+		for _, r := range msg.report.Repos {
+			switch {
+			case r.Conflict && conflict == "":
+				conflict = r.Repo
+			case r.SkippedDirty && dirty == "":
+				dirty = r.Repo
+			case r.Restacked:
+				done++
+			}
+		}
+		switch {
+		case conflict != "":
+			m.status = "restack: conflict in " + conflict + " — attach (a), resolve, then `gt continue`"
+		case dirty != "":
+			m.status = "restack: " + dirty + " is dirty — commit or stash first"
+		default:
+			m.status = fmt.Sprintf("restacked %s (%d repos)", msg.report.Slice, done)
+		}
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.loadPreview())
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -608,6 +671,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.pendingRemove != nil {
 		return m.updateRemoveKeys(msg)
+	}
+	if m.pendingStack != nil {
+		return m.updateStackKeys(msg)
 	}
 	if m.showProcOverlay {
 		return m.updateOverlayKeys(msg)
@@ -732,6 +798,32 @@ func (m Model) updateRemoveKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// requestStack sets up the restack/sync confirmation for the focused slice.
+func (m *Model) requestStack() {
+	if sl, ok := m.currentSlice(); ok {
+		m.pendingStack = &stackReq{slice: sl.Name}
+	}
+}
+
+// updateStackKeys handles the restack/sync prompt.
+func (m Model) updateStackKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	slice := m.pendingStack.slice
+	switch msg.String() {
+	case "r":
+		m.pendingStack = nil
+		// Invalidate cached stack/card so badges refresh after the restack.
+		delete(m.stacks, slice)
+		delete(m.cards, slice)
+		return m, m.restackCmd(slice)
+	case "s":
+		m.pendingStack = nil
+		return m, slisSyncCmd(slice)
+	case "n", "esc":
+		m.pendingStack = nil
+	}
+	return m, nil
+}
+
 // updateOverlayKeys handles key events while the proc overlay is open.
 func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	n := len(m.overlayProcs)
@@ -813,6 +905,9 @@ func (m Model) View() string {
 	}
 	if m.pendingRemove != nil {
 		return renderRemoveOverlay(m)
+	}
+	if m.pendingStack != nil {
+		return renderStackOverlay(m)
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)
