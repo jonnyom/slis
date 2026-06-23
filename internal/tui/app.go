@@ -78,6 +78,10 @@ type Model struct {
 	filterIdx int
 	hubFocus  int // 0 = slices list, 1 = states rail
 
+	// previewScroll is the line offset of the hub preview pane (reset to 0 when
+	// the focused slice changes; advanced by the scroll keys).
+	previewScroll int
+
 	// Pending slice-swap confirmation (activate/deactivate the focused slice).
 	pendingSwap *swapReq
 

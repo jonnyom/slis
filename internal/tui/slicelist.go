@@ -519,7 +519,14 @@ func renderBrowser(m Model) string {
 	preview := overviewStyle.Render("no slices match this filter")
 	if sl, ok := m.previewSlice(vis); ok {
 		title = sl.Name
-		preview = previewContent(m, sl)
+		lines := strings.Split(previewContent(m, sl), "\n")
+		innerH := m.previewInnerHeight()
+		off := clamp(m.previewScroll, 0, max(0, len(lines)-innerH))
+		end := min(off+innerH, len(lines))
+		preview = strings.Join(lines[off:end], "\n")
+		if len(lines) > innerH { // show scroll position + hint when it overflows
+			title = fmt.Sprintf("%s   %d–%d/%d · ^d/^u scroll", sl.Name, off+1, end, len(lines))
+		}
 	}
 	rightBox := panelBox(title, preview, rightW, bodyH, true)
 
@@ -630,10 +637,29 @@ func previewContent(m Model, sl model.Slice) string {
 		tags = append(tags, needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", c.restack)))
 	}
 	if len(tags) > 0 {
-		sb.WriteString(strings.Join(tags, "  ") + "\n\n")
+		sb.WriteString(strings.Join(tags, "  ") + "\n")
 	}
 
 	prefix := m.ws.Grouping.StripPrefix
+
+	// Warn loudly if any member is on a doubled-prefix (phantom) branch — that's
+	// why the diff/PR look wrong. Tells the user how to recover.
+	phantom := false
+	if prefix != "" {
+		for _, repo := range sl.Repos() {
+			if strings.HasPrefix(sl.Members[repo].Branch, prefix+prefix) {
+				phantom = true
+				break
+			}
+		}
+	}
+	if phantom {
+		sb.WriteString(waitStyle.Render("⚠ doubled-prefix branch (phantom) — diff/PR won't match. Fix: `slis doctor --fix`") + "\n")
+	}
+	if len(tags) > 0 || phantom {
+		sb.WriteString("\n")
+	}
+
 	slicePRs := m.prs[sl.Name]
 	for _, repo := range sl.Repos() {
 		mem := sl.Members[repo]
@@ -684,14 +710,10 @@ func previewContent(m Model, sl model.Slice) string {
 				sb.WriteString(diffHdrStyle.Render("▸ "+rd.Repo) + " " +
 					overviewStyle.Render("no changes vs "+base) + "\n")
 			default:
+				// Full patch — the preview pane scrolls (^d/^u), so no cap.
 				sb.WriteString(diffHdrStyle.Render(fmt.Sprintf("▸ %s  +%d -%d · vs %s",
 					rd.Repo, rd.TotalAdded(), rd.TotalDeleted(), base)) + "\n")
-				body, more := headLines(colorizePatch(rd.Patch), 10)
-				sb.WriteString(body + "\n")
-				if more > 0 {
-					sb.WriteString(overviewStyle.Render(
-						fmt.Sprintf("    … %d more lines — [enter] for full diff", more)) + "\n")
-				}
+				sb.WriteString(colorizePatch(rd.Patch) + "\n")
 			}
 		}
 	}
@@ -869,6 +891,12 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focus = vis[len(vis)-1]
 			return m, m.loadPreview()
 		}
+	case "ctrl+d", "pgdown":
+		m.previewScroll = m.clampPreviewScroll(m.previewScroll + m.previewInnerHeight()/2)
+		return m, nil
+	case "ctrl+u", "pgup":
+		m.previewScroll = m.clampPreviewScroll(m.previewScroll - m.previewInnerHeight()/2)
+		return m, nil
 	case "enter", "l", "right":
 		if _, ok := m.currentSlice(); ok {
 			return m, m.enterCockpit()
@@ -975,5 +1003,40 @@ func (m *Model) snapFocusToFilter() {
 // loadPreview lazily loads the stack, diff, PRs and tmux capture for the focused
 // slice so the right-hand preview pane can render it.
 func (m *Model) loadPreview() tea.Cmd {
+	m.previewScroll = 0 // new focus → start the preview at the top
 	return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.maybeLoadPRs(), m.maybeLoadCapture()})...)
+}
+
+// previewInnerHeight is the number of content lines the hub preview pane shows
+// (panel height minus borders and the title line).
+func (m Model) previewInnerHeight() int {
+	bodyH := m.height - 2
+	if bodyH < 6 {
+		bodyH = 6
+	}
+	if h := bodyH - 3; h > 1 {
+		return h
+	}
+	return 1
+}
+
+// clampPreviewScroll keeps a preview scroll offset within [0, maxOffset] for the
+// currently-focused slice's content.
+func (m Model) clampPreviewScroll(v int) int {
+	if v < 0 {
+		return 0
+	}
+	sl, ok := m.previewSlice(m.hubVisible())
+	if !ok {
+		return 0
+	}
+	total := strings.Count(previewContent(m, sl), "\n") + 1
+	maxOff := total - m.previewInnerHeight()
+	if maxOff < 0 {
+		maxOff = 0
+	}
+	if v > maxOff {
+		return maxOff
+	}
+	return v
 }

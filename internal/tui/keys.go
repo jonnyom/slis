@@ -21,6 +21,7 @@ var browserBindings = []Binding{
 	{[]string{"1-8"}, "jump to a state filter (Inbox is 8; All / Needs you / Ready / …)"},
 	{[]string{"g", "G"}, "first / last slice"},
 	{[]string{"enter", "l"}, "open slice cockpit"},
+	{[]string{"^d/^u", "pgdn/pgup"}, "scroll the preview pane (diff / session output)"},
 	{[]string{"c"}, "create a new slice (worktrees across repos)"},
 	{[]string{"i"}, "adopt an existing branch as a slice (interactive picker)"},
 	{[]string{"C"}, "launch the agent (claude) in the session + attach"},
