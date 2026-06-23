@@ -22,12 +22,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/jonnyom/slis/internal/cleanup"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/summary"
 	"github.com/jonnyom/slis/internal/swap"
@@ -352,19 +354,48 @@ func slisSwapCmd(req swapReq, stash bool) tea.Cmd {
 // removeReq is a pending "clear this finished slice" confirmation.
 type removeReq struct{ slice string }
 
-// slisRemoveCmd shells out to `slis rm <slice>` to clear a finished slice,
-// reusing the CLI cleanup engine. ExecProcess shows its report/errors.
-func slisRemoveCmd(slice string, force bool) tea.Cmd {
-	self, err := os.Executable()
-	if err != nil {
+// removeDoneMsg carries the outcome of an in-process slice removal.
+type removeDoneMsg struct {
+	report cleanup.Report
+	ok     bool // every member worktree was removed
+}
+
+// removeCmd clears a finished slice IN-PROCESS (no subprocess / alt-screen
+// flash) so the result can be shown in the status line. On full success it also
+// clears the slice's grouping override and status file.
+func (m Model) removeCmd(sliceName string, force bool) tea.Cmd {
+	var sl model.Slice
+	found := false
+	for _, s := range m.slices {
+		if s.Name == sliceName {
+			sl, found = s, true
+			break
+		}
+	}
+	if !found {
 		return nil
 	}
-	args := []string{"rm", slice}
-	if force {
-		args = append(args, "--force")
+	ws := m.ws
+	return func() tea.Msg {
+		rep := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: force})
+		ok := len(rep.Repos) > 0
+		for _, r := range rep.Repos {
+			if r.Err != "" {
+				ok = false
+			}
+		}
+		if ok {
+			sp := config.StatePaths()
+			if ov, err := discovery.LoadOverrides(sp.Overrides); err == nil {
+				if _, present := ov[sliceName]; present {
+					delete(ov, sliceName)
+					_ = discovery.SaveOverrides(sp.Overrides, ov)
+				}
+			}
+			_ = notify.RemoveStatus(sp.EventsDir, sliceName)
+		}
+		return removeDoneMsg{report: rep, ok: ok}
 	}
-	c := exec.Command(self, args...) //nolint:gosec
-	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
 // groupSelectedCmd writes a grouping override that merges the browser's selected
@@ -541,6 +572,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 
+	case removeDoneMsg:
+		if msg.ok {
+			m.status = "cleared " + msg.report.Slice
+			m.view = viewBrowser // the slice is gone; return to the hub
+		} else {
+			m.status = "clear failed — dirty worktree or unmerged branch; press d then f to force"
+			for _, r := range msg.report.Repos {
+				if r.Err != "" {
+					m.status = fmt.Sprintf("clear failed (%s): dirty/locked — press d then f to force", r.Repo)
+					break
+				}
+			}
+		}
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -670,10 +717,10 @@ func (m Model) updateRemoveKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
 		m.pendingRemove = nil
-		return m, slisRemoveCmd(slice, false)
+		return m, m.removeCmd(slice, false)
 	case "f":
 		m.pendingRemove = nil
-		return m, slisRemoveCmd(slice, true)
+		return m, m.removeCmd(slice, true)
 	case "n", "esc":
 		m.pendingRemove = nil
 	}

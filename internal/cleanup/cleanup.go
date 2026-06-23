@@ -64,6 +64,7 @@ func PlanRemove(sl model.Slice, opts Options) Plan {
 func Remove(ws config.Workspace, sl model.Slice, opts Options) Report {
 	rep := Report{Slice: sl.Name}
 
+	allRemoved := len(sl.Repos()) > 0
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
 		res := RepoResult{Repo: repo, Branch: m.Branch}
@@ -71,6 +72,7 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) Report {
 
 		if err := git.RemoveWorktree(primary, m.WorktreePath, opts.Force); err != nil {
 			res.Err = err.Error()
+			allRemoved = false
 			rep.Repos = append(rep.Repos, res)
 			continue
 		}
@@ -86,8 +88,9 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) Report {
 		rep.Repos = append(rep.Repos, res)
 	}
 
-	// Kill the tmux session best-effort (a finished slice should not keep one).
-	if tmuxctl.Available() {
+	// Kill the tmux session only when every worktree was removed — a failed or
+	// partial clear must not destroy a session the user may still be working in.
+	if allRemoved && tmuxctl.Available() {
 		if err := tmuxctl.KillSession(sl.Name); err == nil {
 			rep.SessionKilled = true
 		}
