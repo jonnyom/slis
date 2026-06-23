@@ -161,20 +161,7 @@ func (m *Model) batchLoadCards() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// filteredIndices returns the indices into m.slices that match the active
-// filter, in order. An empty filter matches everything.
-func (m Model) filteredIndices() []int {
-	var out []int
-	f := strings.ToLower(m.filter)
-	for i, s := range m.slices {
-		if f == "" || strings.Contains(strings.ToLower(s.Name), f) {
-			out = append(out, i)
-		}
-	}
-	return out
-}
-
-// posInFiltered returns the position of m.focus within the filtered list, or -1.
+// posInFiltered returns the position of focus within an index list, or -1.
 func posInFiltered(idxs []int, focus int) int {
 	for p, i := range idxs {
 		if i == focus {
@@ -183,17 +170,6 @@ func posInFiltered(idxs []int, focus int) int {
 	}
 	return -1
 }
-
-// browserCols returns the column widths for the browser table given total width.
-func browserCols(w int) (nameW, reposW, stackW, prW int) {
-	reposW, stackW, prW = 22, 13, 12
-	nameW = w - 2 - reposW - stackW - prW - 9 - 4 // cursor(2) + session(9) + 4 gaps
-	nameW = clamp(nameW, 18, 60)
-	return
-}
-
-// padCol clips a (possibly styled) cell to w cells and left-pads to width w.
-func padCol(s string, w int) string { return padCell(clip(s, w), w) }
 
 // waitingCount counts slices whose session is waiting for input.
 func (m Model) waitingCount() int {
@@ -216,12 +192,129 @@ func (m Model) activeName() string {
 	return ""
 }
 
-// renderBrowser renders the slice browser (landing screen / project hub).
-func renderBrowser(m Model) string {
-	idxs := m.filteredIndices()
-	nameW, reposW, stackW, prW := browserCols(m.width)
+// ── Slice lifecycle state (drives the dashboard's state-filter rail) ─────────
 
-	// ── Top header: identity, live slice, needs-input, filter. ──
+type sliceState int
+
+const (
+	stInProgress sliceState = iota // worktree/commits, no open PR yet
+	stNeedsYou                     // Claude waiting for input, or CI failing
+	stInReview                     // open PR, CI not failing — awaiting review/merge
+	stReady                        // all PRs merged — ready to clear
+)
+
+// workState classifies a slice for the state filters, using data already loaded.
+func (m Model) workState(s model.Slice) sliceState {
+	if m.sessionStatus[s.Name] == model.SessWaitingInput {
+		return stNeedsYou
+	}
+	if m.sliceMergeState(s) == mergeReady {
+		return stReady
+	}
+	if slicePRs, ok := m.prs[s.Name]; ok {
+		hasOpen := false
+		for _, repo := range s.Repos() {
+			pr := slicePRs[repo]
+			if pr == nil {
+				continue
+			}
+			if overall, _, _, _ := pr.CISummary(); overall == forge.CheckFail {
+				return stNeedsYou
+			}
+			if strings.EqualFold(pr.State, "OPEN") {
+				hasOpen = true
+			}
+		}
+		if hasOpen {
+			return stInReview
+		}
+	}
+	return stInProgress
+}
+
+type hubFilter struct {
+	label string
+	match func(m Model, s model.Slice) bool
+}
+
+func hubFilters() []hubFilter {
+	return []hubFilter{
+		{"All", func(Model, model.Slice) bool { return true }},
+		{"Needs you", func(m Model, s model.Slice) bool { return m.workState(s) == stNeedsYou }},
+		{"In review", func(m Model, s model.Slice) bool { return m.workState(s) == stInReview }},
+		{"Ready", func(m Model, s model.Slice) bool { return m.workState(s) == stReady }},
+		{"In progress", func(m Model, s model.Slice) bool { return m.workState(s) == stInProgress }},
+		{"Live", func(_ Model, s model.Slice) bool { return s.Active }},
+	}
+}
+
+func (m Model) filterCount(i int) int {
+	fs := hubFilters()
+	if i < 0 || i >= len(fs) {
+		return 0
+	}
+	n := 0
+	for _, s := range m.slices {
+		if fs[i].match(m, s) {
+			n++
+		}
+	}
+	return n
+}
+
+// hubVisible returns indices into m.slices matching the active state filter AND
+// the text filter, in order.
+func (m Model) hubVisible() []int {
+	fs := hubFilters()
+	filt := fs[clamp(m.filterIdx, 0, len(fs)-1)]
+	f := strings.ToLower(m.filter)
+	var out []int
+	for i, s := range m.slices {
+		if f != "" && !strings.Contains(strings.ToLower(s.Name), f) {
+			continue
+		}
+		if !filt.match(m, s) {
+			continue
+		}
+		out = append(out, i)
+	}
+	return out
+}
+
+// previewSlice returns the slice to preview (the focused one if visible, else
+// the first visible).
+func (m Model) previewSlice(vis []int) (model.Slice, bool) {
+	for _, i := range vis {
+		if i == m.focus {
+			return m.slices[i], true
+		}
+	}
+	if len(vis) > 0 {
+		return m.slices[vis[0]], true
+	}
+	return model.Slice{}, false
+}
+
+// renderBrowser renders the dashboard hub: a pulse bar, a state-filter rail +
+// slice list on the left, and a live preview of the selected slice on the right.
+func renderBrowser(m Model) string {
+	// Pre-resize / headless (no known terminal size): a simple list of all
+	// visible slices, so the first frame and tests render sensibly.
+	if m.width <= 0 || m.height <= 0 {
+		var sb strings.Builder
+		sb.WriteString(titleStyle.Render("slis") + headerStyle.Render(fmt.Sprintf("  ·  %d slices", len(m.slices))) + "\n\n")
+		for _, i := range m.hubVisible() {
+			s := m.slices[i]
+			marker := "  "
+			if i == m.focus {
+				marker = cursorBar.Render("▎") + " "
+			}
+			sb.WriteString(marker + sliceGlyph(m, s) + " " + s.Name + "\n")
+		}
+		return sb.String()
+	}
+
+	// ── Pulse bar. ──
 	var head strings.Builder
 	head.WriteString(titleStyle.Render("slis"))
 	head.WriteString(headerStyle.Render(fmt.Sprintf("  ·  %d slices", len(m.slices))))
@@ -229,182 +322,204 @@ func renderBrowser(m Model) string {
 		head.WriteString("   " + liveStyle.Render("● live: "+live))
 	}
 	if w := m.waitingCount(); w > 0 {
-		head.WriteString("   " + waitStyle.Render(fmt.Sprintf("⏸ %d need input", w)))
+		head.WriteString("   " + waitStyle.Render(fmt.Sprintf("⏸ %d need you", w)))
 	}
 	if r := m.readyCount(); r > 0 {
-		head.WriteString("   " + readyStyle.Render(fmt.Sprintf("♻ %d ready to clear", r)))
+		head.WriteString("   " + readyStyle.Render(fmt.Sprintf("♻ %d ready", r)))
 	}
-	if m.filtering || m.filter != "" {
+	if m.naming {
+		head.WriteString("   " + headerStyle.Render("group name: ") + m.groupName + "▏")
+	} else if n := len(m.selected); n > 0 {
+		head.WriteString("   " + focusStyle.Render(fmt.Sprintf("%d selected", n)))
+	} else if m.filtering || m.filter != "" {
 		cur := ""
 		if m.filtering {
 			cur = "▏"
 		}
 		head.WriteString("   " + headerStyle.Render("/") + m.filter + cur)
 	}
-	if n := len(m.selected); n > 0 {
-		head.WriteString("   " + focusStyle.Render(fmt.Sprintf("%d selected", n)))
-	}
-	if m.naming {
-		head.WriteString("   " + headerStyle.Render("group name: ") + m.groupName + "▏")
-	}
-	header := clip(head.String(), m.width)
+	top := clip(head.String(), m.width)
 
-	// ── Column header row. ──
-	colHead := colHeadStyle.Render(
-		"  " + padCol("SLICE", nameW) + " " + padCol("REPOS", reposW) + " " +
-			padCol("STACK", stackW) + " " + padCol("PR", prW) + " " + "SESSION")
-	rule := footerStyle.Render(strings.Repeat("─", clamp(m.width, 1, m.width)))
-
-	footerText := "enter open · space select · m group · u ungroup · w live · d clear · Y copy · / filter · ? help"
+	footerText := "tab focus · j/k move · enter open · w live · d clear · space select · m group · / search · ? help"
 	if m.status != "" {
 		footerText = m.status
 	}
 	footer := clip(footerStyle.Render(footerText), m.width)
 
 	if len(m.slices) == 0 {
-		return header + "\n\n  No slices found. Run 'slis init' to set up your workspace.\n\n" + footer
-	}
-	if len(idxs) == 0 {
-		return header + "\n\n" + colHead + "\n" + rule + "\n  " +
-			overviewStyle.Render("no slices match /"+m.filter) + "\n\n" + footer
+		return top + "\n\n  No slices found. Run 'slis init' to set up your workspace.\n\n" + footer
 	}
 
-	// Adaptive vertical density: 3 lines/card (with a blank separator) when the
-	// terminal is tall enough, else a compact 2 lines/card.
-	perCard := 2
-	visible := len(idxs)
-	if m.height > 0 {
-		bodyH := m.height - 4 // header(2) + colhead+rule(2)... leave room for footer
-		if bodyH < 2 {
-			bodyH = 2
-		}
-		if bodyH >= len(idxs)*3 {
-			perCard = 3
-		}
-		visible = bodyH / perCard
-		if visible < 1 {
-			visible = 1
-		}
+	leftW := clamp(m.width/4, 20, 30)
+	rightW := m.width - leftW
+	bodyH := m.height - 2
+	if bodyH < 6 {
+		bodyH = 6
 	}
 
-	pos := posInFiltered(idxs, m.focus)
-	if pos < 0 {
-		pos = 0
+	filters := hubFilters()
+	statesH := len(filters) + 2
+	if statesH > bodyH-4 {
+		statesH = bodyH - 4
 	}
-	start := clamp(pos-visible/2, 0, max(0, len(idxs)-visible))
-	end := min(start+visible, len(idxs))
+	slicesH := bodyH - statesH
 
-	var body strings.Builder
-	for _, i := range idxs[start:end] {
-		body.WriteString(renderCard(m, i, i == m.focus, perCard == 3))
+	vis := m.hubVisible()
+	statesBox := panelBox("States", statesContent(m), leftW, statesH, m.hubFocus == 1)
+	slicesBox := panelBox(fmt.Sprintf("Slices %d", len(vis)), slicesContent(m, vis, slicesH-2), leftW, slicesH, m.hubFocus == 0)
+	left := lipgloss.JoinVertical(lipgloss.Left, statesBox, slicesBox)
+
+	title := "—"
+	preview := overviewStyle.Render("no slices match this filter")
+	if sl, ok := m.previewSlice(vis); ok {
+		title = sl.Name
+		preview = previewContent(m, sl)
 	}
+	rightBox := panelBox(title, preview, rightW, bodyH, true)
 
-	return header + "\n\n" + colHead + "\n" + rule + "\n" +
-		strings.TrimRight(body.String(), "\n") + "\n" + footer
+	body := lipgloss.JoinHorizontal(lipgloss.Top, left, rightBox)
+	return top + "\n" + body + "\n" + footer
 }
 
-// renderCard renders one slice row: an identity+status line, then a dim overview
-// line, optionally followed by a blank spacer line for breathing room.
-func renderCard(m Model, idx int, focused, spacer bool) string {
-	s := m.slices[idx]
-	nameW, reposW, stackW, prW := browserCols(m.width)
-
-	cursor := "  "
-	switch {
-	case m.selected[s.Name]:
-		cursor = syncedStyle.Render("✓") + " "
-	case focused:
-		cursor = cursorBar.Render("▎") + " "
-	}
-
-	status := model.SessNone
-	if m.sessionStatus != nil {
-		status = m.sessionStatus[s.Name]
-	}
-
-	// Name cell, marked when this slice is the live (swapped-in) one.
-	disp := s.Name
-	if s.Active {
-		disp = "● " + s.Name
-	}
-	nameCell := clip(disp, nameW)
-	switch {
-	case s.Active:
-		nameCell = liveStyle.Render(nameCell)
-	case focused:
-		nameCell = focusStyle.Render(nameCell)
-	}
-	nameCell = padCell(nameCell, nameW)
-
-	line1 := cursor + nameCell + " " +
-		padCol(repoTags(s), reposW) + " " +
-		padCol(stackBadge(m, s), stackW) + " " +
-		padCol(prBadge(m, s), prW) + " " +
-		padCol(sessionCell(status), 9)
-	if m.sliceMergeState(s) == mergeReady {
-		line1 += "  " + readyStyle.Render("♻ ready to clear")
-	}
-
-	out := clip(line1, m.width) + "\n" + clip("    "+overviewStyle.Render(cardOverview(m, s)), m.width) + "\n"
-	if spacer {
-		out += "\n"
-	}
-	return out
-}
-
-// repoTags lists the slice's member repos by name (the columns header is REPOS).
-func repoTags(s model.Slice) string {
-	return strings.Join(s.Repos(), " ")
-}
-
-// stackBadge renders the slice's stack health from its card, in words.
-func stackBadge(m Model, s model.Slice) string {
-	c, ok := m.cards[s.Name]
-	if !ok {
-		return overviewStyle.Render("…")
-	}
-	if !c.stackKnown {
-		return overviewStyle.Render("—")
-	}
-	if c.restack == 0 {
-		return syncedStyle.Render("✓ synced")
-	}
-	return needsRestackStyle.Render(fmt.Sprintf("⚠ %d restack", c.restack))
-}
-
-// prBadge renders PR + CI for the slice (first repo with a PR).
-func prBadge(m Model, s model.Slice) string {
-	slicePRs, ok := m.prs[s.Name]
-	if !ok {
-		if m.prLoading[s.Name] {
-			return overviewStyle.Render("…")
+// statesContent renders the state-filter rail with per-state counts.
+func statesContent(m Model) string {
+	var sb strings.Builder
+	for i, f := range hubFilters() {
+		marker := "  "
+		if i == m.filterIdx {
+			marker = "▸ "
 		}
-		return overviewStyle.Render("—")
+		row := fmt.Sprintf("%s%-11s %2d", marker, f.label, m.filterCount(i))
+		if i == m.filterIdx {
+			row = focusStyle.Render(row)
+		}
+		sb.WriteString(row + "\n")
 	}
-	for _, repo := range s.Repos() {
-		if pr := slicePRs[repo]; pr != nil {
-			if strings.EqualFold(pr.State, "MERGED") {
-				return mergedStyle.Render(fmt.Sprintf("#%d merged", pr.Number))
-			}
-			overall, _, _, _ := pr.CISummary()
-			return fmt.Sprintf("#%d %s", pr.Number, forge.CIEmoji(overall))
+	return sb.String()
+}
+
+// slicesContent renders the (filtered) slice list, windowed around the selection.
+func slicesContent(m Model, vis []int, rows int) string {
+	if len(vis) == 0 {
+		return overviewStyle.Render("(none)")
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	pos := 0
+	for p, i := range vis {
+		if i == m.focus {
+			pos = p
+			break
 		}
 	}
-	return overviewStyle.Render("no PR")
+	start := clamp(pos-rows/2, 0, max(0, len(vis)-rows))
+	end := min(start+rows, len(vis))
+
+	var sb strings.Builder
+	for _, i := range vis[start:end] {
+		s := m.slices[i]
+		marker := "  "
+		switch {
+		case m.selected[s.Name]:
+			marker = syncedStyle.Render("✓") + " "
+		case i == m.focus:
+			marker = cursorBar.Render("▎") + " "
+		}
+		name := s.Name
+		if s.Active {
+			name = "●" + name
+		}
+		if i == m.focus {
+			name = focusStyle.Render(name)
+		}
+		sb.WriteString(marker + sliceGlyph(m, s) + " " + name + "\n")
+	}
+	return sb.String()
 }
 
-// sessionCell renders the session status as glyph + word, highlighting "wait".
-func sessionCell(s model.SessionStatus) string {
-	switch s {
-	case model.SessWaitingInput:
-		return waitStyle.Render("⏸ wait")
-	case model.SessRunning:
-		return "● run"
-	case model.SessDone:
-		return syncedStyle.Render("✓ done")
+// sliceGlyph is the compact status glyph for a slice in the list.
+func sliceGlyph(m Model, s model.Slice) string {
+	switch m.workState(s) {
+	case stNeedsYou:
+		if m.sessionStatus[s.Name] == model.SessWaitingInput {
+			return waitStyle.Render("⏸")
+		}
+		return "❌"
+	case stReady:
+		return readyStyle.Render("♻")
+	case stInReview:
+		return syncedStyle.Render("✓")
 	default:
-		return overviewStyle.Render("○ idle")
+		if m.sessionStatus[s.Name] == model.SessRunning {
+			return "●"
+		}
+		return overviewStyle.Render("·")
 	}
+}
+
+// previewContent renders a live mini-cockpit for the selected slice: tags, each
+// repo's branch + PR/CI, the overview, and a snippet of recent changes.
+func previewContent(m Model, sl model.Slice) string {
+	var sb strings.Builder
+
+	var tags []string
+	if sl.Active {
+		tags = append(tags, liveStyle.Render("● live"))
+	}
+	if m.sliceMergeState(sl) == mergeReady {
+		tags = append(tags, readyStyle.Render("♻ ready to clear"))
+	}
+	if m.sessionStatus[sl.Name] == model.SessWaitingInput {
+		tags = append(tags, waitStyle.Render("⏸ needs you"))
+	}
+	if len(tags) > 0 {
+		sb.WriteString(strings.Join(tags, "  ") + "\n\n")
+	}
+
+	prefix := m.ws.Grouping.StripPrefix
+	slicePRs := m.prs[sl.Name]
+	for _, repo := range sl.Repos() {
+		mem := sl.Members[repo]
+		sb.WriteString(repoHeaderStyle.Render(repo) + "  " + overviewStyle.Render(shortBranch(mem.Branch, prefix)))
+		if slicePRs != nil {
+			if pr := slicePRs[repo]; pr != nil {
+				if strings.EqualFold(pr.State, "MERGED") {
+					sb.WriteString("  " + mergedStyle.Render(fmt.Sprintf("#%d merged", pr.Number)))
+				} else {
+					overall, _, _, _ := pr.CISummary()
+					sb.WriteString(fmt.Sprintf("  #%d %s 💬%d", pr.Number, forge.CIEmoji(overall), len(pr.Comments)))
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n" + overviewStyle.Render(cardOverview(m, sl)) + "\n")
+
+	sb.WriteString("\n" + colHeadStyle.Render("── recent changes ──") + "\n")
+	switch {
+	case m.diffLoading[sl.Name]:
+		sb.WriteString(overviewStyle.Render("loading diff…"))
+	default:
+		diffs, ok := m.diffs[sl.Name]
+		if !ok {
+			sb.WriteString(overviewStyle.Render("select to load…"))
+			break
+		}
+		shown := false
+		for _, rd := range diffs {
+			if rd.Patch != "" {
+				sb.WriteString(diffHdrStyle.Render("▸ "+rd.Repo) + "\n" + colorizePatch(rd.Patch))
+				shown = true
+				break
+			}
+		}
+		if !shown {
+			sb.WriteString(overviewStyle.Render("no changes vs trunk"))
+		}
+	}
+	return sb.String()
 }
 
 // cardOverview returns the one-line "what is this slice about" text: the PR
@@ -440,8 +555,9 @@ func plural(n int) string {
 	return "s"
 }
 
-// updateBrowserKeys handles key events while the browser is showing.
+// updateBrowserKeys handles key events while the dashboard hub is showing.
 func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Text-search input.
 	if m.filtering {
 		switch msg.Type {
 		case tea.KeyEnter:
@@ -457,7 +573,7 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filter += string(msg.Runes)
 		}
 		m.snapFocusToFilter()
-		return m, m.loadFocusedPRs()
+		return m, m.loadPreview()
 	}
 
 	// Group-name input mode (after selecting slices with space, pressing m).
@@ -470,7 +586,7 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if name != "" && len(m.selected) > 0 {
 				cmd := m.groupSelectedCmd(name)
 				m.selected = make(map[string]bool)
-				m.focus = 0 // grouped slice list changes; reset to top
+				m.focus = 0
 				return m, cmd
 			}
 		case tea.KeyEsc:
@@ -486,8 +602,9 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	idxs := m.filteredIndices()
-	pos := posInFiltered(idxs, m.focus)
+	vis := m.hubVisible()
+	pos := posInFiltered(vis, m.focus)
+	nFilters := len(hubFilters())
 
 	switch msg.String() {
 	case "/":
@@ -499,25 +616,44 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.snapFocusToFilter()
 		}
 		return m, nil
+	case "tab", "shift+tab":
+		m.hubFocus = (m.hubFocus + 1) % 2
+		return m, nil
 	case "j", "down":
-		if pos >= 0 && pos < len(idxs)-1 {
-			m.focus = idxs[pos+1]
-			return m, m.loadFocusedPRs()
+		if m.hubFocus == 1 {
+			m.filterIdx = clamp(m.filterIdx+1, 0, nFilters-1)
+			m.snapFocusToFilter()
+			return m, m.loadPreview()
+		}
+		if pos >= 0 && pos < len(vis)-1 {
+			m.focus = vis[pos+1]
+			return m, m.loadPreview()
 		}
 	case "k", "up":
+		if m.hubFocus == 1 {
+			m.filterIdx = clamp(m.filterIdx-1, 0, nFilters-1)
+			m.snapFocusToFilter()
+			return m, m.loadPreview()
+		}
 		if pos > 0 {
-			m.focus = idxs[pos-1]
-			return m, m.loadFocusedPRs()
+			m.focus = vis[pos-1]
+			return m, m.loadPreview()
+		}
+	case "1", "2", "3", "4", "5", "6":
+		if idx := int(msg.String()[0] - '1'); idx < nFilters {
+			m.filterIdx = idx
+			m.snapFocusToFilter()
+			return m, m.loadPreview()
 		}
 	case "g":
-		if len(idxs) > 0 {
-			m.focus = idxs[0]
-			return m, m.loadFocusedPRs()
+		if len(vis) > 0 {
+			m.focus = vis[0]
+			return m, m.loadPreview()
 		}
 	case "G":
-		if len(idxs) > 0 {
-			m.focus = idxs[len(idxs)-1]
-			return m, m.loadFocusedPRs()
+		if len(vis) > 0 {
+			m.focus = vis[len(vis)-1]
+			return m, m.loadPreview()
 		}
 	case "enter", "l", "right":
 		if _, ok := m.currentSlice(); ok {
@@ -563,19 +699,20 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// snapFocusToFilter ensures m.focus points at a slice matching the filter.
+// snapFocusToFilter ensures m.focus points at a slice visible under the active
+// state + text filter.
 func (m *Model) snapFocusToFilter() {
-	idxs := m.filteredIndices()
-	if len(idxs) == 0 {
+	vis := m.hubVisible()
+	if len(vis) == 0 {
 		return
 	}
-	if posInFiltered(idxs, m.focus) < 0 {
-		m.focus = idxs[0]
+	if posInFiltered(vis, m.focus) < 0 {
+		m.focus = vis[0]
 	}
 }
 
-// loadFocusedPRs lazily loads PR data for the focused slice (used to fill the
-// browser's PR badge and overview title without a gh storm across all slices).
-func (m *Model) loadFocusedPRs() tea.Cmd {
-	return m.maybeLoadPRs()
+// loadPreview lazily loads the stack, diff and PRs for the focused slice so the
+// right-hand preview pane can render it.
+func (m *Model) loadPreview() tea.Cmd {
+	return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.maybeLoadPRs()})...)
 }

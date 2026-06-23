@@ -69,6 +69,11 @@ type Model struct {
 	filter    string
 	filtering bool
 
+	// Hub (dashboard) state: which state-filter is active, and whether the
+	// States rail or the Slices list currently takes j/k.
+	filterIdx int
+	hubFocus  int // 0 = slices list, 1 = states rail
+
 	// Pending slice-swap confirmation (activate/deactivate the focused slice).
 	pendingSwap *swapReq
 
@@ -524,7 +529,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = len(m.slices) - 1
 		}
 		sp := config.StatePaths()
-		return m, tea.Batch(loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.batchLoadAllPRs())
+		return m, tea.Batch(loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.batchLoadAllPRs(), m.loadPreview())
 
 	case cardLoadedMsg:
 		m.cards[msg.slice] = msg.card

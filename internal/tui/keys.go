@@ -13,10 +13,11 @@ type Binding struct {
 	Help string
 }
 
-// browserBindings is the keymap for the slice browser (landing screen).
+// browserBindings is the keymap for the dashboard hub (landing screen).
 var browserBindings = []Binding{
-	{[]string{"j", "↓"}, "next slice"},
-	{[]string{"k", "↑"}, "previous slice"},
+	{[]string{"tab"}, "switch focus: States rail ⇄ Slices list"},
+	{[]string{"j", "k"}, "move within the focused panel (slice, or state filter)"},
+	{[]string{"1-6"}, "jump to a state filter (All / Needs you / In review / Ready / …)"},
 	{[]string{"g", "G"}, "first / last slice"},
 	{[]string{"enter", "l"}, "open slice cockpit"},
 	{[]string{"space"}, "select / deselect (for grouping)"},
@@ -25,7 +26,7 @@ var browserBindings = []Binding{
 	{[]string{"d"}, "clear a finished slice (remove worktrees/branches/session)"},
 	{[]string{"w"}, "set as live (swap into primaries) / deactivate"},
 	{[]string{"Y"}, "copy PR-stack markdown to clipboard"},
-	{[]string{"/"}, "filter by name"},
+	{[]string{"/"}, "search by name"},
 	{[]string{"a"}, "attach tmux session"},
 	{[]string{"P"}, "processes overlay (all slices)"},
 	{[]string{"r"}, "refresh"},
