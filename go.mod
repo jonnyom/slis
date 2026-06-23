@@ -1,6 +1,6 @@
 module github.com/jonnyom/slis
 
-go 1.26.1
+go 1.24
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0

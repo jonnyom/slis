@@ -25,6 +25,11 @@ func NewRepo(t *testing.T) string {
 		}
 	}
 	run("init", "-q", "-b", "main")
+	// Set local identity so commits made directly via git (e.g. in linked
+	// worktrees, which share this config) work on machines/CI runners that have
+	// no global git identity configured.
+	run("config", "user.email", "t@t")
+	run("config", "user.name", "t")
 	run("commit", "-q", "--allow-empty", "-m", "init")
 	return dir
 }
