@@ -281,3 +281,40 @@ func Available() bool {
 	_, err := exec.LookPath("gh")
 	return err == nil
 }
+
+// CIEmoji returns the display emoji for a given CheckState.
+// Pass → ✅, Fail → ❌, Pending → ⏳.
+func CIEmoji(s CheckState) string {
+	switch s {
+	case CheckPass:
+		return "✅"
+	case CheckFail:
+		return "❌"
+	default:
+		return "⏳"
+	}
+}
+
+// StackMarkdown renders a shareable markdown summary of a set of PRs (a stack /
+// slice). prs are rendered in order; nil entries are skipped. CI emoji: Pass=✅
+// Fail=❌ Pending=⏳. A comment count is shown only when >0.
+func StackMarkdown(title string, prs []*PR) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "### Stack: %s\n\n", title)
+	for _, pr := range prs {
+		if pr == nil {
+			continue
+		}
+		overall, _, _, _ := pr.CISummary()
+		ciEmoji := CIEmoji(overall)
+		// Only show CI emoji if there are checks; otherwise use ⏳ (no-checks pending).
+		line := fmt.Sprintf("- **%s** — [#%d](%s) %s", pr.Branch, pr.Number, pr.URL, ciEmoji)
+		if len(pr.Comments) > 0 {
+			line += fmt.Sprintf(" · 💬 %d", len(pr.Comments))
+		}
+		line += fmt.Sprintf(" — %s", pr.Title)
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}

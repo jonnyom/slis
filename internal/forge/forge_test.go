@@ -3,6 +3,7 @@ package forge_test
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/forge"
@@ -191,6 +192,98 @@ func TestPRForBranchIntegration(t *testing.T) {
 	_, err := forge.PRForBranch(repoDir, "branch-that-does-not-exist-xyz-9999")
 	if err != nil {
 		t.Errorf("PRForBranch with non-existent branch should return (nil,nil), got err: %v", err)
+	}
+}
+
+// TestCIEmoji verifies the emoji helper for each CheckState.
+func TestCIEmoji(t *testing.T) {
+	tests := []struct {
+		state forge.CheckState
+		want  string
+	}{
+		{forge.CheckPass, "✅"},
+		{forge.CheckFail, "❌"},
+		{forge.CheckPending, "⏳"},
+	}
+	for _, tc := range tests {
+		got := forge.CIEmoji(tc.state)
+		if got != tc.want {
+			t.Errorf("CIEmoji(%v) = %q, want %q", tc.state, got, tc.want)
+		}
+	}
+}
+
+// TestStackMarkdown verifies StackMarkdown renders correct output for a set of PRs.
+func TestStackMarkdown(t *testing.T) {
+	pr1 := &forge.PR{
+		Branch: "feat/api-changes",
+		Number: 42,
+		URL:    "https://github.com/acme/api/pull/42",
+		Title:  "feat: add new API endpoint",
+		Checks: []forge.Check{
+			{Name: "ci/build", State: forge.CheckFail},
+			{Name: "ci/lint", State: forge.CheckPass},
+		},
+		Comments: []forge.Comment{
+			{Author: "alice", Body: "looks good"},
+			{Author: "bob", Body: "nit: rename variable"},
+		},
+	}
+	pr2 := &forge.PR{
+		Branch: "feat/web-update",
+		Number: 99,
+		URL:    "https://github.com/acme/web/pull/99",
+		Title:  "chore: update dependencies",
+		Checks: []forge.Check{
+			{Name: "ci/build", State: forge.CheckPass},
+		},
+		Comments: nil,
+	}
+
+	md := forge.StackMarkdown("my-feature", []*forge.PR{pr1, pr2})
+
+	// Must contain the title
+	if !strings.Contains(md, "my-feature") {
+		t.Error("markdown missing stack title")
+	}
+	// PR numbers present
+	if !strings.Contains(md, "#42") {
+		t.Error("markdown missing #42")
+	}
+	if !strings.Contains(md, "#99") {
+		t.Error("markdown missing #99")
+	}
+	// URLs present
+	if !strings.Contains(md, "https://github.com/acme/api/pull/42") {
+		t.Error("markdown missing URL for #42")
+	}
+	if !strings.Contains(md, "https://github.com/acme/web/pull/99") {
+		t.Error("markdown missing URL for #99")
+	}
+	// CI emoji: failing PR gets ❌, passing gets ✅
+	if !strings.Contains(md, "❌") {
+		t.Error("markdown missing ❌ for failing CI")
+	}
+	if !strings.Contains(md, "✅") {
+		t.Error("markdown missing ✅ for passing CI")
+	}
+	// Comments count for pr1
+	if !strings.Contains(md, "💬 2") {
+		t.Error("markdown missing '💬 2' comment indicator")
+	}
+}
+
+// TestStackMarkdownNilSkipped verifies that nil PR entries are silently skipped.
+func TestStackMarkdownNilSkipped(t *testing.T) {
+	pr := &forge.PR{
+		Branch: "feat/x",
+		Number: 1,
+		URL:    "https://github.com/acme/x/pull/1",
+		Title:  "feat: x",
+	}
+	md := forge.StackMarkdown("title", []*forge.PR{nil, pr, nil})
+	if !strings.Contains(md, "#1") {
+		t.Error("markdown missing #1 when surrounded by nil entries")
 	}
 }
 
