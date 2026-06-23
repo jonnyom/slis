@@ -188,6 +188,12 @@ func renderBrowser(m Model) string {
 		}
 		head.WriteString("   " + headerStyle.Render("/") + m.filter + cur)
 	}
+	if n := len(m.selected); n > 0 {
+		head.WriteString("   " + focusStyle.Render(fmt.Sprintf("%d selected", n)))
+	}
+	if m.naming {
+		head.WriteString("   " + headerStyle.Render("group name: ") + m.groupName + "▏")
+	}
 	header := clip(head.String(), m.width)
 
 	// ── Column header row. ──
@@ -196,8 +202,7 @@ func renderBrowser(m Model) string {
 			padCol("STACK", stackW) + " " + padCol("PR", prW) + " " + "SESSION")
 	rule := footerStyle.Render(strings.Repeat("─", clamp(m.width, 1, m.width)))
 
-	footerText := "[enter] open  [a] attach  [w] set-live  [Y] copy stack  [/] filter  [r] refresh  [?] help" +
-		"   ○idle ●run ⏸wait ✓done"
+	footerText := "enter open · space select · m group · u ungroup · w live · d clear · Y copy · / filter · ? help"
 	if m.status != "" {
 		footerText = m.status
 	}
@@ -252,7 +257,10 @@ func renderCard(m Model, idx int, focused, spacer bool) string {
 	nameW, reposW, stackW, prW := browserCols(m.width)
 
 	cursor := "  "
-	if focused {
+	switch {
+	case m.selected[s.Name]:
+		cursor = syncedStyle.Render("✓") + " "
+	case focused:
 		cursor = cursorBar.Render("▎") + " "
 	}
 
@@ -393,6 +401,32 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.loadFocusedPRs()
 	}
 
+	// Group-name input mode (after selecting slices with space, pressing m).
+	if m.naming {
+		switch msg.Type {
+		case tea.KeyEnter:
+			name := strings.TrimSpace(m.groupName)
+			m.naming = false
+			m.groupName = ""
+			if name != "" && len(m.selected) > 0 {
+				cmd := m.groupSelectedCmd(name)
+				m.selected = make(map[string]bool)
+				m.focus = 0 // grouped slice list changes; reset to top
+				return m, cmd
+			}
+		case tea.KeyEsc:
+			m.naming = false
+			m.groupName = ""
+		case tea.KeyBackspace:
+			if len(m.groupName) > 0 {
+				m.groupName = m.groupName[:len(m.groupName)-1]
+			}
+		case tea.KeyRunes, tea.KeySpace:
+			m.groupName += string(msg.Runes)
+		}
+		return m, nil
+	}
+
 	idxs := m.filteredIndices()
 	pos := posInFiltered(idxs, m.focus)
 
@@ -435,6 +469,31 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "w":
 		m.requestSwap()
 		return m, nil
+	case "d":
+		m.requestRemove()
+		return m, nil
+	case " ":
+		if sl, ok := m.currentSlice(); ok {
+			if m.selected[sl.Name] {
+				delete(m.selected, sl.Name)
+			} else {
+				m.selected[sl.Name] = true
+			}
+		}
+		return m, nil
+	case "m":
+		if len(m.selected) > 0 {
+			m.naming = true
+			m.groupName = ""
+		} else {
+			m.status = "select slices with space, then m to group them"
+		}
+		return m, nil
+	case "u":
+		if sl, ok := m.currentSlice(); ok {
+			m.status = "ungrouped " + sl.Name
+			return m, m.ungroupCmd(sl.Name)
+		}
 	case "Y":
 		if cmd := copyPRStackCmd(m); cmd != nil {
 			m.status = "copied PR stack to clipboard"

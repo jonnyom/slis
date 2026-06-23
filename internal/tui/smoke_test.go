@@ -91,6 +91,34 @@ func TestSmokeRenderNoPanic(t *testing.T) {
 	}
 }
 
+// TestSmokeOverlaysAndSelection renders the new confirmation overlays and the
+// browser multi-select / group-naming states without panicking.
+func TestSmokeOverlaysAndSelection(t *testing.T) {
+	base := smokeModel()
+	next, _ := base.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	base = next.(Model)
+
+	// Browser with a selection + group-naming in progress.
+	m := base
+	m.selected["payroll-entity-brand-id"] = true
+	m.naming = true
+	m.groupName = "my-group"
+	_ = m.View()
+
+	// Remove confirmation overlay.
+	m = base
+	m.requestRemove()
+	if m.pendingRemove == nil {
+		t.Fatal("requestRemove should set pendingRemove for a non-active slice")
+	}
+	_ = m.View()
+
+	// Swap confirmation overlay.
+	m = base
+	m.requestSwap()
+	_ = m.View()
+}
+
 // TestSmokeDump prints a 120x40 browser and cockpit for manual eyeballing
 // (run with: go test ./internal/tui/ -run TestSmokeDump -v).
 func TestSmokeDump(t *testing.T) {

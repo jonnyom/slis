@@ -217,7 +217,7 @@ func cockpitFooter(m Model) string {
 	case panelSession:
 		hint = "[tab]panel [a]ttach [r]refresh [w]swap [esc]back"
 	default:
-		hint = "[tab]panel [w]swap [s]ummary [a]ttach [c]omments [Y]copy-stack [F]ix-ci [esc]back"
+		hint = "[tab]panel [w]swap [d]clear [s]ummary [c]omments [Y]copy-stack [F]ix-ci [esc]back"
 	}
 	if m.status != "" {
 		return clip(statusErrStyle.Render(m.status), m.width)
@@ -575,6 +575,20 @@ func renderSwapOverlay(m Model) string {
 	return helpBoxStyle.Render(sb.String())
 }
 
+// renderRemoveOverlay renders the clear-finished-slice confirmation modal.
+func renderRemoveOverlay(m Model) string {
+	if m.pendingRemove == nil {
+		return ""
+	}
+	key := panelTitleFocusStyle.Render
+	var sb strings.Builder
+	sb.WriteString(cockpitHeaderStyle.Render("Clear "+m.pendingRemove.slice) + "\n\n")
+	sb.WriteString("Remove each repo's worktree, kill the tmux session, and delete merged\n")
+	sb.WriteString("branches. Refuses dirty worktrees / unmerged branches unless forced.\n\n")
+	sb.WriteString(key("[y]") + " clear     " + key("[f]") + " force (dirty + unmerged)     " + key("[n]") + " cancel\n")
+	return helpBoxStyle.Render(sb.String())
+}
+
 // shortBranch trims an optional grouping prefix for display.
 func shortBranch(b, prefix string) string {
 	if prefix != "" {
@@ -727,6 +741,9 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, aiSummaryFromSliceCmd(sl)
 	case "w":
 		m.requestSwap()
+		return m, nil
+	case "d":
+		m.requestRemove()
 		return m, nil
 	case "t":
 		m.splitDiff = !m.splitDiff

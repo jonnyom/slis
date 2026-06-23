@@ -28,6 +28,16 @@ func statusFileName(slice string) string {
 	return safe + ".json"
 }
 
+// RemoveStatus deletes a slice's status file (used when a slice is cleared).
+// A missing file is not an error.
+func RemoveStatus(eventsDir, slice string) error {
+	err := os.Remove(filepath.Join(eventsDir, statusFileName(slice)))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 // WriteStatus writes (or overwrites) <eventsDir>/<sanitized-slice>.json with
 // the given status and timestamp. The directory is created if it does not exist.
 func WriteStatus(eventsDir, slice string, st model.SessionStatus, timeNS int64) error {

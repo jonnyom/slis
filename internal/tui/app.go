@@ -70,6 +70,14 @@ type Model struct {
 	// Pending slice-swap confirmation (activate/deactivate the focused slice).
 	pendingSwap *swapReq
 
+	// Pending slice-removal confirmation (clear a finished slice).
+	pendingRemove *removeReq
+
+	// Browser multi-select + group-naming for manual grouping.
+	selected  map[string]bool
+	naming    bool   // typing a group name for the selected slices
+	groupName string // in-progress group name
+
 	// tmux pane capture for the focused slice's Session panel (what Claude is doing).
 	captures       map[string]string // slice name → captured pane text
 	captureLoading map[string]bool
@@ -155,6 +163,7 @@ func New(ws config.Workspace) Model {
 		prLoading:      make(map[string]bool),
 		captures:       make(map[string]string),
 		captureLoading: make(map[string]bool),
+		selected:       make(map[string]bool),
 		watcher:        w,
 		eventsDir:      eventsDir,
 	}
@@ -340,6 +349,69 @@ func slisSwapCmd(req swapReq, stash bool) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
+// removeReq is a pending "clear this finished slice" confirmation.
+type removeReq struct{ slice string }
+
+// slisRemoveCmd shells out to `slis rm <slice>` to clear a finished slice,
+// reusing the CLI cleanup engine. ExecProcess shows its report/errors.
+func slisRemoveCmd(slice string, force bool) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	args := []string{"rm", slice}
+	if force {
+		args = append(args, "--force")
+	}
+	c := exec.Command(self, args...) //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
+// groupSelectedCmd writes a grouping override that merges the browser's selected
+// slices into one named slice, then re-discovers (applying the new override).
+func (m Model) groupSelectedCmd(name string) tea.Cmd {
+	type rb struct{ repo, branch string }
+	var entries []rb
+	for _, s := range m.slices {
+		if m.selected[s.Name] {
+			for _, mem := range s.Members {
+				entries = append(entries, rb{mem.Repo, mem.Branch})
+			}
+		}
+	}
+	ws := m.ws
+	return func() tea.Msg {
+		sp := config.StatePaths()
+		ov, _ := discovery.LoadOverrides(sp.Overrides)
+		if ov == nil {
+			ov = discovery.Overrides{}
+		}
+		if ov[name] == nil {
+			ov[name] = make(map[string]string)
+		}
+		for _, e := range entries {
+			ov[name][e.repo] = e.branch
+		}
+		_ = discovery.SaveOverrides(sp.Overrides, ov)
+		return loadSlicesCmd(ws)() // re-discover with the new override applied
+	}
+}
+
+// ungroupCmd removes the grouping override for name (no-op if absent), then
+// re-discovers.
+func (m Model) ungroupCmd(name string) tea.Cmd {
+	ws := m.ws
+	return func() tea.Msg {
+		sp := config.StatePaths()
+		ov, _ := discovery.LoadOverrides(sp.Overrides)
+		if _, ok := ov[name]; ok {
+			delete(ov, name)
+			_ = discovery.SaveOverrides(sp.Overrides, ov)
+		}
+		return loadSlicesCmd(ws)()
+	}
+}
+
 // batchLoadAllPRs loads PR/CI data for every not-yet-loaded slice so CI status
 // is visible across the whole browser without visiting each row.
 func (m *Model) batchLoadAllPRs() tea.Cmd {
@@ -482,6 +554,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.pendingSwap != nil {
 		return m.updateSwapKeys(msg)
 	}
+	if m.pendingRemove != nil {
+		return m.updateRemoveKeys(msg)
+	}
 	if m.showProcOverlay {
 		return m.updateOverlayKeys(msg)
 	}
@@ -575,6 +650,36 @@ func (m *Model) requestSwap() {
 	}
 }
 
+// requestRemove sets up the "clear finished slice" confirmation, refusing up
+// front if the slice is live (the CLI enforces this too).
+func (m *Model) requestRemove() {
+	sl, ok := m.currentSlice()
+	if !ok {
+		return
+	}
+	if sl.Active {
+		m.status = "slice is live — deactivate (w) before clearing"
+		return
+	}
+	m.pendingRemove = &removeReq{slice: sl.Name}
+}
+
+// updateRemoveKeys handles the clear-slice confirmation prompt.
+func (m Model) updateRemoveKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	slice := m.pendingRemove.slice
+	switch msg.String() {
+	case "y":
+		m.pendingRemove = nil
+		return m, slisRemoveCmd(slice, false)
+	case "f":
+		m.pendingRemove = nil
+		return m, slisRemoveCmd(slice, true)
+	case "n", "esc":
+		m.pendingRemove = nil
+	}
+	return m, nil
+}
+
 // updateOverlayKeys handles key events while the proc overlay is open.
 func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	n := len(m.overlayProcs)
@@ -653,6 +758,9 @@ func (m Model) View() string {
 	}
 	if m.pendingSwap != nil {
 		return renderSwapOverlay(m)
+	}
+	if m.pendingRemove != nil {
+		return renderRemoveOverlay(m)
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)

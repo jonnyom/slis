@@ -89,3 +89,29 @@ func ListWorktrees(dir string) ([]Worktree, error) {
 	}
 	return ParseWorktreeList([]byte(out)), nil
 }
+
+// RemoveWorktree runs `git worktree remove [--force] <worktreePath>` against the
+// primary repo at dir. Without force, git refuses when the worktree has
+// uncommitted changes, untracked files, or is locked — the safe default.
+func RemoveWorktree(dir, worktreePath string, force bool) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, worktreePath)
+	_, err := Run(dir, args...)
+	return err
+}
+
+// DeleteBranch runs `git branch -d|-D <branch>` against the repo at dir. With
+// force=false (-d) git refuses to delete a branch not fully merged into its
+// upstream/HEAD; force=true (-D) deletes regardless. The branch must not be
+// checked out in any worktree (remove the worktree first).
+func DeleteBranch(dir, branch string, force bool) error {
+	flag := "-d"
+	if force {
+		flag = "-D"
+	}
+	_, err := Run(dir, "branch", flag, branch)
+	return err
+}
