@@ -87,8 +87,12 @@ type Model struct {
 
 	// Browser multi-select + group-naming for manual grouping.
 	selected  map[string]bool
-	naming    bool   // typing a group name for the selected slices
-	groupName string // in-progress group name
+	naming    bool // typing a group name for the selected slices
+	groupName string
+
+	// New-slice creation input ("c" in the hub).
+	creating   bool
+	createName string // in-progress new-slice name
 
 	// tmux pane capture for the focused slice's Session panel (what Claude is doing).
 	captures       map[string]string // slice name → captured pane text
@@ -888,10 +892,7 @@ func (m *Model) attachCmd() tea.Cmd {
 		m.status = "tmux not found on PATH"
 		return nil
 	}
-	if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl), tmuxctl.SessionOpts{
-		Root:   m.ws.Root,
-		Layout: m.ws.Sessions.Layout,
-	}); err != nil {
+	if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl), m.sessionOpts()); err != nil {
 		m.status = "session error: " + err.Error()
 		return nil
 	}
@@ -901,6 +902,62 @@ func (m *Model) attachCmd() tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg {
 		return sessionsRefreshMsg{}
 	})
+}
+
+// sessionOpts builds the tmux session layout options from the workspace config.
+func (m Model) sessionOpts() tmuxctl.SessionOpts {
+	return tmuxctl.SessionOpts{Root: m.ws.Root, Layout: m.ws.Sessions.Layout}
+}
+
+// launchAgentCmd ensures the slice's session exists, launches the configured
+// agent (default "claude") in it when the active pane is at a shell, then
+// attaches. Use this to start/resume the agent; plain [a] attach just attaches.
+func (m *Model) launchAgentCmd() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok {
+		return nil
+	}
+	if !tmuxctl.Available() {
+		m.status = "tmux not found on PATH"
+		return nil
+	}
+	if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl), m.sessionOpts()); err != nil {
+		m.status = "session error: " + err.Error()
+		return nil
+	}
+	agent := m.ws.Sessions.Agent
+	if agent == "" {
+		agent = "claude"
+	}
+	// Only type the launch command at a shell prompt — avoids typing into an
+	// already-running agent (then [C] just re-attaches to it).
+	if isShellCmd(tmuxctl.ActivePaneCommand(sl.Name)) {
+		_ = tmuxctl.SendKeys(sl.Name, agent)
+	}
+	m.status = ""
+	name, args := tmuxctl.AttachArgv(sl.Name, isInsideTmux())
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(error) tea.Msg { return sessionsRefreshMsg{} })
+}
+
+// isShellCmd reports whether cmd is an interactive shell (safe to type into).
+func isShellCmd(cmd string) bool {
+	switch cmd {
+	case "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh":
+		return true
+	}
+	return false
+}
+
+// slisCreateCmd hands the terminal to `slis create <name>` (worktrees across
+// repos + session), then reloads so the new slice appears in the hub.
+func slisCreateCmd(name string) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	c := exec.Command(self, "create", name) //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
 // updateSwapKeys handles the activate/deactivate confirmation prompt.

@@ -24,6 +24,9 @@ type Grouping struct {
 // Sessions holds session-related configuration.
 type Sessions struct {
 	AutostartClaude bool `yaml:"autostart_claude"`
+	// Agent is the command launched by the "launch agent" action (TUI `C`).
+	// Empty defaults to "claude". May include args, e.g. "claude --resume".
+	Agent string `yaml:"agent"`
 	// Layout controls a slice's tmux session windows:
 	//   "root"  — a single window at the workspace root (run Claude across the stack)
 	//   "repos" — one window per repo worktree

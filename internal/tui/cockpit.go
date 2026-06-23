@@ -215,7 +215,7 @@ func cockpitFooter(m Model) string {
 	case panelProcs:
 		hint = "[tab]panel [j/k]select [x]kill [X]kill-tree [w]swap [a]ttach [esc]back"
 	case panelSession:
-		hint = "[tab]panel [a]ttach [r]refresh [w]swap [esc]back"
+		hint = "[tab]panel [a]ttach [C]laude [r]refresh [w]swap [esc]back"
 	default:
 		hint = "[tab]panel [w]swap [d]clear [s]ummary [c]omments [Y]copy-stack [F]ix-ci [esc]back"
 	}
@@ -802,6 +802,8 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "a":
 		return m, m.attachCmd()
+	case "C":
+		return m, m.launchAgentCmd()
 	case "o":
 		return m, openExternalCmd(m)
 	case "y":

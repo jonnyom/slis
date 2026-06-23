@@ -35,8 +35,12 @@ var (
 // renderEmptyState renders the hub when there are no slices: a welcome (no
 // workspace) or an "all clear" state (workspace set up, nothing in flight).
 func renderEmptyState(m Model) string {
-	header := clip(titleStyle.Render("slis")+headerStyle.Render("  ·  0 slices"), m.width)
-	hint := "[r] refresh   [?] help   [q] quit"
+	hdr := titleStyle.Render("slis") + headerStyle.Render("  ·  0 slices")
+	if m.creating {
+		hdr += "   " + headerStyle.Render("new slice: ") + m.createName + "▏"
+	}
+	header := clip(hdr, m.width)
+	hint := "[c] new slice   [r] refresh   [?] help   [q] quit"
 	if m.status != "" {
 		hint = m.status
 	}
@@ -58,9 +62,10 @@ func renderEmptyState(m Model) string {
 		b.WriteString(readyStyle.Render("✦  All clear — no active slices") + "\n\n")
 		b.WriteString("A slice is a feature's git worktrees across your repos.\n")
 		b.WriteString("Start one with a worktree on a feature branch:\n\n")
+		b.WriteString(readyStyle.Render("press [c]") + " to create one across all repos, or by hand:\n")
 		b.WriteString(codeStyle.Render("git -C <repo> worktree add .worktrees/<name> -b <name>") + "\n\n")
 		b.WriteString(overviewStyle.Render("workspace:  ") + strings.Join(repos, " · ") + "\n\n")
-		b.WriteString(overviewStyle.Render("…then press [r] to refresh."))
+		b.WriteString(overviewStyle.Render("…then [r] to refresh."))
 	}
 	card := emptyBoxStyle.Render(b.String())
 
@@ -446,7 +451,9 @@ func renderBrowser(m Model) string {
 	if rs := m.restackCount(); rs > 0 {
 		head.WriteString("   " + needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", rs)))
 	}
-	if m.naming {
+	if m.creating {
+		head.WriteString("   " + headerStyle.Render("new slice: ") + m.createName + "▏")
+	} else if m.naming {
 		head.WriteString("   " + headerStyle.Render("group name: ") + m.groupName + "▏")
 	} else if n := len(m.selected); n > 0 {
 		head.WriteString("   " + focusStyle.Render(fmt.Sprintf("%d selected", n)))
@@ -459,7 +466,7 @@ func renderBrowser(m Model) string {
 	}
 	top := clip(head.String(), m.width)
 
-	footerText := "n next-todo · j/k move · enter open · w live · d clear · R restack · space/A select · m group · / search · ? help"
+	footerText := "n next-todo · enter open · c new · C claude · a attach · w live · d clear · R stack · space/A select · / search · ? help"
 	if m.status != "" {
 		footerText = m.status
 	}
@@ -681,10 +688,37 @@ func plural(n int) string {
 
 // updateBrowserKeys handles key events while the dashboard hub is showing.
 func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Empty workspace: nothing to navigate or act on. Ignore browser keys (q / r
-	// / ? still work — they're handled globally before this). Status was already
-	// cleared in handleKey, so no key leaves a stuck message.
+	// New-slice name input — allowed even with 0 slices (that's when you most
+	// need it).
+	if m.creating {
+		switch msg.Type {
+		case tea.KeyEnter:
+			name := strings.TrimSpace(m.createName)
+			m.creating = false
+			m.createName = ""
+			if name != "" {
+				return m, slisCreateCmd(name)
+			}
+		case tea.KeyEsc:
+			m.creating = false
+			m.createName = ""
+		case tea.KeyBackspace:
+			if len(m.createName) > 0 {
+				m.createName = m.createName[:len(m.createName)-1]
+			}
+		case tea.KeyRunes, tea.KeySpace:
+			m.createName += string(msg.Runes)
+		}
+		return m, nil
+	}
+
+	// Empty workspace: only [c] (create) is useful; ignore other browser keys
+	// (q / r / ? still work — handled globally). Status was cleared in handleKey.
 	if len(m.slices) == 0 {
+		if msg.String() == "c" {
+			m.creating = true
+			m.createName = ""
+		}
 		return m, nil
 	}
 
@@ -792,6 +826,12 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		return m, m.attachCmd()
+	case "C":
+		return m, m.launchAgentCmd()
+	case "c":
+		m.creating = true
+		m.createName = ""
+		return m, nil
 	case "w":
 		m.requestSwap()
 		return m, nil

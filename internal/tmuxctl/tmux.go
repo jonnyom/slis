@@ -150,6 +150,26 @@ func CapturePane(slice string) (string, error) {
 	return sb.String(), nil
 }
 
+// SendKeys types keys into the slice session's active pane followed by Enter
+// (used to launch an agent). No-op error if the session is absent.
+func SendKeys(slice, keys string) error {
+	err := exec.Command("tmux", "send-keys", "-t", SessionName(slice), keys, "Enter").Run()
+	if err != nil {
+		return fmt.Errorf("tmux send-keys: %w", err)
+	}
+	return nil
+}
+
+// ActivePaneCommand returns the foreground command of the session's active pane
+// (e.g. "zsh", "node", "claude"), or "" if it can't be determined.
+func ActivePaneCommand(slice string) string {
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", SessionName(slice), "#{pane_current_command}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // PanePIDs returns the pane PIDs across all windows of the slice's session.
 func PanePIDs(slice string) ([]int, error) {
 	name := SessionName(slice)
