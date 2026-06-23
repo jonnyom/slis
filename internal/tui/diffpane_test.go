@@ -98,12 +98,21 @@ func TestExternalEditorCmdAndClipboardCmd(t *testing.T) {
 		t.Error("clipboardCmd: name should not be empty when ok=true")
 	}
 
+	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "vi")
-	editorName, _, editorOk := externalEditorCmd()
+	editorName, _, gui, editorOk := resolveOpener()
 	if !editorOk {
-		t.Error("externalEditorCmd: expected ok=true when EDITOR=vi")
+		t.Error("resolveOpener: expected ok=true when EDITOR=vi")
 	}
 	if editorName == "" {
-		t.Error("externalEditorCmd: name should not be empty when ok=true")
+		t.Error("resolveOpener: name should not be empty when ok=true")
+	}
+	if gui {
+		t.Error("resolveOpener: vi is a terminal editor, gui should be false")
+	}
+
+	t.Setenv("EDITOR", "cursor")
+	if _, _, gui, _ := resolveOpener(); !gui {
+		t.Error("resolveOpener: cursor is a GUI editor, gui should be true")
 	}
 }

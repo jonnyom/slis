@@ -748,10 +748,70 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.loadPreview())
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
 
+	return m, nil
+}
+
+// handleMouse routes wheel events to the pane under the cursor: the right pane
+// (diff) scrolls; over the left rail the wheel moves the panel/slice selection.
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress {
+		return m, nil
+	}
+	up := msg.Button == tea.MouseButtonWheelUp
+	down := msg.Button == tea.MouseButtonWheelDown
+	if !up && !down {
+		return m, nil
+	}
+	// Ignore while an overlay/help is up.
+	if m.showHelp || m.pendingSwap != nil || m.pendingRemove != nil ||
+		m.pendingStack != nil || m.showProcOverlay || m.showCommentsOverlay {
+		return m, nil
+	}
+
+	if m.view == viewCockpit {
+		leftW, _, _ := m.cockpitDims()
+		if m.zoom || msg.X >= leftW { // over the right pane → scroll the diff
+			if up {
+				m.viewport.ScrollUp(3)
+			} else {
+				m.viewport.ScrollDown(3)
+			}
+			return m, nil
+		}
+		// over the left rail → move the focused panel's selection
+		sl, ok := m.currentSlice()
+		if !ok {
+			return m, nil
+		}
+		if up {
+			m.moveSel(-1, sl)
+		} else {
+			m.moveSel(1, sl)
+		}
+		m.right = rightAuto
+		m.viewport.GotoTop()
+		m.refreshRight()
+		return m, m.loadForPanel()
+	}
+
+	// Browser: the wheel moves the slice selection.
+	vis := m.hubVisible()
+	pos := posInFiltered(vis, m.focus)
+	switch {
+	case up && pos > 0:
+		m.focus = vis[pos-1]
+		return m, m.loadPreview()
+	case down && pos >= 0 && pos < len(vis)-1:
+		m.focus = vis[pos+1]
+		return m, m.loadPreview()
+	}
 	return m, nil
 }
 
@@ -1053,7 +1113,10 @@ func clamp(v, lo, hi int) int {
 
 // Run creates and starts the Bubble Tea program using the alt-screen.
 func Run(ws config.Workspace) error {
-	p := tea.NewProgram(New(ws), tea.WithAltScreen())
+	// WithMouseCellMotion enables wheel events (with cursor X/Y) so scrolling can
+	// target the pane under the mouse. Trade-off: native text selection needs
+	// Shift held (standard for mouse-enabled TUIs like lazygit).
+	p := tea.NewProgram(New(ws), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
