@@ -27,3 +27,19 @@ func TestDoubledPrefixFinding(t *testing.T) {
 		t.Errorf("doubled prefix should fail, got %+v", f)
 	}
 }
+
+func TestDeDoubledBranch(t *testing.T) {
+	cases := []struct {
+		branch, prefix, want string
+	}{
+		{"jonnyjonny/wfm-1", "jonny", "jonny/wfm-1"},
+		{"jonny/jonny/wfm-1", "jonny/", "jonny/wfm-1"},
+		{"jonny/wfm-1", "jonny", ""}, // not doubled
+		{"wfm-1", "", ""},            // no prefix
+	}
+	for _, c := range cases {
+		if got := deDoubledBranch(c.branch, c.prefix); got != c.want {
+			t.Errorf("deDoubledBranch(%q, %q) = %q, want %q", c.branch, c.prefix, got, c.want)
+		}
+	}
+}

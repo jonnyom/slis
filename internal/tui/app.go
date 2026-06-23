@@ -941,6 +941,9 @@ func (m *Model) launchAgentCmd() tea.Cmd {
 	if agent == "" {
 		agent = "claude"
 	}
+	// Tell Claude it's running inside a slis slice (which repos/branches it spans,
+	// whether it's live). No-op for a non-claude agent.
+	agent = withSlisContext(agent, sl)
 	// Only type the launch command at a shell prompt — avoids typing into an
 	// already-running agent (then [C] just re-attaches to it).
 	if isShellCmd(tmuxctl.ActivePaneCommand(sl.Name)) {
