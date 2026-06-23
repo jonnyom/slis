@@ -20,6 +20,11 @@ var rootCmd = &cobra.Command{
 	Use:     "slis",
 	Short:   "Multi-repo worktree cockpit",
 	Version: Version,
+	// main() prints the error ("slis: …") and sets the exit code; don't let
+	// cobra also print "Error: …" (double output) or the usage block on a
+	// runtime failure.
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	// When invoked with no subcommand, launch the TUI.
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ws, err := config.LoadWorkspace(config.WorkspacePath())

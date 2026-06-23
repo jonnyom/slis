@@ -374,6 +374,11 @@ type swapReq struct {
 // swapFinishedMsg is delivered after a `slis activate/deactivate` subprocess exits.
 type swapFinishedMsg struct{}
 
+// adoptFinishedMsg is delivered after the `slis adopt` subprocess exits. err is
+// the subprocess exit error (non-nil = adopt didn't complete) so the TUI can
+// surface an actionable status instead of silently redrawing.
+type adoptFinishedMsg struct{ err error }
+
 // slisSwapCmd shells out to the slis binary to (de)activate a slice, reusing the
 // data-safety-critical CLI engine rather than duplicating it in the TUI (which
 // must not import internal/cli). ExecProcess shows the command's output so
@@ -744,6 +749,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 
+	case adoptFinishedMsg:
+		// Surface the outcome — a failed adopt used to redraw silently to "all
+		// clear". The common failure is a branch checked out + dirty in a primary.
+		if msg.err != nil {
+			m.status = "adopt didn't add a slice — if the branch is checked out with uncommitted changes in a primary, commit or stash it there, then press [i] to retry"
+		} else {
+			m.status = ""
+		}
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+
 	case removeDoneMsg:
 		m.selected = make(map[string]bool)
 		if msg.failed != "" {
@@ -989,7 +1005,7 @@ func slisAdoptCmd() tea.Cmd {
 		return nil
 	}
 	c := exec.Command(self, "adopt") //nolint:gosec
-	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+	return tea.ExecProcess(c, func(err error) tea.Msg { return adoptFinishedMsg{err: err} })
 }
 
 // updateSwapKeys handles the activate/deactivate confirmation prompt.
