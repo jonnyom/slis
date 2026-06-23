@@ -64,6 +64,7 @@ var cockpitBindings = []Binding{
 	{[]string{"ctrl+r"}, "rerun failed CI for the focused PR"},
 	{[]string{"F"}, "fix CI (point Claude at failing CI)"},
 	{[]string{"x"}, "kill selected process (Processes panel)"},
+	{[]string{"P"}, "processes overlay (all slices)"},
 	{[]string{"esc", "h"}, "back to browser"},
 	{[]string{"?"}, "help"},
 	{[]string{"q"}, "quit"},
