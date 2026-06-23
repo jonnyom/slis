@@ -555,6 +555,17 @@ func (m Model) restackCmd(slices []string) tea.Cmd {
 	}
 }
 
+// slisSubmitCmd hands the terminal to `slis submit <slice>` (interactive
+// `gt submit` per repo) so the user can edit PR metadata and see the PR URLs.
+func slisSubmitCmd(slice string) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	c := exec.Command(self, "submit", slice) //nolint:gosec
+	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+}
+
 // slisSyncCmd hands the terminal to `slis sync <slice>` (interactive `gt sync`
 // per repo) so the user can answer its delete/overwrite-trunk prompts.
 func slisSyncCmd(slice string) tea.Cmd {
@@ -890,6 +901,12 @@ func (m Model) updateStackKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			delete(m.cards, n)
 		}
 		return m, m.restackCmd(slices)
+	case "p":
+		m.pendingStack = nil
+		if len(slices) > 0 {
+			delete(m.prs, slices[0]) // force PR reload after submit
+			return m, slisSubmitCmd(slices[0])
+		}
 	case "s":
 		m.pendingStack = nil
 		if len(slices) > 0 {

@@ -613,9 +613,10 @@ func renderStackOverlay(m Model) string {
 	var sb strings.Builder
 	sb.WriteString(cockpitHeaderStyle.Render("Stack actions — "+targetLabel(m.pendingStack.slices)) + "\n\n")
 	sb.WriteString("Restack rebases each repo's branch onto its parent (slice-scoped; dirty\n")
-	sb.WriteString("worktrees skipped, conflicts left for you to resolve). Sync is repo-wide:\n")
-	sb.WriteString("it runs `gt sync` interactively (may overwrite trunk, delete merged branches).\n\n")
-	sb.WriteString(key("[r]") + " restack slice     " + key("[s]") + " sync repos (interactive)     " + key("[n]") + " cancel\n")
+	sb.WriteString("worktrees skipped, conflicts left for you to resolve). Submit pushes the\n")
+	sb.WriteString("stack and opens/updates PRs (interactive). Sync is repo-wide: `gt sync`\n")
+	sb.WriteString("(may overwrite trunk, delete merged branches). Submit/sync act on the first target.\n\n")
+	sb.WriteString(key("[r]") + " restack     " + key("[p]") + " submit (stack→PRs)     " + key("[s]") + " sync repos     " + key("[n]") + " cancel\n")
 	return helpBoxStyle.Render(sb.String())
 }
 
