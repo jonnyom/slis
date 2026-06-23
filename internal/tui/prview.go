@@ -124,6 +124,66 @@ func fixCICmd(sl model.Slice) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return nil })
 }
 
+// focusedPR returns the PR (and its repo) the cockpit's focused panel points at:
+// the PRs panel uses prSel, other panels use repoSel.
+func (m Model) focusedPR(sl model.Slice) (*forge.PR, string) {
+	repos := sl.Repos()
+	if len(repos) == 0 {
+		return nil, ""
+	}
+	sel := m.repoSel
+	if m.panel == panelPRs {
+		sel = m.prSel
+	}
+	repo := repos[clamp(sel, 0, len(repos)-1)]
+	if prs := m.prs[sl.Name]; prs != nil {
+		return prs[repo], repo
+	}
+	return nil, repo
+}
+
+// ciRerunMsg reports the result of a `gh run rerun` action.
+type ciRerunMsg struct {
+	n   int
+	err error
+}
+
+// rerunCICmd re-triggers the failed CI runs for pr (off the UI goroutine).
+func rerunCICmd(worktree string, pr *forge.PR) tea.Cmd {
+	return func() tea.Msg {
+		n, err := forge.RerunFailedChecks(worktree, pr)
+		return ciRerunMsg{n: n, err: err}
+	}
+}
+
+// ciLogLoadedMsg carries the fetched failed-CI log (or an error).
+type ciLogLoadedMsg struct {
+	log string
+	err error
+}
+
+// loadCILogCmd fetches the failed-step logs for pr (off the UI goroutine).
+func loadCILogCmd(worktree string, pr *forge.PR) tea.Cmd {
+	return func() tea.Msg {
+		out, err := forge.FailedLog(worktree, pr)
+		if err != nil {
+			return ciLogLoadedMsg{err: err}
+		}
+		return ciLogLoadedMsg{log: safeterm.StripNonSGR(out)}
+	}
+}
+
+// ciLogContent renders the right pane in rightCILog mode.
+func ciLogContent(m Model) string {
+	if m.ciLogLoading {
+		return "loading CI logs…"
+	}
+	if strings.TrimSpace(m.ciLog) == "" {
+		return "no CI logs — press [v] on a PR with failing checks"
+	}
+	return m.ciLog
+}
+
 // commentLine flattens a single comment from a PR into a clean displayable line.
 func commentLine(repo string, pr *forge.PR, c forge.Comment) string {
 	body := cleanCommentBody(c.Body)

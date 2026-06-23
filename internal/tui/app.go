@@ -69,6 +69,10 @@ type Model struct {
 	splitDiff   bool     // cockpit: side-by-side diff instead of unified
 	diffVsTrunk bool     // cockpit: diff vs trunk (whole downstack) instead of vs the stack parent
 
+	// Failed-CI log shown in the right pane (rightCILog mode).
+	ciLog        string
+	ciLogLoading bool
+
 	// Browser filter ("/" to type a substring; matches slice names).
 	filter    string
 	filtering bool
@@ -752,6 +756,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingSwap = nil
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+
+	case ciRerunMsg:
+		switch {
+		case msg.err != nil:
+			m.status = "CI rerun failed: " + msg.err.Error()
+		case msg.n == 0:
+			m.status = "no CI runs to rerun"
+		default:
+			m.status = fmt.Sprintf("re-ran %d CI run(s) — refresh (r) shortly to see status", msg.n)
+		}
+		return m, nil
+
+	case ciLogLoadedMsg:
+		m.ciLogLoading = false
+		if msg.err != nil {
+			m.ciLog = "CI logs unavailable: " + msg.err.Error()
+		} else {
+			m.ciLog = msg.log
+		}
+		m.refreshRight()
+		return m, nil
 
 	case adoptFinishedMsg:
 		// Surface the outcome — a failed adopt used to redraw silently to "all

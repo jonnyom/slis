@@ -231,6 +231,34 @@ func resolveOpener() (name string, args []string, gui, ok bool) {
 	return "", nil, false, false
 }
 
+// osOpener returns the OS "open in default app" command (open / xdg-open) —
+// used to open URLs in the browser (unlike resolveOpener, which prefers $EDITOR).
+func osOpener() (string, bool) {
+	switch runtime.GOOS {
+	case "darwin":
+		if p, err := exec.LookPath("open"); err == nil {
+			return p, true
+		}
+	case "linux":
+		if p, err := exec.LookPath("xdg-open"); err == nil {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// openURLCmd opens url in the default browser, detached (no TUI flash).
+func openURLCmd(url string) tea.Cmd {
+	opener, ok := osOpener()
+	if !ok || strings.TrimSpace(url) == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		_ = exec.Command(opener, url).Start() //nolint:gosec
+		return nil
+	}
+}
+
 // clipboardCmd returns the clipboard tool name and args for the current OS.
 // Returns (name, args, ok).
 func clipboardCmd() (string, []string, bool) {

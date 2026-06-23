@@ -46,6 +46,7 @@ type rightMode int
 const (
 	rightAuto rightMode = iota
 	rightSummary
+	rightCILog // failed-CI logs for the focused PR
 )
 
 var (
@@ -216,6 +217,8 @@ func cockpitFooter(m Model) string {
 			base = "[b]vs-parent"
 		}
 		hint = "[tab]panel [w]swap [R]stack [a]ttach [o]pen [y]ank " + split + " " + base + " [⏶⏷^d/^u]scroll [esc]back"
+	case panelPRs:
+		hint = "[tab]panel [O]open-PR [^r]rerun-CI [v]CI-logs [c]omments [F]ix-ci [esc]back"
 	case panelProcs:
 		hint = "[tab]panel [j/k]select [x]kill [X]kill-tree [w]swap [a]ttach [esc]back"
 	case panelSession:
@@ -409,6 +412,9 @@ func cockpitRight(m Model) string {
 	}
 	if m.right == rightSummary {
 		return summaryContent(m, sl)
+	}
+	if m.right == rightCILog {
+		return ciLogContent(m)
 	}
 	switch m.panel {
 	case panelStack:
@@ -827,6 +833,40 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.launchAgentCmd()
 	case "o":
 		return m, openExternalCmd(m)
+	case "O":
+		pr, _ := m.focusedPR(sl)
+		if pr == nil || pr.URL == "" {
+			m.status = "no PR to open"
+			return m, m.maybeLoadPRs()
+		}
+		return m, openURLCmd(pr.URL)
+	case "ctrl+r":
+		pr, repo := m.focusedPR(sl)
+		if pr == nil {
+			m.status = "no PR for this repo"
+			return m, m.maybeLoadPRs()
+		}
+		if len(pr.FailingChecks()) == 0 {
+			m.status = "no failing checks to rerun"
+			return m, nil
+		}
+		m.status = "rerunning failed CI…"
+		return m, rerunCICmd(sl.Members[repo].WorktreePath, pr)
+	case "v":
+		pr, repo := m.focusedPR(sl)
+		if pr == nil {
+			m.status = "no PR for this repo"
+			return m, m.maybeLoadPRs()
+		}
+		if len(pr.FailingChecks()) == 0 {
+			m.status = "no failing CI to show"
+			return m, nil
+		}
+		m.right = rightCILog
+		m.ciLog, m.ciLogLoading = "", true
+		m.viewport.GotoTop()
+		m.refreshRight()
+		return m, loadCILogCmd(sl.Members[repo].WorktreePath, pr)
 	case "y":
 		return m, copyPatchCmd(m)
 	case "Y":

@@ -7,10 +7,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/jonnyom/slis/internal/safeterm"
 )
+
+// runIDRe extracts the GitHub Actions run id from a check's detail URL, e.g.
+// https://github.com/o/r/actions/runs/123456/job/789 → 123456.
+var runIDRe = regexp.MustCompile(`/actions/runs/(\d+)`)
 
 // CheckState represents the aggregated state of a single CI check.
 type CheckState int
@@ -281,6 +286,66 @@ func (p *PR) FailingChecks() []Check {
 		}
 	}
 	return out
+}
+
+// failingRunIDs returns the unique GitHub Actions run ids backing pr's failing
+// checks, parsed from their detail URLs (in check order).
+func failingRunIDs(pr *PR) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, c := range pr.FailingChecks() {
+		if m := runIDRe.FindStringSubmatch(c.URL); m != nil && !seen[m[1]] {
+			seen[m[1]] = true
+			ids = append(ids, m[1])
+		}
+	}
+	return ids
+}
+
+// RerunFailedChecks re-triggers the failed jobs of the Actions runs behind pr's
+// failing checks (`gh run rerun <id> --failed`, run in repoDir). Returns how many
+// runs were re-triggered. Mutating — the one write slis makes to CI.
+func RerunFailedChecks(repoDir string, pr *PR) (int, error) {
+	if !Available() {
+		return 0, fmt.Errorf("gh not found on PATH")
+	}
+	ids := failingRunIDs(pr)
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	n := 0
+	var firstErr error
+	for _, id := range ids {
+		cmd := exec.Command("gh", "run", "rerun", id, "--failed")
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("gh run rerun %s: %w: %s", id, err, strings.TrimSpace(string(out)))
+			}
+			continue
+		}
+		n++
+	}
+	return n, firstErr
+}
+
+// FailedLog returns the failed-step logs for pr's first failing check's run
+// (`gh run view <id> --log-failed`, run in repoDir), for display inside slis.
+func FailedLog(repoDir string, pr *PR) (string, error) {
+	if !Available() {
+		return "", fmt.Errorf("gh not found on PATH")
+	}
+	ids := failingRunIDs(pr)
+	if len(ids) == 0 {
+		return "", fmt.Errorf("no failing CI run found")
+	}
+	cmd := exec.Command("gh", "run", "view", ids[0], "--log-failed")
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("gh run view --log-failed: %w", err)
+	}
+	return string(out), nil
 }
 
 // Available reports whether the gh binary is on PATH.
