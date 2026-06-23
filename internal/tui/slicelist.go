@@ -22,6 +22,9 @@ var (
 	syncedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("35"))
 	overviewStyle = lipgloss.NewStyle().Faint(true)
 	headerStyle   = lipgloss.NewStyle().Faint(true)
+	colHeadStyle  = lipgloss.NewStyle().Faint(true).Bold(true)
+	waitStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // needs-input
+	liveStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
 )
 
 // sliceCard is the lazily-computed browser summary of a slice: what it's about
@@ -131,91 +134,122 @@ func posInFiltered(idxs []int, focus int) int {
 	return -1
 }
 
-// renderBrowser renders the slice browser (landing screen).
+// browserCols returns the column widths for the browser table given total width.
+func browserCols(w int) (nameW, reposW, stackW, prW int) {
+	reposW, stackW, prW = 22, 13, 12
+	nameW = w - 2 - reposW - stackW - prW - 9 - 4 // cursor(2) + session(9) + 4 gaps
+	nameW = clamp(nameW, 18, 60)
+	return
+}
+
+// padCol clips a (possibly styled) cell to w cells and left-pads to width w.
+func padCol(s string, w int) string { return padCell(clip(s, w), w) }
+
+// waitingCount counts slices whose session is waiting for input.
+func (m Model) waitingCount() int {
+	n := 0
+	for _, s := range m.slices {
+		if m.sessionStatus[s.Name] == model.SessWaitingInput {
+			n++
+		}
+	}
+	return n
+}
+
+// activeName returns the name of the currently-swapped-in (live) slice, or "".
+func (m Model) activeName() string {
+	for _, s := range m.slices {
+		if s.Active {
+			return s.Name
+		}
+	}
+	return ""
+}
+
+// renderBrowser renders the slice browser (landing screen / project hub).
 func renderBrowser(m Model) string {
 	idxs := m.filteredIndices()
+	nameW, reposW, stackW, prW := browserCols(m.width)
 
-	// Header.
+	// ── Top header: identity, live slice, needs-input, filter. ──
 	var head strings.Builder
 	head.WriteString(titleStyle.Render("slis"))
-	head.WriteString(headerStyle.Render(fmt.Sprintf("  %d slices", len(m.slices))))
-	if names := repoNames(m.slices); names != "" {
-		head.WriteString(headerStyle.Render("  ▏ " + names))
+	head.WriteString(headerStyle.Render(fmt.Sprintf("  ·  %d slices", len(m.slices))))
+	if live := m.activeName(); live != "" {
+		head.WriteString("   " + liveStyle.Render("● live: "+live))
+	}
+	if w := m.waitingCount(); w > 0 {
+		head.WriteString("   " + waitStyle.Render(fmt.Sprintf("⏸ %d need input", w)))
 	}
 	if m.filtering || m.filter != "" {
-		head.WriteString(headerStyle.Render("   /") + m.filter)
+		cur := ""
 		if m.filtering {
-			head.WriteString("▏")
+			cur = "▏"
 		}
+		head.WriteString("   " + headerStyle.Render("/") + m.filter + cur)
 	}
 	header := clip(head.String(), m.width)
 
-	footer := footerStyle.Render("[enter] open  [a] attach  [/] filter  [r] refresh  [?] help  ○none ●run ⏸wait ✓done")
-	footer = clip(footer, m.width)
+	// ── Column header row. ──
+	colHead := colHeadStyle.Render(
+		"  " + padCol("SLICE", nameW) + " " + padCol("REPOS", reposW) + " " +
+			padCol("STACK", stackW) + " " + padCol("PR", prW) + " " + "SESSION")
+	rule := footerStyle.Render(strings.Repeat("─", clamp(m.width, 1, m.width)))
+
+	footerText := "[enter] open  [a] attach  [w] set-live  [Y] copy stack  [/] filter  [r] refresh  [?] help" +
+		"   ○idle ●run ⏸wait ✓done"
+	if m.status != "" {
+		footerText = m.status
+	}
+	footer := clip(footerStyle.Render(footerText), m.width)
 
 	if len(m.slices) == 0 {
 		return header + "\n\n  No slices found. Run 'slis init' to set up your workspace.\n\n" + footer
 	}
 	if len(idxs) == 0 {
-		return header + "\n\n  " + overviewStyle.Render("no slices match /"+m.filter) + "\n\n" + footer
+		return header + "\n\n" + colHead + "\n" + rule + "\n  " +
+			overviewStyle.Render("no slices match /"+m.filter) + "\n\n" + footer
 	}
 
-	// Two lines per slice; window around the focused row. When height is unknown
-	// (before the first WindowSizeMsg) show every match.
+	// Adaptive vertical density: 3 lines/card (with a blank separator) when the
+	// terminal is tall enough, else a compact 2 lines/card.
+	perCard := 2
 	visible := len(idxs)
 	if m.height > 0 {
-		bodyH := m.height - 3
+		bodyH := m.height - 4 // header(2) + colhead+rule(2)... leave room for footer
 		if bodyH < 2 {
 			bodyH = 2
 		}
-		visible = bodyH / 2
+		if bodyH >= len(idxs)*3 {
+			perCard = 3
+		}
+		visible = bodyH / perCard
 		if visible < 1 {
 			visible = 1
 		}
 	}
+
 	pos := posInFiltered(idxs, m.focus)
 	if pos < 0 {
 		pos = 0
 	}
-	start := pos - visible/2
-	if start < 0 {
-		start = 0
-	}
-	end := start + visible
-	if end > len(idxs) {
-		end = len(idxs)
-		start = end - visible
-		if start < 0 {
-			start = 0
-		}
-	}
+	start := clamp(pos-visible/2, 0, max(0, len(idxs)-visible))
+	end := min(start+visible, len(idxs))
 
 	var body strings.Builder
 	for _, i := range idxs[start:end] {
-		body.WriteString(renderCard(m, i, i == m.focus))
+		body.WriteString(renderCard(m, i, i == m.focus, perCard == 3))
 	}
 
-	return header + "\n\n" + strings.TrimRight(body.String(), "\n") + "\n" + footer
+	return header + "\n\n" + colHead + "\n" + rule + "\n" +
+		strings.TrimRight(body.String(), "\n") + "\n" + footer
 }
 
-// repoNames returns the distinct member-repo names across all slices, joined.
-func repoNames(slices []model.Slice) string {
-	seen := map[string]bool{}
-	var names []string
-	for _, s := range slices {
-		for _, r := range s.Repos() {
-			if !seen[r] {
-				seen[r] = true
-				names = append(names, r)
-			}
-		}
-	}
-	return strings.Join(names, " · ")
-}
-
-// renderCard renders a single slice as two lines.
-func renderCard(m Model, idx int, focused bool) string {
+// renderCard renders one slice row: an identity+status line, then a dim overview
+// line, optionally followed by a blank spacer line for breathing room.
+func renderCard(m Model, idx int, focused, spacer bool) string {
 	s := m.slices[idx]
+	nameW, reposW, stackW, prW := browserCols(m.width)
 
 	cursor := "  "
 	if focused {
@@ -227,53 +261,61 @@ func renderCard(m Model, idx int, focused bool) string {
 		status = m.sessionStatus[s.Name]
 	}
 
-	nameW := clamp(m.width-46, 18, 44)
-	name := clip(s.Name, nameW)
-	name = lipgloss.NewStyle().Width(nameW).Render(name)
-	if focused {
-		name = focusStyle.Render(name)
+	// Name cell, marked when this slice is the live (swapped-in) one.
+	disp := s.Name
+	if s.Active {
+		disp = "● " + s.Name
 	}
+	nameCell := clip(disp, nameW)
+	switch {
+	case s.Active:
+		nameCell = liveStyle.Render(nameCell)
+	case focused:
+		nameCell = focusStyle.Render(nameCell)
+	}
+	nameCell = padCell(nameCell, nameW)
 
-	line1 := fmt.Sprintf("%s%s  %s  %s  %s  %s",
-		cursor, name, repoDots(s), stackBadge(m, s), prBadge(m, s), sessionBadge(status))
+	line1 := cursor + nameCell + " " +
+		padCol(repoTags(s), reposW) + " " +
+		padCol(stackBadge(m, s), stackW) + " " +
+		padCol(prBadge(m, s), prW) + " " +
+		sessionCell(status)
 
-	line2 := "   " + overviewStyle.Render(cardOverview(m, s))
-
-	return clip(line1, m.width) + "\n" + clip(line2, m.width) + "\n"
+	out := clip(line1, m.width) + "\n" + clip("    "+overviewStyle.Render(cardOverview(m, s)), m.width) + "\n"
+	if spacer {
+		out += "\n"
+	}
+	return out
 }
 
-// repoDots renders a fixed-width member indicator: up to three ◆ then a count.
-func repoDots(s model.Slice) string {
-	n := len(s.Members)
-	filled := n
-	if filled > 3 {
-		filled = 3
-	}
-	dots := strings.Repeat("◆", filled) + strings.Repeat("·", 3-filled)
-	return fmt.Sprintf("%s %d", dots, n)
+// repoTags lists the slice's member repos by name (the columns header is REPOS).
+func repoTags(s model.Slice) string {
+	return strings.Join(s.Repos(), " ")
 }
 
-// stackBadge renders the slice's stack health from its card.
+// stackBadge renders the slice's stack health from its card, in words.
 func stackBadge(m Model, s model.Slice) string {
 	c, ok := m.cards[s.Name]
-	if !ok || !c.stackKnown {
-		return overviewStyle.Render("· · · · ·")
+	if !ok {
+		return overviewStyle.Render("…")
+	}
+	if !c.stackKnown {
+		return overviewStyle.Render("—")
 	}
 	if c.restack == 0 {
-		return syncedStyle.Render("✓ synced  ")
+		return syncedStyle.Render("✓ synced")
 	}
 	return needsRestackStyle.Render(fmt.Sprintf("⚠ %d restack", c.restack))
 }
 
-// prBadge renders PR state for the slice (first repo with a PR). PRs are loaded
-// lazily for the focused slice, so unfocused rows usually show "—".
+// prBadge renders PR + CI for the slice (first repo with a PR).
 func prBadge(m Model, s model.Slice) string {
 	slicePRs, ok := m.prs[s.Name]
-	if m.prLoading[s.Name] && !ok {
-		return overviewStyle.Render("PR…    ")
-	}
 	if !ok {
-		return overviewStyle.Render("—      ")
+		if m.prLoading[s.Name] {
+			return overviewStyle.Render("…")
+		}
+		return overviewStyle.Render("—")
 	}
 	for _, repo := range s.Repos() {
 		if pr := slicePRs[repo]; pr != nil {
@@ -281,7 +323,21 @@ func prBadge(m Model, s model.Slice) string {
 			return fmt.Sprintf("#%d %s", pr.Number, forge.CIEmoji(overall))
 		}
 	}
-	return overviewStyle.Render("no PR  ")
+	return overviewStyle.Render("no PR")
+}
+
+// sessionCell renders the session status as glyph + word, highlighting "wait".
+func sessionCell(s model.SessionStatus) string {
+	switch s {
+	case model.SessWaitingInput:
+		return waitStyle.Render("⏸ wait")
+	case model.SessRunning:
+		return "● run"
+	case model.SessDone:
+		return syncedStyle.Render("✓ done")
+	default:
+		return overviewStyle.Render("○ idle")
+	}
 }
 
 // cardOverview returns the one-line "what is this slice about" text: the PR
@@ -306,8 +362,7 @@ func cardOverview(m Model, s model.Slice) string {
 	}
 
 	stat := fmt.Sprintf(" · +%d −%d · %d commit%s", c.added, c.deleted, c.commits, plural(c.commits))
-	// Reserve room for the stat tail so the description truncates, not the stats.
-	descW := clamp(m.width-len(stat)-4, 10, m.width)
+	descW := clamp(m.width-lipgloss.Width(stat)-5, 10, m.width)
 	return clip(desc, descW) + stat
 }
 
@@ -377,6 +432,15 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		return m, m.attachCmd()
+	case "w":
+		m.requestSwap()
+		return m, nil
+	case "Y":
+		if cmd := copyPRStackCmd(m); cmd != nil {
+			m.status = "copied PR stack to clipboard"
+			return m, cmd
+		}
+		return m, m.maybeLoadPRs()
 	}
 	return m, nil
 }
