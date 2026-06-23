@@ -596,6 +596,14 @@ func renderSwapOverlay(m Model) string {
 	return helpBoxStyle.Render(sb.String())
 }
 
+// targetLabel describes a set of slice targets for an overlay title.
+func targetLabel(slices []string) string {
+	if len(slices) == 1 {
+		return slices[0]
+	}
+	return fmt.Sprintf("%d slices", len(slices))
+}
+
 // renderStackOverlay renders the restack/sync action modal.
 func renderStackOverlay(m Model) string {
 	if m.pendingStack == nil {
@@ -603,7 +611,7 @@ func renderStackOverlay(m Model) string {
 	}
 	key := panelTitleFocusStyle.Render
 	var sb strings.Builder
-	sb.WriteString(cockpitHeaderStyle.Render("Stack actions — "+m.pendingStack.slice) + "\n\n")
+	sb.WriteString(cockpitHeaderStyle.Render("Stack actions — "+targetLabel(m.pendingStack.slices)) + "\n\n")
 	sb.WriteString("Restack rebases each repo's branch onto its parent (slice-scoped; dirty\n")
 	sb.WriteString("worktrees skipped, conflicts left for you to resolve). Sync is repo-wide:\n")
 	sb.WriteString("it runs `gt sync` interactively (may overwrite trunk, delete merged branches).\n\n")
@@ -618,7 +626,7 @@ func renderRemoveOverlay(m Model) string {
 	}
 	key := panelTitleFocusStyle.Render
 	var sb strings.Builder
-	sb.WriteString(cockpitHeaderStyle.Render("Clear "+m.pendingRemove.slice) + "\n\n")
+	sb.WriteString(cockpitHeaderStyle.Render("Clear "+targetLabel(m.pendingRemove.slices)) + "\n\n")
 	sb.WriteString("Remove each repo's worktree, kill the tmux session, and delete merged\n")
 	sb.WriteString("branches. Refuses dirty worktrees / unmerged branches unless forced.\n\n")
 	sb.WriteString(key("[y]") + " clear     " + key("[f]") + " force (dirty + unmerged)     " + key("[n]") + " cancel\n")

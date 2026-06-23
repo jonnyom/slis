@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -246,7 +247,53 @@ func hubFilters() []hubFilter {
 		{"In progress", func(m Model, s model.Slice) bool { return m.workState(s) == stInProgress }},
 		{"Needs restack", func(m Model, s model.Slice) bool { c, ok := m.cards[s.Name]; return ok && c.restack > 0 }},
 		{"Live", func(_ Model, s model.Slice) bool { return s.Active }},
+		{"Inbox", func(m Model, s model.Slice) bool { return m.inInbox(s) }},
 	}
+}
+
+// attentionRank ranks how urgently a slice needs YOUR attention; lower = more
+// urgent, 99 = not in the inbox (nothing for you to do right now).
+func (m Model) attentionRank(s model.Slice) int {
+	if m.sessionStatus[s.Name] == model.SessWaitingInput {
+		return 0 // Claude is blocked on you
+	}
+	if slicePRs, ok := m.prs[s.Name]; ok {
+		for _, repo := range s.Repos() {
+			if pr := slicePRs[repo]; pr != nil && !strings.EqualFold(pr.State, "MERGED") {
+				if overall, _, _, _ := pr.CISummary(); overall == forge.CheckFail {
+					return 1 // CI is red
+				}
+			}
+		}
+	}
+	if c, ok := m.cards[s.Name]; ok && c.restack > 0 {
+		return 2 // needs restack
+	}
+	if m.sliceMergeState(s) == mergeReady {
+		return 3 // merged — ready to clear
+	}
+	return 99
+}
+
+// inInbox reports whether a slice needs the user's attention.
+func (m Model) inInbox(s model.Slice) bool { return m.attentionRank(s) < 99 }
+
+// attentionOrder returns indices of inbox slices, most-urgent first.
+func (m Model) attentionOrder() []int {
+	var idxs []int
+	for i, s := range m.slices {
+		if m.inInbox(s) {
+			idxs = append(idxs, i)
+		}
+	}
+	sort.SliceStable(idxs, func(a, b int) bool {
+		ra, rb := m.attentionRank(m.slices[idxs[a]]), m.attentionRank(m.slices[idxs[b]])
+		if ra != rb {
+			return ra < rb
+		}
+		return m.slices[idxs[a]].Name < m.slices[idxs[b]].Name
+	})
+	return idxs
 }
 
 // restackCount counts slices with at least one branch needing a restack.
@@ -289,6 +336,16 @@ func (m Model) hubVisible() []int {
 			continue
 		}
 		out = append(out, i)
+	}
+	// The Inbox is a triage queue: order by urgency, not by name.
+	if filt.label == "Inbox" {
+		sort.SliceStable(out, func(a, b int) bool {
+			ra, rb := m.attentionRank(m.slices[out[a]]), m.attentionRank(m.slices[out[b]])
+			if ra != rb {
+				return ra < rb
+			}
+			return m.slices[out[a]].Name < m.slices[out[b]].Name
+		})
 	}
 	return out
 }
@@ -355,7 +412,7 @@ func renderBrowser(m Model) string {
 	}
 	top := clip(head.String(), m.width)
 
-	footerText := "tab focus · j/k move · enter open · w live · d clear · space select · m group · / search · ? help"
+	footerText := "n next-todo · j/k move · enter open · w live · d clear · R restack · space/A select · m group · / search · ? help"
 	if m.status != "" {
 		footerText = m.status
 	}
@@ -373,7 +430,7 @@ func renderBrowser(m Model) string {
 	}
 
 	filters := hubFilters()
-	statesH := len(filters) + 2
+	statesH := len(filters) + 3 // border (2) + title (1) + one row per filter
 	if statesH > bodyH-4 {
 		statesH = bodyH - 4
 	}
@@ -663,7 +720,7 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focus = vis[pos-1]
 			return m, m.loadPreview()
 		}
-	case "1", "2", "3", "4", "5", "6":
+	case "1", "2", "3", "4", "5", "6", "7", "8":
 		if idx := int(msg.String()[0] - '1'); idx < nFilters {
 			m.filterIdx = idx
 			m.snapFocusToFilter()
@@ -693,6 +750,42 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "R":
 		m.requestStack()
+		return m, nil
+	case "n":
+		order := m.attentionOrder()
+		if len(order) == 0 {
+			m.status = "inbox zero — nothing needs you 🎉"
+			return m, nil
+		}
+		p := posInFiltered(order, m.focus) // -1 if focus not in inbox
+		m.focus = order[(p+1+len(order))%len(order)]
+		return m, m.loadPreview()
+	case "N":
+		order := m.attentionOrder()
+		if len(order) == 0 {
+			return m, nil
+		}
+		p := posInFiltered(order, m.focus)
+		if p < 0 {
+			p = 0
+		}
+		m.focus = order[(p-1+len(order))%len(order)]
+		return m, m.loadPreview()
+	case "A":
+		allSel := len(vis) > 0
+		for _, i := range vis {
+			if !m.selected[m.slices[i].Name] {
+				allSel = false
+				break
+			}
+		}
+		for _, i := range vis {
+			if allSel {
+				delete(m.selected, m.slices[i].Name)
+			} else {
+				m.selected[m.slices[i].Name] = true
+			}
+		}
 		return m, nil
 	case " ":
 		if sl, ok := m.currentSlice(); ok {

@@ -384,50 +384,84 @@ func slisSwapCmd(req swapReq, stash bool) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
-// removeReq is a pending "clear this finished slice" confirmation.
-type removeReq struct{ slice string }
+// removeReq is a pending "clear finished slice(s)" confirmation (one or many).
+type removeReq struct{ slices []string }
 
-// removeDoneMsg carries the outcome of an in-process slice removal.
+// removeDoneMsg carries the aggregate outcome of an in-process clear.
 type removeDoneMsg struct {
-	report cleanup.Report
-	ok     bool // every member worktree was removed
+	cleared int
+	failed  string // first "<slice>/<repo>" that failed, "" if all clean
 }
 
-// removeCmd clears a finished slice IN-PROCESS (no subprocess / alt-screen
-// flash) so the result can be shown in the status line. On full success it also
-// clears the slice's grouping override and status file.
-func (m Model) removeCmd(sliceName string, force bool) tea.Cmd {
-	var sl model.Slice
-	found := false
-	for _, s := range m.slices {
-		if s.Name == sliceName {
-			sl, found = s, true
-			break
+// actionTargets returns the slice names a fleet action applies to: the
+// multi-selection if any, else the focused slice.
+func (m Model) actionTargets() []string {
+	if len(m.selected) == 0 {
+		if sl, ok := m.currentSlice(); ok {
+			return []string{sl.Name}
+		}
+		return nil
+	}
+	var names []string
+	for _, s := range m.slices { // m.slices order is stable
+		if m.selected[s.Name] {
+			names = append(names, s.Name)
 		}
 	}
-	if !found {
-		return nil
+	return names
+}
+
+// isActive reports whether the named slice is currently swapped in (live).
+func (m Model) isActive(name string) bool {
+	for _, s := range m.slices {
+		if s.Name == name {
+			return s.Active
+		}
+	}
+	return false
+}
+
+// removeCmd clears one or more finished slices IN-PROCESS (no subprocess /
+// alt-screen flash). On full success per slice it also clears that slice's
+// grouping override and status file; results are aggregated for the status line.
+func (m Model) removeCmd(slices []string, force bool) tea.Cmd {
+	byName := make(map[string]model.Slice, len(m.slices))
+	for _, s := range m.slices {
+		byName[s.Name] = s
+	}
+	var targets []model.Slice
+	for _, n := range slices {
+		if sl, ok := byName[n]; ok {
+			targets = append(targets, sl)
+		}
 	}
 	ws := m.ws
 	return func() tea.Msg {
-		rep := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: force})
-		ok := len(rep.Repos) > 0
-		for _, r := range rep.Repos {
-			if r.Err != "" {
-				ok = false
-			}
-		}
-		if ok {
-			sp := config.StatePaths()
-			if ov, err := discovery.LoadOverrides(sp.Overrides); err == nil {
-				if _, present := ov[sliceName]; present {
-					delete(ov, sliceName)
-					_ = discovery.SaveOverrides(sp.Overrides, ov)
+		sp := config.StatePaths()
+		cleared, failed := 0, ""
+		for _, sl := range targets {
+			rep := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: force})
+			ok := len(rep.Repos) > 0
+			for _, r := range rep.Repos {
+				if r.Err != "" {
+					ok = false
+					if failed == "" {
+						failed = sl.Name + "/" + r.Repo
+					}
 				}
 			}
-			_ = notify.RemoveStatus(sp.EventsDir, sliceName)
+			if ok {
+				cleared++
+				if ov, err := discovery.LoadOverrides(sp.Overrides); err == nil {
+					if _, present := ov[sl.Name]; present {
+						delete(ov, sl.Name)
+						_ = discovery.SaveOverrides(sp.Overrides, ov)
+					}
+				}
+				_ = notify.RemoveStatus(sp.EventsDir, sl.Name)
+			}
 		}
-		return removeDoneMsg{report: rep, ok: ok}
+		return removeDoneMsg{cleared: cleared, failed: failed}
 	}
 }
 
@@ -476,28 +510,48 @@ func (m Model) ungroupCmd(name string) tea.Cmd {
 	}
 }
 
-// stackReq is a pending restack/sync confirmation for a slice.
-type stackReq struct{ slice string }
+// stackReq is a pending restack/sync confirmation (one or many slices).
+type stackReq struct{ slices []string }
 
-// stackDoneMsg carries the outcome of an in-process restack.
-type stackDoneMsg struct{ report restack.Report }
+// stackDoneMsg carries the aggregate outcome of an in-process restack.
+type stackDoneMsg struct {
+	restacked int
+	conflict  string // first "<slice>/<repo>" with a conflict, "" if none
+	dirty     string // first "<slice>/<repo>" skipped as dirty, "" if none
+}
 
-// restackCmd restacks the slice's stack across its repos IN-PROCESS (refusing
-// dirty worktrees) and reports the result.
-func (m Model) restackCmd(sliceName string) tea.Cmd {
-	var sl model.Slice
-	found := false
+// restackCmd restacks one or more slices' stacks IN-PROCESS (refusing dirty
+// worktrees) and aggregates the result for the status line.
+func (m Model) restackCmd(slices []string) tea.Cmd {
+	byName := make(map[string]model.Slice, len(m.slices))
 	for _, s := range m.slices {
-		if s.Name == sliceName {
-			sl, found = s, true
-			break
+		byName[s.Name] = s
+	}
+	var targets []model.Slice
+	for _, n := range slices {
+		if sl, ok := byName[n]; ok {
+			targets = append(targets, sl)
 		}
 	}
-	if !found {
-		return nil
-	}
 	return func() tea.Msg {
-		return stackDoneMsg{report: restack.Run(sl, gt.Restack)}
+		agg := stackDoneMsg{}
+		for _, sl := range targets {
+			for _, r := range restack.Run(sl, gt.Restack).Repos {
+				switch {
+				case r.Conflict:
+					if agg.conflict == "" {
+						agg.conflict = sl.Name + "/" + r.Repo
+					}
+				case r.SkippedDirty:
+					if agg.dirty == "" {
+						agg.dirty = sl.Name + "/" + r.Repo
+					}
+				case r.Restacked:
+					agg.restacked++
+				}
+			}
+		}
+		return agg
 	}
 }
 
@@ -649,40 +703,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 
 	case removeDoneMsg:
-		if msg.ok {
-			m.status = "cleared " + msg.report.Slice
-			m.view = viewBrowser // the slice is gone; return to the hub
+		m.selected = make(map[string]bool)
+		if msg.failed != "" {
+			m.status = fmt.Sprintf("clear failed (%s): dirty/locked — press d then f to force", msg.failed)
 		} else {
-			m.status = "clear failed — dirty worktree or unmerged branch; press d then f to force"
-			for _, r := range msg.report.Repos {
-				if r.Err != "" {
-					m.status = fmt.Sprintf("clear failed (%s): dirty/locked — press d then f to force", r.Repo)
-					break
-				}
-			}
+			m.status = fmt.Sprintf("cleared %d slice%s", msg.cleared, plural(msg.cleared))
 		}
+		m.view = viewBrowser // cleared slices are gone; return to the hub
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 
 	case stackDoneMsg:
-		conflict, dirty, done := "", "", 0
-		for _, r := range msg.report.Repos {
-			switch {
-			case r.Conflict && conflict == "":
-				conflict = r.Repo
-			case r.SkippedDirty && dirty == "":
-				dirty = r.Repo
-			case r.Restacked:
-				done++
-			}
-		}
+		m.selected = make(map[string]bool)
 		switch {
-		case conflict != "":
-			m.status = "restack: conflict in " + conflict + " — attach (a), resolve, then `gt continue`"
-		case dirty != "":
-			m.status = "restack: " + dirty + " is dirty — commit or stash first"
+		case msg.conflict != "":
+			m.status = "restack: conflict in " + msg.conflict + " — attach (a), resolve, then `gt continue`"
+		case msg.dirty != "":
+			m.status = "restack: " + msg.dirty + " is dirty — commit or stash first"
 		default:
-			m.status = fmt.Sprintf("restacked %s (%d repos)", msg.report.Slice, done)
+			m.status = fmt.Sprintf("restacked %d repo%s", msg.restacked, plural(msg.restacked))
 		}
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.loadPreview())
@@ -799,56 +838,63 @@ func (m *Model) requestSwap() {
 	}
 }
 
-// requestRemove sets up the "clear finished slice" confirmation, refusing up
-// front if the slice is live (the CLI enforces this too).
+// requestRemove sets up the "clear finished slice(s)" confirmation over the
+// selection (or focused slice), refusing up front if any target is live.
 func (m *Model) requestRemove() {
-	sl, ok := m.currentSlice()
-	if !ok {
+	targets := m.actionTargets()
+	if len(targets) == 0 {
 		return
 	}
-	if sl.Active {
-		m.status = "slice is live — deactivate (w) before clearing"
-		return
+	for _, name := range targets {
+		if m.isActive(name) {
+			m.status = name + " is live — deactivate (w) before clearing"
+			return
+		}
 	}
-	m.pendingRemove = &removeReq{slice: sl.Name}
+	m.pendingRemove = &removeReq{slices: targets}
 }
 
-// updateRemoveKeys handles the clear-slice confirmation prompt.
+// updateRemoveKeys handles the clear-slice(s) confirmation prompt.
 func (m Model) updateRemoveKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	slice := m.pendingRemove.slice
+	slices := m.pendingRemove.slices
 	switch msg.String() {
 	case "y":
 		m.pendingRemove = nil
-		return m, m.removeCmd(slice, false)
+		return m, m.removeCmd(slices, false)
 	case "f":
 		m.pendingRemove = nil
-		return m, m.removeCmd(slice, true)
+		return m, m.removeCmd(slices, true)
 	case "n", "esc":
 		m.pendingRemove = nil
 	}
 	return m, nil
 }
 
-// requestStack sets up the restack/sync confirmation for the focused slice.
+// requestStack sets up the restack/sync confirmation over the selection (or
+// focused slice).
 func (m *Model) requestStack() {
-	if sl, ok := m.currentSlice(); ok {
-		m.pendingStack = &stackReq{slice: sl.Name}
+	if targets := m.actionTargets(); len(targets) > 0 {
+		m.pendingStack = &stackReq{slices: targets}
 	}
 }
 
 // updateStackKeys handles the restack/sync prompt.
 func (m Model) updateStackKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	slice := m.pendingStack.slice
+	slices := m.pendingStack.slices
 	switch msg.String() {
 	case "r":
 		m.pendingStack = nil
 		// Invalidate cached stack/card so badges refresh after the restack.
-		delete(m.stacks, slice)
-		delete(m.cards, slice)
-		return m, m.restackCmd(slice)
+		for _, n := range slices {
+			delete(m.stacks, n)
+			delete(m.cards, n)
+		}
+		return m, m.restackCmd(slices)
 	case "s":
 		m.pendingStack = nil
-		return m, slisSyncCmd(slice)
+		if len(slices) > 0 {
+			return m, slisSyncCmd(slices[0]) // sync is interactive + repo-wide; one at a time
+		}
 	case "n", "esc":
 		m.pendingStack = nil
 	}

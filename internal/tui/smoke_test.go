@@ -126,9 +126,19 @@ func TestSmokeOverlaysAndSelection(t *testing.T) {
 	}
 	_ = m.View()
 
-	// "Needs restack" state filter (index 6) renders.
+	// Each state filter renders (incl. Inbox, the triage queue).
+	for i := 0; i < len(hubFilters()); i++ {
+		m = base
+		m.filterIdx = i
+		_ = m.View()
+	}
+
+	// Batch select-all + a multi-slice clear overlay renders.
 	m = base
-	m.filterIdx = 6
+	for _, s := range m.slices {
+		m.selected[s.Name] = true
+	}
+	m.requestRemove()
 	_ = m.View()
 }
 
