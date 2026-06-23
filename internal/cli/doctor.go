@@ -212,8 +212,7 @@ func makeWorktreeFixer(primary, wtPath, branch, target string) func() (string, e
 
 // branchExists reports whether refs/heads/<branch> exists in the repo at dir.
 func branchExists(dir, branch string) bool {
-	_, err := git.Run(dir, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
-	return err == nil
+	return git.RefExists(dir, "refs/heads/"+branch)
 }
 
 // applyDoctorFixes runs the fix closure on every auto-fixable finding.
