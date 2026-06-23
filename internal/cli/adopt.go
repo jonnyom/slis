@@ -87,11 +87,21 @@ func popStash(dir, sha string) error {
 	return err
 }
 
+// repoTrunk returns the branch to start a new slice branch from: the repo's
+// configured default_branch, else its detected trunk.
+func repoTrunk(ws config.Workspace, repo, primary string) string {
+	if t := ws.Repos[repo].DefaultBranch; t != "" {
+		return t
+	}
+	return git.DetectBase(primary)
+}
+
 // adoptBranch creates managed worktrees for an existing branch (the core of
 // `slis adopt`, shared by the direct and interactive paths). With move=true a
-// branch checked out in a CLEAN primary is freed (the primary is detached)
-// before the worktree is created.
-func adoptBranch(ws config.Workspace, raw string, noSession, move bool) error {
+// branch checked out in a primary is freed (stashing any uncommitted work)
+// before the worktree is created. With createMissing=true, repos that don't have
+// the branch get it created off their trunk so the slice spans every repo.
+func adoptBranch(ws config.Workspace, raw string, noSession, move, createMissing bool) error {
 	prefix := ws.Grouping.StripPrefix
 	sliceName := config.SliceNameFromBranch(raw, prefix)
 	branch := branchForSlice(prefix, raw)
@@ -148,7 +158,17 @@ func adoptBranch(ws config.Workspace, raw string, noSession, move bool) error {
 			members = append(members, model.SliceMember{Repo: p.Repo, WorktreePath: p.Path})
 
 		default:
-			fmt.Printf("slis: %s — no branch %q locally or on origin (skipping)\n", p.Repo, p.Branch)
+			if !createMissing {
+				fmt.Printf("slis: %s — no branch %q (skipping; --create-missing to start it here)\n", p.Repo, p.Branch)
+				continue
+			}
+			base := repoTrunk(ws, p.Repo, p.Primary)
+			if _, err := git.Run(p.Primary, "worktree", "add", "-b", p.Branch, "--", p.Path, base); err != nil {
+				fmt.Printf("slis: %s — could not create branch %q off %q: %v\n", p.Repo, p.Branch, base, err)
+				continue
+			}
+			fmt.Printf("created %s at %s (new branch %q off %s)\n", p.Repo, p.Path, p.Branch, base)
+			members = append(members, model.SliceMember{Repo: p.Repo, WorktreePath: p.Path})
 		}
 	}
 
@@ -248,14 +268,14 @@ func gatherAdoptCandidates(ws config.Workspace) ([]adoptCandidate, error) {
 // pickAdoptCandidate shows an interactive picker: choose a branch, and choose
 // whether to free a clean primary that has it (the --move behaviour). Returns
 // the chosen branch ("" if cancelled) and the move choice.
-func pickAdoptCandidate(candidates []adoptCandidate) (branch string, move bool, err error) {
+func pickAdoptCandidate(candidates []adoptCandidate) (branch string, move, createMissing bool, err error) {
 	options := make([]huh.Option[string], len(candidates))
 	for i, c := range candidates {
 		label := fmt.Sprintf("%s  (%s)", c.Slice, strings.Join(c.Repos, ", "))
 		options[i] = huh.NewOption(label, c.Branch)
 	}
 	var chosen string
-	var freePrimary bool
+	var freePrimary, create bool
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
@@ -265,15 +285,18 @@ func pickAdoptCandidate(candidates []adoptCandidate) (branch string, move bool, 
 			huh.NewConfirm().
 				Title("If the branch is checked out in a primary, detach it (stashing any uncommitted work) so it can move into the worktree?").
 				Value(&freePrimary),
+			huh.NewConfirm().
+				Title("Create the branch in repos that don't have it (so the slice spans every repo)?").
+				Value(&create),
 		),
 	)
 	if e := form.Run(); e != nil {
 		if errors.Is(e, huh.ErrUserAborted) {
-			return "", false, nil // cancelled — not an error
+			return "", false, false, nil // cancelled — not an error
 		}
-		return "", false, e
+		return "", false, false, e
 	}
-	return chosen, freePrimary, nil
+	return chosen, freePrimary, create, nil
 }
 
 var adoptCmd = &cobra.Command{
@@ -291,12 +314,15 @@ at .slis/worktrees/<slice>/<repo>. A repo where the branch is currently checked
 out elsewhere (e.g. the primary) is skipped with a note — git won't check the
 same branch out twice. Pass --move to detach the primary that has the branch so
 it can move into the worktree; uncommitted work there is stashed and re-applied
-in the new worktree (recoverable via ` + "`git stash`" + `). strip_prefix is applied exactly once.`,
+in the new worktree (recoverable via ` + "`git stash`" + `). Pass --create-missing to
+also start the branch (off trunk) in repos that don't have it, so the slice
+spans every repo. strip_prefix is applied exactly once.`,
 	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		noSession, _ := cmd.Flags().GetBool("no-session")
 		move, _ := cmd.Flags().GetBool("move")
+		createMissing, _ := cmd.Flags().GetBool("create-missing")
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
@@ -315,7 +341,7 @@ in the new worktree (recoverable via ` + "`git stash`" + `). strip_prefix is app
 				fmt.Println("no adoptable branches found (every local branch is trunk or already a slice)")
 				return nil
 			}
-			picked, pickedMove, perr := pickAdoptCandidate(candidates)
+			picked, pickedMove, pickedCreate, perr := pickAdoptCandidate(candidates)
 			if perr != nil {
 				return perr
 			}
@@ -324,17 +350,19 @@ in the new worktree (recoverable via ` + "`git stash`" + `). strip_prefix is app
 			}
 			raw = picked
 			move = move || pickedMove
+			createMissing = createMissing || pickedCreate
 		}
 
 		if err := validateSliceName(raw); err != nil {
 			return err
 		}
-		return adoptBranch(ws, raw, noSession, move)
+		return adoptBranch(ws, raw, noSession, move, createMissing)
 	},
 }
 
 func init() {
 	adoptCmd.Flags().Bool("no-session", false, "Do not create a tmux session for the adopted slice")
 	adoptCmd.Flags().Bool("move", false, "Detach the primary holding the branch (stashing any uncommitted work) so it can move into the worktree")
+	adoptCmd.Flags().Bool("create-missing", false, "In repos that don't have the branch, create it off trunk so the slice spans every repo")
 	rootCmd.AddCommand(adoptCmd)
 }
