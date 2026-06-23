@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 )
@@ -130,6 +131,10 @@ func renderStackTab(m Model) string {
 		return "loading…\n"
 	}
 
+	// Determine PR state for this slice.
+	slicePRs, prsLoaded := m.prs[sl.Name]
+	prsLoading := m.prLoading[sl.Name]
+
 	var sb strings.Builder
 	for _, repo := range repos {
 		sb.WriteString(repoHeaderStyle.Render(repo))
@@ -138,26 +143,44 @@ func renderStackTab(m Model) string {
 		state, ok := sliceStacks[repo]
 		if !ok || len(state) == 0 {
 			sb.WriteString("  (no stack data)\n")
-			continue
+		} else {
+			ordered := state.Ordered()
+			for _, branch := range ordered {
+				indent := strings.Repeat("  ", branch.Depth+1)
+				var line string
+				if branch.Trunk {
+					line = fmt.Sprintf("%s%s [trunk]", indent, branch.Name)
+					line = trunkStyle.Render(line)
+				} else if branch.NeedsRestack {
+					line = fmt.Sprintf("%s%s (needs restack)", indent, branch.Name)
+					line = needsRestackStyle.Render(line)
+				} else {
+					line = fmt.Sprintf("%s%s", indent, branch.Name)
+					line = branchStyle.Render(line)
+				}
+				sb.WriteString(line)
+				sb.WriteString("\n")
+			}
 		}
 
-		ordered := state.Ordered()
-		for _, branch := range ordered {
-			indent := strings.Repeat("  ", branch.Depth+1)
-			var line string
-			if branch.Trunk {
-				line = fmt.Sprintf("%s%s [trunk]", indent, branch.Name)
-				line = trunkStyle.Render(line)
-			} else if branch.NeedsRestack {
-				line = fmt.Sprintf("%s%s (needs restack)", indent, branch.Name)
-				line = needsRestackStyle.Render(line)
+		// Append PR info.
+		switch {
+		case prsLoading && !prsLoaded:
+			sb.WriteString("  PR: loading…\n")
+		case prsLoaded:
+			pr := slicePRs[repo]
+			if pr == nil {
+				sb.WriteString("  (no PR)\n")
 			} else {
-				line = fmt.Sprintf("%s%s", indent, branch.Name)
-				line = branchStyle.Render(line)
+				overall, _, _, _ := pr.CISummary()
+				ciEmoji := forge.CIEmoji(overall)
+				prLine := fmt.Sprintf("  PR #%d %s 💬%d  %s",
+					pr.Number, ciEmoji, len(pr.Comments), pr.URL)
+				sb.WriteString(prLine)
+				sb.WriteString("\n")
 			}
-			sb.WriteString(line)
-			sb.WriteString("\n")
 		}
+
 		sb.WriteString("\n")
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
+	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/proc"
@@ -55,6 +56,12 @@ type Model struct {
 	// Summary tab fields.
 	summaries      map[string]string // slice name → rendered commit summary text
 	summaryLoading map[string]bool   // slice name → load in progress
+	// PR data for the Stack tab.
+	prs       map[string]map[string]*forge.PR // slice name → repo name → PR (nil = none found)
+	prLoading map[string]bool                 // slice name → PR load in progress
+	// Comments overlay fields.
+	showCommentsOverlay bool // true when [c] overlay is open
+	commentsSel         int  // scroll index in the comments overlay
 	// fsnotify watcher for live event-file updates.
 	watcher   *fsnotify.Watcher
 	eventsDir string
@@ -87,6 +94,8 @@ func New(ws config.Workspace) Model {
 		sessionStatus:  make(map[string]model.SessionStatus),
 		summaries:      make(map[string]string),
 		summaryLoading: make(map[string]bool),
+		prs:            make(map[string]map[string]*forge.PR),
+		prLoading:      make(map[string]bool),
 		watcher:        w,
 		eventsDir:      eventsDir,
 	}
@@ -302,8 +311,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sessCmd := loadSessionsCmd(m.slices, sp.EventsDir)
 		// Kick off stack load for the currently focused slice if on Stack tab.
 		if m.activeTab == TabStack {
-			if cmd := m.maybeLoadStack(); cmd != nil {
-				return m, tea.Batch(sessCmd, cmd)
+			stackCmd := m.maybeLoadStack()
+			prCmd := m.maybeLoadPRs()
+			var extra []tea.Cmd
+			if stackCmd != nil {
+				extra = append(extra, stackCmd)
+			}
+			if prCmd != nil {
+				extra = append(extra, prCmd)
+			}
+			if len(extra) > 0 {
+				return m, tea.Batch(append([]tea.Cmd{sessCmd}, extra...)...)
 			}
 		}
 		// Kick off diff load if on Changes tab.
@@ -317,6 +335,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case summaryLoadedMsg:
 		m.summaries[msg.slice] = msg.text
 		delete(m.summaryLoading, msg.slice)
+
+	case prsLoadedMsg:
+		m.prs[msg.slice] = msg.prs
+		delete(m.prLoading, msg.slice)
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
@@ -356,6 +378,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showProcOverlay {
 			return m.updateOverlayKeys(msg)
 		}
+		if m.showCommentsOverlay {
+			return m.updateCommentsOverlayKeys(msg)
+		}
 
 		// Viewport scroll keys — only when on Changes tab.
 		if m.activeTab == TabChanges {
@@ -388,6 +413,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
+		case "Y":
+			// Copy PR stack as markdown to clipboard.
+			if cmd := copyPRStackCmd(m); cmd != nil {
+				return m, cmd
+			}
+			// PRs not loaded yet — trigger a load (will copy on next Y once loaded).
+			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
+				if cmd := m.maybeLoadPRs(); cmd != nil {
+					return m, cmd
+				}
+			}
+		case "c":
+			// Toggle the comments overlay.
+			m.showCommentsOverlay = true
+			m.commentsSel = 0
+			// Ensure PRs are loaded.
+			if cmd := m.maybeLoadPRs(); cmd != nil {
+				return m, cmd
+			}
+		case "F":
+			// Hand the terminal to `slis fix-ci <slice>`.
+			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
+				sl := m.slices[m.focus]
+				if cmd := fixCICmd(sl); cmd != nil {
+					return m, cmd
+				}
+			}
 		case "P":
 			// Open the proc overlay.
 			m.showProcOverlay = true
@@ -403,8 +455,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.slices) > 0 && m.focus < len(m.slices)-1 {
 				m.focus++
 				if m.activeTab == TabStack {
-					if cmd := m.maybeLoadStack(); cmd != nil {
-						return m, cmd
+					stackCmd := m.maybeLoadStack()
+					prCmd := m.maybeLoadPRs()
+					if stackCmd != nil || prCmd != nil {
+						return m, tea.Batch(stackCmd, prCmd)
 					}
 				}
 				if m.activeTab == TabSummary {
@@ -428,8 +482,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus > 0 {
 				m.focus--
 				if m.activeTab == TabStack {
-					if cmd := m.maybeLoadStack(); cmd != nil {
-						return m, cmd
+					stackCmd := m.maybeLoadStack()
+					prCmd := m.maybeLoadPRs()
+					if stackCmd != nil || prCmd != nil {
+						return m, tea.Batch(stackCmd, prCmd)
 					}
 				}
 				if m.activeTab == TabSummary {
@@ -475,8 +531,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "l":
 			m.activeTab = (m.activeTab + 1) % tabCount
 			if m.activeTab == TabStack {
-				if cmd := m.maybeLoadStack(); cmd != nil {
-					return m, cmd
+				stackCmd := m.maybeLoadStack()
+				prCmd := m.maybeLoadPRs()
+				if stackCmd != nil || prCmd != nil {
+					return m, tea.Batch(stackCmd, prCmd)
 				}
 			}
 			if m.activeTab == TabSummary {
@@ -497,6 +555,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "shift+tab", "h":
 			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
+			if m.activeTab == TabStack {
+				stackCmd := m.maybeLoadStack()
+				prCmd := m.maybeLoadPRs()
+				if stackCmd != nil || prCmd != nil {
+					return m, tea.Batch(stackCmd, prCmd)
+				}
+			}
 			if m.activeTab == TabSummary {
 				if cmd := m.maybeLoadSummary(); cmd != nil {
 					return m, cmd
@@ -565,6 +630,27 @@ func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateCommentsOverlayKeys handles key events while the comments overlay is open.
+func (m Model) updateCommentsOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	lines := flattenComments(m)
+	n := len(lines)
+
+	switch msg.String() {
+	case "j", "down":
+		if n > 0 && m.commentsSel < n-1 {
+			m.commentsSel++
+		}
+	case "k", "up":
+		if m.commentsSel > 0 {
+			m.commentsSel--
+		}
+	case "c", "esc":
+		m.showCommentsOverlay = false
+	}
+
+	return m, nil
+}
+
 // View renders the current model state to a string.
 func (m Model) View() string {
 	if m.loading {
@@ -578,6 +664,9 @@ func (m Model) View() string {
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)
+	}
+	if m.showCommentsOverlay {
+		return renderCommentsOverlay(m)
 	}
 
 	left := renderSliceList(m)
