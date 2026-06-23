@@ -119,11 +119,12 @@ func TestDiscover_BranchNameGrouping(t *testing.T) {
 		}
 	}
 
-	// Base should be populated from the member repo's DefaultBranch ("main" for
-	// all repos in this test). Active should be false (not set by Discover).
+	// Base is left empty by Discover — trunk is detected per repo at diff/summary
+	// time (git.DetectBase), since a slice can span repos with different trunks.
+	// Active should be false (not set by Discover).
 	for _, s := range slices {
-		if s.Base != "main" {
-			t.Errorf("slice %q: Base = %q, want \"main\"", s.Name, s.Base)
+		if s.Base != "" {
+			t.Errorf("slice %q: Base = %q, want \"\" (per-repo detection)", s.Name, s.Base)
 		}
 		if s.Active {
 			t.Errorf("slice %q: Active = true, want false", s.Name)

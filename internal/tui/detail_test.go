@@ -28,53 +28,61 @@ func modelWithSlices(t *testing.T) Model {
 	return m
 }
 
-// TestTabSwitching verifies that tab/l advances the activeTab (mod 5) and
-// shift+tab/h goes backwards.
-func TestTabSwitching(t *testing.T) {
+// TestPanelFocusCycling verifies that tab/shift+tab cycle the cockpit's focused
+// panel (mod panelCount) once a slice is open.
+func TestPanelFocusCycling(t *testing.T) {
 	m := modelWithSlices(t)
+	m.view = viewCockpit
+	m.focus = 0
 
-	if m.activeTab != TabStack {
-		t.Fatalf("initial activeTab should be TabStack (0), got %d", m.activeTab)
+	if m.panel != panelStack {
+		t.Fatalf("initial panel should be panelStack (0), got %d", m.panel)
 	}
 
-	// Advance through all 5 tabs with "tab" key.
-	for i := 1; i <= 5; i++ {
+	for i := 1; i <= int(panelCount); i++ {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = next.(Model)
-		expected := Tab(i % 5)
-		if m.activeTab != expected {
-			t.Errorf("after %d tab presses: want activeTab=%d, got %d", i, expected, m.activeTab)
+		want := panel(i % int(panelCount))
+		if m.panel != want {
+			t.Errorf("after %d tab presses: want panel=%d, got %d", i, want, m.panel)
 		}
 	}
 
-	// After 5 presses, we're back at TabStack (0).
-	if m.activeTab != TabStack {
-		t.Errorf("after full cycle: want TabStack, got %d", m.activeTab)
-	}
-
-	// Also test "l" key.
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	// shift+tab goes backwards (wrap from panelStack to the last panel).
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = next.(Model)
-	if m.activeTab != TabSummary {
-		t.Errorf("l key: want TabSummary, got %d", m.activeTab)
-	}
-
-	// shift+tab should go backwards.
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	m = next.(Model)
-	if m.activeTab != TabStack {
-		t.Errorf("shift+tab: want TabStack, got %d", m.activeTab)
-	}
-
-	// "h" key should also go backwards; wrap around from 0 to 4.
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
-	m = next.(Model)
-	if m.activeTab != TabProcesses {
-		t.Errorf("h from TabStack: want TabProcesses (4), got %d", m.activeTab)
+	if m.panel != panelProcs {
+		t.Errorf("shift+tab from panelStack: want panelProcs (%d), got %d", panelProcs, m.panel)
 	}
 }
 
-// TestHelpToggle verifies that "?" toggles showHelp.
+// TestEnterAndBackNavigation verifies that Enter on a slice opens the cockpit
+// (focused on the Stack panel) and Esc returns to the browser.
+func TestEnterAndBackNavigation(t *testing.T) {
+	m := modelWithSlices(t)
+	m.focus = 0
+
+	if m.view != viewBrowser {
+		t.Fatalf("initial view should be browser, got %d", m.view)
+	}
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if m.view != viewCockpit {
+		t.Fatalf("Enter should switch to cockpit, got view=%d", m.view)
+	}
+	if m.panel != panelStack {
+		t.Errorf("cockpit should open focused on panelStack, got %d", m.panel)
+	}
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+	if m.view != viewBrowser {
+		t.Errorf("Esc should return to browser, got view=%d", m.view)
+	}
+}
+
+// TestHelpToggle verifies that "?" opens help and "?"/esc closes it.
 func TestHelpToggle(t *testing.T) {
 	m := modelWithSlices(t)
 
@@ -82,14 +90,12 @@ func TestHelpToggle(t *testing.T) {
 		t.Fatal("showHelp should start false")
 	}
 
-	// First "?" → showHelp = true.
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	m = next.(Model)
 	if !m.showHelp {
 		t.Error("after first '?': showHelp should be true")
 	}
 
-	// Second "?" → showHelp = false.
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	m = next.(Model)
 	if m.showHelp {
@@ -102,18 +108,14 @@ func TestStackLoadedMsg(t *testing.T) {
 	m := modelWithSlices(t)
 
 	state := gt.State{
-		"main": gt.BranchState{Trunk: true},
-		"feature-a": gt.BranchState{
-			Parents: []gt.Parent{{Ref: "main", SHA: "abc123"}},
-		},
+		"main":      gt.BranchState{Trunk: true},
+		"feature-a": gt.BranchState{Parents: []gt.Parent{{Ref: "main", SHA: "abc123"}}},
 	}
 
-	msg := stackLoadedMsg{
+	next, _ := m.Update(stackLoadedMsg{
 		slice:  "feature-a",
 		stacks: map[string]gt.State{"web": state},
-	}
-
-	next, _ := m.Update(msg)
+	})
 	m = next.(Model)
 
 	if m.stacks == nil {
@@ -123,75 +125,58 @@ func TestStackLoadedMsg(t *testing.T) {
 	if !ok {
 		t.Fatal("stacks['feature-a'] should be present")
 	}
-	webState, ok := repoStates["web"]
-	if !ok {
-		t.Fatal("stacks['feature-a']['web'] should be present")
-	}
-	if _, ok := webState["main"]; !ok {
+	if _, ok := repoStates["web"]["main"]; !ok {
 		t.Error("stacks['feature-a']['web']['main'] should be present")
 	}
 }
 
-// TestRenderDetailStackTab verifies that renderDetail with TabStack shows tab names
-// and branch names from the cached stack.
-func TestRenderDetailStackTab(t *testing.T) {
+// TestStackPanelContent verifies the cockpit Stack panel shows the slice's
+// branch lineage (its branch + trunk) for each repo.
+func TestStackPanelContent(t *testing.T) {
 	m := modelWithSlices(t)
+	m.view = viewCockpit
 	m.focus = 0
-	m.activeTab = TabStack
 
-	// Pre-populate the stack cache.
 	state := gt.State{
-		"main": gt.BranchState{Trunk: true},
-		"feature-a": gt.BranchState{
-			Parents: []gt.Parent{{Ref: "main", SHA: "abc123"}},
-		},
+		"main":      gt.BranchState{Trunk: true},
+		"feature-a": gt.BranchState{Parents: []gt.Parent{{Ref: "main", SHA: "abc123"}}},
+		// An unrelated branch that must NOT appear in feature-a's lineage.
+		"other": gt.BranchState{Parents: []gt.Parent{{Ref: "main"}}},
 	}
-	m.stacks = map[string]map[string]gt.State{
-		"feature-a": {"web": state},
-	}
+	m.stacks = map[string]map[string]gt.State{"feature-a": {"web": state}}
 
-	output := renderDetail(m)
+	out := stackPanelContent(m, m.slices[0])
 
-	// Tab bar should contain all tab names.
-	for _, name := range []string{"Stack", "Summary", "Changes", "Sessions", "Processes"} {
-		if !strings.Contains(output, name) {
-			t.Errorf("renderDetail should contain tab name %q; output:\n%s", name, output)
-		}
+	if !strings.Contains(out, "web") {
+		t.Errorf("stack panel should contain repo 'web'; got:\n%s", out)
 	}
-
-	// Stack content should show branch names.
-	if !strings.Contains(output, "main") {
-		t.Errorf("renderDetail (Stack tab) should contain branch 'main'; output:\n%s", output)
+	if !strings.Contains(out, "main") {
+		t.Errorf("stack panel should contain trunk 'main'; got:\n%s", out)
 	}
-	if !strings.Contains(output, "feature-a") {
-		t.Errorf("renderDetail (Stack tab) should contain branch 'feature-a'; output:\n%s", output)
+	if !strings.Contains(out, "feature-a") {
+		t.Errorf("stack panel should contain 'feature-a'; got:\n%s", out)
+	}
+	if strings.Contains(out, "other") {
+		t.Errorf("stack panel should NOT contain unrelated branch 'other'; got:\n%s", out)
 	}
 }
 
-// TestRenderDetailSummaryTab verifies the Summary tab shows a loading state when
-// no summary is cached, and renders the text when one is present.
-func TestRenderDetailSummaryTab(t *testing.T) {
+// TestSummaryContent verifies summaryContent shows a loading state with no cache
+// and the cached text (plus the AI hint) once present.
+func TestSummaryContent(t *testing.T) {
 	m := modelWithSlices(t)
-	m.focus = 0
-	m.activeTab = TabSummary
+	sl := m.slices[0]
 
-	// No summary cached yet → show loading.
-	output := renderDetail(m)
-	if !strings.Contains(output, "Summary") {
-		t.Errorf("tab bar should contain 'Summary'; output:\n%s", output)
-	}
-	if !strings.Contains(output, "loading") {
-		t.Errorf("summary tab with no cache should show 'loading'; output:\n%s", output)
+	if out := summaryContent(m, sl); !strings.Contains(out, "loading") {
+		t.Errorf("summaryContent with no cache should show 'loading'; got:\n%s", out)
 	}
 
-	// Pre-populate the cache.
 	m.summaries["feature-a"] = "## web\n\n- feat: hello\n"
-	output = renderDetail(m)
-	if !strings.Contains(output, "feat: hello") {
-		t.Errorf("summary tab should show cached text; output:\n%s", output)
+	out := summaryContent(m, sl)
+	if !strings.Contains(out, "feat: hello") {
+		t.Errorf("summaryContent should show cached text; got:\n%s", out)
 	}
-	// Should show the [s] AI hint.
-	if !strings.Contains(output, "[s]") {
-		t.Errorf("summary tab should show '[s] AI summary' hint; output:\n%s", output)
+	if !strings.Contains(out, "[s]") {
+		t.Errorf("summaryContent should show '[s] AI summary' hint; got:\n%s", out)
 	}
 }

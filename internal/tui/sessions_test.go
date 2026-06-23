@@ -57,9 +57,9 @@ func TestSessionsLoadedMsg(t *testing.T) {
 	}
 }
 
-// TestRenderSliceListShowsSessionBadge verifies that a slice with SessWaitingInput
-// shows the ⏸ badge in the slice list.
-func TestRenderSliceListShowsSessionBadge(t *testing.T) {
+// TestRenderBrowserShowsSessionBadge verifies that a slice with SessWaitingInput
+// shows the ⏸ badge in the browser.
+func TestRenderBrowserShowsSessionBadge(t *testing.T) {
 	m := New(config.Workspace{})
 	m.loading = false
 	m.slices = []model.Slice{
@@ -70,16 +70,16 @@ func TestRenderSliceListShowsSessionBadge(t *testing.T) {
 	}
 	m.focus = 0
 
-	output := renderSliceList(m)
+	output := renderBrowser(m)
 
 	if !strings.Contains(output, "⏸") {
-		t.Errorf("renderSliceList should contain '⏸' badge for SessWaitingInput; got:\n%s", output)
+		t.Errorf("renderBrowser should contain '⏸' badge for SessWaitingInput; got:\n%s", output)
 	}
 }
 
-// TestRenderSessionsTab verifies the Sessions tab shows the slice name and a
-// status word (e.g. "running", "none") for the focused slice.
-func TestRenderSessionsTab(t *testing.T) {
+// TestSessionDetailContent verifies the cockpit Session detail shows the slice
+// name and a status word for the focused slice.
+func TestSessionDetailContent(t *testing.T) {
 	m := New(config.Workspace{})
 	m.loading = false
 	m.slices = []model.Slice{
@@ -91,18 +91,16 @@ func TestRenderSessionsTab(t *testing.T) {
 		},
 	}
 	m.focus = 0
-	m.activeTab = TabSessions
 	m.sessionStatus = map[string]model.SessionStatus{
 		"feature-login": model.SessRunning,
 	}
 
-	output := renderDetail(m)
+	output := sessionDetailContent(m, m.slices[0])
 
 	if !strings.Contains(output, "feature-login") {
-		t.Errorf("Sessions tab should contain slice name 'feature-login'; got:\n%s", output)
+		t.Errorf("session detail should contain slice name 'feature-login'; got:\n%s", output)
 	}
-	// Should contain some status-related word
 	if !strings.Contains(output, "running") && !strings.Contains(output, "●") {
-		t.Errorf("Sessions tab should contain status info; got:\n%s", output)
+		t.Errorf("session detail should contain status info; got:\n%s", output)
 	}
 }

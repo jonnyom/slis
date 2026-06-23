@@ -34,64 +34,12 @@ func loadDiffCmd(sl model.Slice, base string) tea.Cmd {
 	}
 }
 
-// sliceBase returns the base ref for a slice, defaulting to "main" if unset.
+// sliceBase returns the base ref override for a slice, or "" to let diff/summary
+// auto-detect each repo's trunk independently (git.DetectBase). Base is only
+// non-empty when explicitly overridden — a slice spanning repos with different
+// trunks has no single slice-wide base.
 func sliceBase(sl model.Slice) string {
-	if sl.Base != "" {
-		return sl.Base
-	}
-	return "main"
-}
-
-// diffContent builds a fully-rendered, colored string for all diffs in the
-// focused slice. This is a pure function: it reads from the model but does not
-// mutate it. The caller (Update) is responsible for calling
-// m.viewport.SetContent with the result.
-func diffContent(m Model) string {
-	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
-		return "no slice selected\n"
-	}
-	sl := m.slices[m.focus]
-
-	if m.diffLoading[sl.Name] {
-		return "loading diff…\n"
-	}
-
-	diffs, ok := m.diffs[sl.Name]
-	if !ok {
-		return "loading diff…\n"
-	}
-	if len(diffs) == 0 {
-		return "no diffs\n"
-	}
-
-	var sb strings.Builder
-	for _, rd := range diffs {
-		if rd.Err != "" {
-			sb.WriteString(repoHeaderStyle.Render(fmt.Sprintf("▸ %s  error: %s", rd.Repo, rd.Err)))
-			sb.WriteString("\n\n")
-			continue
-		}
-		header := fmt.Sprintf("▸ %s  %d files  +%d -%d",
-			rd.Repo, len(rd.Files), rd.TotalAdded(), rd.TotalDeleted())
-		sb.WriteString(repoHeaderStyle.Render(header))
-		sb.WriteString("\n")
-		for _, f := range rd.Files {
-			var fileLine string
-			if f.Added == -1 {
-				fileLine = fmt.Sprintf("  %s  (binary)", f.Path)
-			} else {
-				fileLine = fmt.Sprintf("  %s  +%d -%d", f.Path, f.Added, f.Deleted)
-			}
-			sb.WriteString(fileLine)
-			sb.WriteString("\n")
-		}
-		if rd.Patch != "" {
-			sb.WriteString("\n")
-			sb.WriteString(colorizePatch(rd.Patch))
-			sb.WriteString("\n")
-		}
-	}
-	return sb.String()
+	return sl.Base
 }
 
 // colorizePatch applies chroma diff syntax coloring to a git patch string.

@@ -152,9 +152,9 @@ func TestViewRendersNames(t *testing.T) {
 		t.Errorf("View() missing slice name 'feature-signup'; got:\n%s", view)
 	}
 
-	// Focus marker should appear on the focused row.
-	if !strings.Contains(view, ">") {
-		t.Errorf("View() missing focus marker '>'; got:\n%s", view)
+	// Focus marker (cursor bar) should appear on the focused row.
+	if !strings.Contains(view, "▎") {
+		t.Errorf("View() missing focus marker '▎'; got:\n%s", view)
 	}
 }
 

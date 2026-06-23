@@ -101,5 +101,5 @@ var summaryCmd = &cobra.Command{
 
 func init() {
 	summaryCmd.Flags().Bool("ai", false, "Use claude -p to generate an AI prose summary")
-	summaryCmd.Flags().String("base", "main", "Base branch/ref to diff against")
+	summaryCmd.Flags().String("base", "", "Base branch/ref to diff against (default: auto-detect each repo's trunk)")
 }

@@ -1,13 +1,25 @@
 // Package tui provides a Bubble Tea terminal UI for slis.
+//
+// The UI has two levels:
+//
+//   - Browser (viewBrowser): a scrollable list of slices, each shown as a card
+//     with its repos, stack health, PR, session badge, and a one-line summary of
+//     what the slice is about. This is the landing screen.
+//   - Cockpit (viewCockpit): opened with Enter on a slice. A lazygit-style layout
+//     with stacked left panels (Repos & Stack, PRs, Session, Processes) whose
+//     focus drives a large right pane (diff / PR detail / processes / summary).
+//
+// All slow work (git, gh, gt, proc, tmux) runs inside tea.Cmd closures, never in
+// Update/View. View is pure.
 package tui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/jonnyom/slis/internal/config"
@@ -22,6 +34,14 @@ import (
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
+// viewMode selects which of the two top-level screens is showing.
+type viewMode int
+
+const (
+	viewBrowser viewMode = iota // slice list (landing)
+	viewCockpit                 // single-slice multi-panel detail
+)
+
 // slicesLoadedMsg is sent by loadSlicesCmd when slice discovery completes.
 type slicesLoadedMsg struct {
 	slices []model.Slice
@@ -30,51 +50,77 @@ type slicesLoadedMsg struct {
 
 // Model is the root Bubble Tea model for the slis TUI.
 type Model struct {
-	ws           config.Workspace
-	slices       []model.Slice
-	focus        int
-	err          error
-	width        int
-	height       int
-	loading      bool
-	activeTab    Tab
-	showHelp     bool
-	stacks       map[string]map[string]gt.State // slice name → repo name → State
-	stackLoading map[string]bool                // slice name → loading in progress
-	diffs        map[string][]diff.RepoDiff     // slice name → repo diffs
-	diffLoading  map[string]bool                // slice name → diff loading in progress
-	viewport     viewport.Model                 // scrollable viewport for Changes tab
+	ws      config.Workspace
+	slices  []model.Slice
+	focus   int // index of the current slice (selection in browser; subject of cockpit)
+	err     error
+	width   int
+	height  int
+	loading bool
+
+	view  viewMode // browser or cockpit
+	panel panel    // focused left panel within the cockpit
+	zoom  bool     // cockpit: right pane expanded full-width
+
+	// Browser filter ("/" to type a substring; matches slice names).
+	filter    string
+	filtering bool
+
+	// Per-panel selection within the cockpit.
+	repoSel int // selected member in the Repos & Stack panel (drives right-pane diff)
+	prSel   int // selected PR in the PRs panel
+	procSel int // selected process in the Processes panel
+	right   rightMode
+
+	showHelp bool
+
+	// Lazily-loaded per-slice data, keyed by slice name.
+	stacks       map[string]map[string]gt.State // slice → repo → gt State
+	stackLoading map[string]bool
+	diffs        map[string][]diff.RepoDiff // slice → per-repo diffs
+	diffLoading  map[string]bool
+	cards        map[string]sliceCard // slice → browser summary card
+	cardLoading  map[string]bool
+
+	viewport viewport.Model // scrollable right pane (cockpit)
+
 	// Session status badges.
-	sessionStatus map[string]model.SessionStatus // slice name → status
-	// Process overlay fields.
-	procs           map[string][]proc.ProcInfo // slice name → sampled procs
-	procLoading     map[string]bool            // slice name → proc load in progress
-	showProcOverlay bool                       // true when [P] overlay is open
-	overlaySel      int                        // selected row in overlay
-	overlayProcs    []proc.ProcInfo            // flattened+sorted procs for overlay
-	pendingKill     *killReq                   // non-nil when confirm prompt is shown
-	// Summary tab fields.
-	summaries      map[string]string // slice name → rendered commit summary text
-	summaryLoading map[string]bool   // slice name → load in progress
-	// PR data for the Stack tab.
-	prs       map[string]map[string]*forge.PR // slice name → repo name → PR (nil = none found)
-	prLoading map[string]bool                 // slice name → PR load in progress
-	// Comments overlay fields.
-	showCommentsOverlay bool // true when [c] overlay is open
-	commentsSel         int  // scroll index in the comments overlay
+	sessionStatus map[string]model.SessionStatus
+
+	// Process data.
+	procs           map[string][]proc.ProcInfo
+	procLoading     map[string]bool
+	showProcOverlay bool
+	overlaySel      int
+	overlayProcs    []proc.ProcInfo
+	pendingKill     *killReq
+
+	// Summary data.
+	summaries      map[string]string
+	summaryLoading map[string]bool
+
+	// PR data.
+	prs       map[string]map[string]*forge.PR
+	prLoading map[string]bool
+
+	// Comments overlay.
+	showCommentsOverlay bool
+	commentsSel         int
+
+	// Transient status line (e.g. an attach error), shown in the footer.
+	status string
+
 	// fsnotify watcher for live event-file updates.
 	watcher   *fsnotify.Watcher
 	eventsDir string
 }
 
-// New returns an initial Model with loading=true.
-// It creates an fsnotify watcher for the EventsDir so that Init can start
-// listening immediately.
+// New returns an initial Model with loading=true. It creates an fsnotify watcher
+// for the EventsDir so that Init can start listening immediately.
 func New(ws config.Workspace) Model {
 	sp := config.StatePaths()
 	eventsDir := sp.EventsDir
 
-	// Create the watcher best-effort — if it fails we just won't watch.
 	var w *fsnotify.Watcher
 	if watcher, err := fsnotify.NewWatcher(); err == nil {
 		_ = os.MkdirAll(eventsDir, 0o755)
@@ -85,10 +131,13 @@ func New(ws config.Workspace) Model {
 	return Model{
 		ws:             ws,
 		loading:        true,
+		view:           viewBrowser,
 		stacks:         make(map[string]map[string]gt.State),
 		stackLoading:   make(map[string]bool),
 		diffs:          make(map[string][]diff.RepoDiff),
 		diffLoading:    make(map[string]bool),
+		cards:          make(map[string]sliceCard),
+		cardLoading:    make(map[string]bool),
 		procs:          make(map[string][]proc.ProcInfo),
 		procLoading:    make(map[string]bool),
 		sessionStatus:  make(map[string]model.SessionStatus),
@@ -101,10 +150,7 @@ func New(ws config.Workspace) Model {
 	}
 }
 
-// Init returns the initial command: load slices in the background, and start
-// the fsnotify watch loop for live event-file updates.
-// Session statuses are loaded after the slicesLoadedMsg arrives (since we need
-// the slice list to check tmux session existence per slice).
+// Init loads slices in the background and starts the fsnotify watch loop.
 func (m Model) Init() tea.Cmd {
 	watchCmd := waitForEventCmd(m.watcher)
 	if watchCmd == nil {
@@ -113,8 +159,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(loadSlicesCmd(m.ws), watchCmd)
 }
 
-// loadSlicesCmd returns a Cmd that discovers slices off the UI goroutine.
-// All slow git I/O happens inside this closure.
+// loadSlicesCmd discovers slices off the UI goroutine.
 func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 	return func() tea.Msg {
 		sp := config.StatePaths()
@@ -138,13 +183,21 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 	}
 }
 
-// maybeLoadStack returns a loadStackCmd for the focused slice if its stack data
-// is not already cached or being loaded. Returns nil if no load is needed.
-func (m *Model) maybeLoadStack() tea.Cmd {
+// currentSlice returns the focused slice and whether one exists.
+func (m Model) currentSlice() (model.Slice, bool) {
 	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return model.Slice{}, false
+	}
+	return m.slices[m.focus], true
+}
+
+// ── Lazy loaders for the focused slice ──────────────────────────────────────
+
+func (m *Model) maybeLoadStack() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok {
 		return nil
 	}
-	sl := m.slices[m.focus]
 	if _, cached := m.stacks[sl.Name]; cached {
 		return nil
 	}
@@ -155,13 +208,11 @@ func (m *Model) maybeLoadStack() tea.Cmd {
 	return loadStackCmd(sl)
 }
 
-// maybeLoadDiff returns a loadDiffCmd for the focused slice if its diff data is
-// not already cached or being loaded. Returns nil if no load is needed.
 func (m *Model) maybeLoadDiff() tea.Cmd {
-	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+	sl, ok := m.currentSlice()
+	if !ok {
 		return nil
 	}
-	sl := m.slices[m.focus]
 	if _, cached := m.diffs[sl.Name]; cached {
 		return nil
 	}
@@ -172,13 +223,11 @@ func (m *Model) maybeLoadDiff() tea.Cmd {
 	return loadDiffCmd(sl, sliceBase(sl))
 }
 
-// maybeLoadProcs returns a loadProcsCmd for the focused slice if its proc data
-// is not already cached or being loaded. Returns nil if no load is needed.
 func (m *Model) maybeLoadProcs() tea.Cmd {
-	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+	sl, ok := m.currentSlice()
+	if !ok {
 		return nil
 	}
-	sl := m.slices[m.focus]
 	if _, cached := m.procs[sl.Name]; cached {
 		return nil
 	}
@@ -189,14 +238,28 @@ func (m *Model) maybeLoadProcs() tea.Cmd {
 	return loadProcsCmd(sl.Name)
 }
 
-// summaryLoadedMsg is delivered when a commit or AI summary has been computed off-loop.
+func (m *Model) maybeLoadSummary() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok {
+		return nil
+	}
+	if _, cached := m.summaries[sl.Name]; cached {
+		return nil
+	}
+	if m.summaryLoading[sl.Name] {
+		return nil
+	}
+	m.summaryLoading[sl.Name] = true
+	return loadSummaryCmd(sl, sliceBase(sl))
+}
+
+// summaryLoadedMsg is delivered when a commit or AI summary has been computed.
 type summaryLoadedMsg struct {
 	slice string
 	text  string
 }
 
-// loadSummaryCmd returns a Cmd that computes the commit summary for sl off the
-// UI goroutine and delivers a summaryLoadedMsg.
+// loadSummaryCmd computes the commit summary for sl off the UI goroutine.
 func loadSummaryCmd(sl model.Slice, base string) tea.Cmd {
 	return func() tea.Msg {
 		byRepo, _ := summary.CommitSummary(sl, base)
@@ -205,9 +268,8 @@ func loadSummaryCmd(sl model.Slice, base string) tea.Cmd {
 	}
 }
 
-// aiSummaryFromSliceCmd builds a combined diff from scratch (no cached diff required)
-// and calls the AI summariser in a single off-loop command. This avoids the two-step
-// diff-then-summary chain that previously caused [s] to hang on "loading…".
+// aiSummaryFromSliceCmd builds a combined diff and calls the AI summariser in a
+// single off-loop command (avoids a two-step diff-then-summary race).
 func aiSummaryFromSliceCmd(sl model.Slice) tea.Cmd {
 	return func() tea.Msg {
 		diffs, _ := diff.SliceDiff(sl, sliceBase(sl))
@@ -220,25 +282,7 @@ func aiSummaryFromSliceCmd(sl model.Slice) tea.Cmd {
 	}
 }
 
-// maybeLoadSummary returns a loadSummaryCmd for the focused slice if its summary
-// is not already cached or being loaded. Returns nil if no load is needed.
-func (m *Model) maybeLoadSummary() tea.Cmd {
-	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
-		return nil
-	}
-	sl := m.slices[m.focus]
-	if _, cached := m.summaries[sl.Name]; cached {
-		return nil
-	}
-	if m.summaryLoading[sl.Name] {
-		return nil
-	}
-	m.summaryLoading[sl.Name] = true
-	return loadSummaryCmd(sl, sliceBase(sl))
-}
-
-// batchLoadAllProcs returns a tea.Batch of loadProcsCmd for every slice that is
-// not yet cached or being loaded. Used when the overlay opens.
+// batchLoadAllProcs returns a Batch of loadProcsCmd for every uncached slice.
 func (m *Model) batchLoadAllProcs() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, sl := range m.slices {
@@ -263,29 +307,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Size the viewport to fill the right pane minus tabs+padding.
-		vpHeight := msg.Height - 4 // reserve space for tab bar + padding
-		if vpHeight < 1 {
-			vpHeight = 1
-		}
-		rightWidth := msg.Width - 41 // 40 left + 1 separator
-		if rightWidth < 1 {
-			rightWidth = msg.Width
-		}
-		m.viewport = viewport.New(rightWidth, vpHeight)
-		if m.activeTab == TabChanges {
-			m.viewport.SetContent(diffContent(m))
-		}
+		m.resizeViewport()
+		m.refreshRight()
 
 	case eventsChangedMsg:
-		// An event-file changed — reload statuses and keep watching.
 		return m, tea.Batch(
 			loadSessionsCmd(m.slices, m.eventsDir),
 			waitForEventCmd(m.watcher),
 		)
 
 	case sessionsLoadedMsg:
-		// Detect transitions to WaitingInput before updating stored statuses.
 		newly := NewlyWaiting(m.sessionStatus, msg.statuses)
 		m.sessionStatus = msg.statuses
 		if len(newly) > 0 {
@@ -300,304 +331,132 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		m.slices = msg.slices
-		// Clamp focus to valid range after load.
 		if len(m.slices) == 0 {
 			m.focus = 0
 		} else if m.focus >= len(m.slices) {
 			m.focus = len(m.slices) - 1
 		}
-		// Kick off session status load alongside other tab loads.
 		sp := config.StatePaths()
-		sessCmd := loadSessionsCmd(m.slices, sp.EventsDir)
-		// Kick off stack load for the currently focused slice if on Stack tab.
-		if m.activeTab == TabStack {
-			stackCmd := m.maybeLoadStack()
-			prCmd := m.maybeLoadPRs()
-			var extra []tea.Cmd
-			if stackCmd != nil {
-				extra = append(extra, stackCmd)
-			}
-			if prCmd != nil {
-				extra = append(extra, prCmd)
-			}
-			if len(extra) > 0 {
-				return m, tea.Batch(append([]tea.Cmd{sessCmd}, extra...)...)
-			}
-		}
-		// Kick off diff load if on Changes tab.
-		if m.activeTab == TabChanges {
-			if cmd := m.maybeLoadDiff(); cmd != nil {
-				return m, tea.Batch(sessCmd, cmd)
-			}
-		}
-		return m, sessCmd
+		return m, tea.Batch(loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards())
+
+	case cardLoadedMsg:
+		m.cards[msg.slice] = msg.card
+		delete(m.cardLoading, msg.slice)
 
 	case summaryLoadedMsg:
 		m.summaries[msg.slice] = msg.text
 		delete(m.summaryLoading, msg.slice)
+		m.refreshRight()
 
 	case prsLoadedMsg:
 		m.prs[msg.slice] = msg.prs
 		delete(m.prLoading, msg.slice)
+		m.refreshRight()
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
 		delete(m.stackLoading, msg.slice)
+		m.refreshRight()
 
 	case diffLoadedMsg:
 		m.diffs[msg.slice] = msg.diffs
 		delete(m.diffLoading, msg.slice)
-		// Refresh viewport if the loaded slice is the focused one and we're on Changes.
-		if m.activeTab == TabChanges && len(m.slices) > 0 &&
-			m.focus >= 0 && m.focus < len(m.slices) &&
-			m.slices[m.focus].Name == msg.slice {
-			m.viewport.SetContent(diffContent(m))
-		}
+		m.refreshRight()
 
 	case procsLoadedMsg:
 		m.procs[msg.slice] = msg.procs
 		delete(m.procLoading, msg.slice)
-		// If the overlay is open, rebuild its flattened proc list.
 		if m.showProcOverlay {
 			m.overlayProcs = flattenProcs(m.procs)
-			// Clamp selection.
-			if m.overlaySel >= len(m.overlayProcs) {
-				m.overlaySel = len(m.overlayProcs) - 1
-			}
-			if m.overlaySel < 0 {
-				m.overlaySel = 0
-			}
+			m.overlaySel = clamp(m.overlaySel, 0, len(m.overlayProcs)-1)
 		}
+		m.refreshRight()
 
 	case procKilledMsg:
-		// After a kill, refresh procs for all slices.
 		return m, m.batchLoadAllProcs()
 
 	case tea.KeyMsg:
-		// ── Overlay key handling — takes full priority when overlay is open. ──
-		if m.showProcOverlay {
-			return m.updateOverlayKeys(msg)
-		}
-		if m.showCommentsOverlay {
-			return m.updateCommentsOverlayKeys(msg)
-		}
-
-		// Viewport scroll keys — only when on Changes tab.
-		if m.activeTab == TabChanges {
-			switch msg.String() {
-			case "ctrl+d", "pgdown":
-				var cmd tea.Cmd
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
-			case "ctrl+u", "pgup":
-				var cmd tea.Cmd
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
-			case "o":
-				return m, openExternalCmd(m)
-			case "y":
-				return m, copyPatchCmd(m)
-			}
-		}
-
-		// [s] on Summary tab triggers an AI summary (replaces cached commit summary).
-		// This is a single self-contained command: compute the diff and call the AI
-		// in one step, so there is no two-step diff-then-summary race.
-		if m.activeTab == TabSummary && msg.String() == "s" {
-			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
-				sl := m.slices[m.focus]
-				m.summaryLoading[sl.Name] = true
-				delete(m.summaries, sl.Name)
-				return m, aiSummaryFromSliceCmd(sl)
-			}
-		}
-
-		switch msg.String() {
-		case "Y":
-			// Copy PR stack as markdown to clipboard.
-			if cmd := copyPRStackCmd(m); cmd != nil {
-				return m, cmd
-			}
-			// PRs not loaded yet — trigger a load (will copy on next Y once loaded).
-			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
-				if cmd := m.maybeLoadPRs(); cmd != nil {
-					return m, cmd
-				}
-			}
-		case "c":
-			// Toggle the comments overlay.
-			m.showCommentsOverlay = true
-			m.commentsSel = 0
-			// Ensure PRs are loaded.
-			if cmd := m.maybeLoadPRs(); cmd != nil {
-				return m, cmd
-			}
-		case "F":
-			// Hand the terminal to `slis fix-ci <slice>`.
-			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
-				sl := m.slices[m.focus]
-				if cmd := fixCICmd(sl); cmd != nil {
-					return m, cmd
-				}
-			}
-		case "P":
-			// Open the proc overlay.
-			m.showProcOverlay = true
-			m.overlaySel = 0
-			m.overlayProcs = flattenProcs(m.procs)
-			return m, m.batchLoadAllProcs()
-		case "q", "ctrl+c":
-			if m.watcher != nil {
-				_ = m.watcher.Close()
-			}
-			return m, tea.Quit
-		case "j", "down":
-			if len(m.slices) > 0 && m.focus < len(m.slices)-1 {
-				m.focus++
-				if m.activeTab == TabStack {
-					stackCmd := m.maybeLoadStack()
-					prCmd := m.maybeLoadPRs()
-					if stackCmd != nil || prCmd != nil {
-						return m, tea.Batch(stackCmd, prCmd)
-					}
-				}
-				if m.activeTab == TabSummary {
-					if cmd := m.maybeLoadSummary(); cmd != nil {
-						return m, cmd
-					}
-				}
-				if m.activeTab == TabChanges {
-					m.viewport.SetContent(diffContent(m))
-					if cmd := m.maybeLoadDiff(); cmd != nil {
-						return m, cmd
-					}
-				}
-				if m.activeTab == TabProcesses {
-					if cmd := m.maybeLoadProcs(); cmd != nil {
-						return m, cmd
-					}
-				}
-			}
-		case "k", "up":
-			if m.focus > 0 {
-				m.focus--
-				if m.activeTab == TabStack {
-					stackCmd := m.maybeLoadStack()
-					prCmd := m.maybeLoadPRs()
-					if stackCmd != nil || prCmd != nil {
-						return m, tea.Batch(stackCmd, prCmd)
-					}
-				}
-				if m.activeTab == TabSummary {
-					if cmd := m.maybeLoadSummary(); cmd != nil {
-						return m, cmd
-					}
-				}
-				if m.activeTab == TabChanges {
-					m.viewport.SetContent(diffContent(m))
-					if cmd := m.maybeLoadDiff(); cmd != nil {
-						return m, cmd
-					}
-				}
-				if m.activeTab == TabProcesses {
-					if cmd := m.maybeLoadProcs(); cmd != nil {
-						return m, cmd
-					}
-				}
-			}
-		case "a":
-			// Attach to (or create) the tmux session for the focused slice.
-			if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
-				if !tmuxctl.Available() {
-					// tmux not available — no-op; the Sessions tab explains this.
-					return m, nil
-				}
-				sl := m.slices[m.focus]
-				// EnsureSession synchronously (fast — tmux new-session -d returns immediately),
-				// then hand the terminal to tmux via tea.ExecProcess.
-				if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl)); err != nil {
-					return m, nil
-				}
-				name, args := tmuxctl.AttachArgv(sl.Name, isInsideTmux())
-				c := exec.Command(name, args...)
-				return m, tea.ExecProcess(c, func(err error) tea.Msg {
-					return sessionsRefreshMsg{}
-				})
-			}
-		case "r":
-			m.loading = true
-			sp := config.StatePaths()
-			return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
-		case "tab", "l":
-			m.activeTab = (m.activeTab + 1) % tabCount
-			if m.activeTab == TabStack {
-				stackCmd := m.maybeLoadStack()
-				prCmd := m.maybeLoadPRs()
-				if stackCmd != nil || prCmd != nil {
-					return m, tea.Batch(stackCmd, prCmd)
-				}
-			}
-			if m.activeTab == TabSummary {
-				if cmd := m.maybeLoadSummary(); cmd != nil {
-					return m, cmd
-				}
-			}
-			if m.activeTab == TabChanges {
-				m.viewport.SetContent(diffContent(m))
-				if cmd := m.maybeLoadDiff(); cmd != nil {
-					return m, cmd
-				}
-			}
-			if m.activeTab == TabProcesses {
-				if cmd := m.maybeLoadProcs(); cmd != nil {
-					return m, cmd
-				}
-			}
-		case "shift+tab", "h":
-			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
-			if m.activeTab == TabStack {
-				stackCmd := m.maybeLoadStack()
-				prCmd := m.maybeLoadPRs()
-				if stackCmd != nil || prCmd != nil {
-					return m, tea.Batch(stackCmd, prCmd)
-				}
-			}
-			if m.activeTab == TabSummary {
-				if cmd := m.maybeLoadSummary(); cmd != nil {
-					return m, cmd
-				}
-			}
-			if m.activeTab == TabChanges {
-				m.viewport.SetContent(diffContent(m))
-				if cmd := m.maybeLoadDiff(); cmd != nil {
-					return m, cmd
-				}
-			}
-			if m.activeTab == TabProcesses {
-				if cmd := m.maybeLoadProcs(); cmd != nil {
-					return m, cmd
-				}
-			}
-		case "?":
-			m.showHelp = !m.showHelp
-		}
+		return m.handleKey(msg)
 	}
 
 	return m, nil
 }
 
+// handleKey routes a key press to overlays, then to the active view.
+func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Overlays take priority.
+	if m.showProcOverlay {
+		return m.updateOverlayKeys(msg)
+	}
+	if m.showCommentsOverlay {
+		return m.updateCommentsOverlayKeys(msg)
+	}
+	if m.showHelp {
+		if msg.String() == "?" || msg.String() == "esc" || msg.String() == "q" {
+			m.showHelp = false
+		}
+		return m, nil
+	}
+
+	// Global keys available in both views.
+	switch msg.String() {
+	case "q", "ctrl+c":
+		if m.watcher != nil {
+			_ = m.watcher.Close()
+		}
+		return m, tea.Quit
+	case "?":
+		m.showHelp = true
+		return m, nil
+	case "P":
+		m.showProcOverlay = true
+		m.overlaySel = 0
+		m.overlayProcs = flattenProcs(m.procs)
+		return m, m.batchLoadAllProcs()
+	case "r":
+		m.loading = true
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+	}
+
+	if m.view == viewCockpit {
+		return m.updateCockpitKeys(msg)
+	}
+	return m.updateBrowserKeys(msg)
+}
+
+// attachCmd ensures and attaches the focused slice's tmux session, surfacing any
+// error in the status line instead of silently swallowing it.
+func (m *Model) attachCmd() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok {
+		return nil
+	}
+	if !tmuxctl.Available() {
+		m.status = "tmux not found on PATH"
+		return nil
+	}
+	if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl)); err != nil {
+		m.status = "session error: " + err.Error()
+		return nil
+	}
+	m.status = ""
+	name, args := tmuxctl.AttachArgv(sl.Name, isInsideTmux())
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(error) tea.Msg {
+		return sessionsRefreshMsg{}
+	})
+}
+
 // updateOverlayKeys handles key events while the proc overlay is open.
-// It returns (model, cmd) so it can be returned directly from Update.
 func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	n := len(m.overlayProcs)
 
-	// If a kill is pending, only y/n/esc are accepted.
 	if m.pendingKill != nil {
 		switch msg.String() {
 		case "y":
 			req := *m.pendingKill
 			m.pendingKill = nil
-			// Run the kill, then reload procs for all slices.
 			return m, tea.Batch(killCmd(req), m.batchLoadAllProcs())
 		case "n", "esc":
 			m.pendingKill = nil
@@ -659,8 +518,11 @@ func (m Model) View() string {
 	if m.err != nil {
 		return "Error: " + m.err.Error() + "\n"
 	}
+	if m.width > 0 && (m.width < 60 || m.height < 16) {
+		return fmt.Sprintf("Terminal too small (%dx%d).\nResize to at least 60x16.\n", m.width, m.height)
+	}
 	if m.showHelp {
-		return renderHelp()
+		return renderHelp(m.view)
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)
@@ -668,28 +530,24 @@ func (m Model) View() string {
 	if m.showCommentsOverlay {
 		return renderCommentsOverlay(m)
 	}
-
-	left := renderSliceList(m)
-	right := renderDetail(m)
-
-	// If width is known, give left ~40 cols and right the remainder.
-	// Fall back to side-by-side at natural widths when width is unknown.
-	if m.width > 0 {
-		leftWidth := 40
-		if leftWidth >= m.width {
-			leftWidth = m.width / 2
-		}
-		rightWidth := m.width - leftWidth - 1 // -1 for separator gap
-		leftStyle := lipgloss.NewStyle().Width(leftWidth)
-		rightStyle := lipgloss.NewStyle().Width(rightWidth)
-		return lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			leftStyle.Render(left),
-			rightStyle.Render(right),
-		)
+	if m.view == viewCockpit {
+		return renderCockpit(m)
 	}
+	return renderBrowser(m)
+}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+// clamp constrains v to [lo, hi]; if hi < lo it returns lo.
+func clamp(v, lo, hi int) int {
+	if hi < lo {
+		return lo
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // Run creates and starts the Bubble Tea program using the alt-screen.

@@ -2,11 +2,13 @@
 package summary
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/glamour"
 
@@ -14,14 +16,25 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 )
 
+// aiSummaryTimeout bounds the AI summary call so a hung `claude` process can't
+// leave the TUI stuck on "generating summary…" forever.
+const aiSummaryTimeout = 120 * time.Second
+
 // CommitSummary returns, per repo (sorted), the commit subjects on the slice
 // branch since base (git log --format=%s base..HEAD in the member worktree).
 // A repo whose base ref is missing yields an empty list (no error for that repo).
+//
+// base is the ref to log against. Pass "" to auto-detect each repo's trunk
+// independently (git.DetectBase); a non-empty base is used verbatim for all.
 func CommitSummary(sl model.Slice, base string) (map[string][]string, error) {
 	result := make(map[string][]string, len(sl.Members))
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
-		out, err := git.Run(m.WorktreePath, "log", "--format=%s", base+"..HEAD")
+		b := base
+		if b == "" {
+			b = git.DetectBase(m.WorktreePath)
+		}
+		out, err := git.Run(m.WorktreePath, "log", "--format=%s", b+"..HEAD")
 		if err != nil {
 			// base ref may be absent — treat as no commits for this repo.
 			result[repo] = []string{}
@@ -74,14 +87,21 @@ func AISummary(combinedDiff string, runner func(instruction, stdin string) (stri
 }
 
 // DefaultClaudeRunner runs `claude -p <instruction>` with stdin=content. Returns
-// an error (with a clear message) if the `claude` binary is not on PATH.
+// an error (with a clear message) if the `claude` binary is not on PATH. The
+// call is bounded by aiSummaryTimeout so a hung process surfaces as an error
+// rather than a permanent "generating summary…" state.
 func DefaultClaudeRunner(instruction, content string) (string, error) {
 	if _, err := exec.LookPath("claude"); err != nil {
 		return "", errors.New("claude CLI not found: install claude and ensure it is on your PATH")
 	}
-	c := exec.Command("claude", "-p", instruction) //nolint:gosec
+	ctx, cancel := context.WithTimeout(context.Background(), aiSummaryTimeout)
+	defer cancel()
+	c := exec.CommandContext(ctx, "claude", "-p", instruction) //nolint:gosec
 	c.Stdin = strings.NewReader(content)
 	out, err := c.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("claude -p timed out after %s", aiSummaryTimeout)
+	}
 	if err != nil {
 		return "", fmt.Errorf("claude -p: %w", err)
 	}
