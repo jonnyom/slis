@@ -206,30 +206,35 @@ func gatherAdoptCandidates(ws config.Workspace) ([]adoptCandidate, error) {
 	return buildAdoptCandidates(ws.Grouping.StripPrefix, perRepo, trunks, managed), nil
 }
 
-// pickAdoptCandidate shows an interactive single-select of candidates and
-// returns the chosen branch.
-func pickAdoptCandidate(candidates []adoptCandidate) (string, error) {
+// pickAdoptCandidate shows an interactive picker: choose a branch, and choose
+// whether to free a clean primary that has it (the --move behaviour). Returns
+// the chosen branch ("" if cancelled) and the move choice.
+func pickAdoptCandidate(candidates []adoptCandidate) (branch string, move bool, err error) {
 	options := make([]huh.Option[string], len(candidates))
 	for i, c := range candidates {
 		label := fmt.Sprintf("%s  (%s)", c.Slice, strings.Join(c.Repos, ", "))
 		options[i] = huh.NewOption(label, c.Branch)
 	}
 	var chosen string
+	var freePrimary bool
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Adopt a branch into a slis slice").
 				Options(options...).
 				Value(&chosen),
+			huh.NewConfirm().
+				Title("If the branch is checked out in a clean primary, detach it so it can move into the worktree?").
+				Value(&freePrimary),
 		),
 	)
-	if err := form.Run(); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return "", nil // cancelled — not an error
+	if e := form.Run(); e != nil {
+		if errors.Is(e, huh.ErrUserAborted) {
+			return "", false, nil // cancelled — not an error
 		}
-		return "", err
+		return "", false, e
 	}
-	return chosen, nil
+	return chosen, freePrimary, nil
 }
 
 var adoptCmd = &cobra.Command{
@@ -271,13 +276,15 @@ strip_prefix is applied exactly once.`,
 				fmt.Println("no adoptable branches found (every local branch is trunk or already a slice)")
 				return nil
 			}
-			raw, err = pickAdoptCandidate(candidates)
-			if err != nil {
-				return err
+			picked, pickedMove, perr := pickAdoptCandidate(candidates)
+			if perr != nil {
+				return perr
 			}
-			if raw == "" {
+			if picked == "" {
 				return nil // nothing picked
 			}
+			raw = picked
+			move = move || pickedMove
 		}
 
 		if err := validateSliceName(raw); err != nil {
