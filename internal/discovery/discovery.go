@@ -59,14 +59,12 @@ func Discover(ws config.Workspace) ([]model.Slice, error) {
 			}
 
 			if _, ok := buckets[key]; !ok {
-				// Seed Base with this repo's DefaultBranch (first-seen wins).
-				base := repo.DefaultBranch
-				if base == "" {
-					base = "main"
-				}
+				// Base is left empty: a slice can span repos with different
+				// trunks (one on master, another on main), so there is no single
+				// slice-wide base. Per-repo trunk detection happens at diff/summary
+				// time (git.DetectBase). Base is reserved as an optional override.
 				buckets[key] = &model.Slice{
 					Name:    key,
-					Base:    base,
 					Members: make(map[string]model.SliceMember),
 				}
 			}

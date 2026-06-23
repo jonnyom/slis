@@ -13,22 +13,36 @@ type Binding struct {
 	Help string
 }
 
-// Bindings is the data-driven keymap for the slis TUI.
-var Bindings = []Binding{
-	{[]string{"j", "↓"}, "down"},
-	{[]string{"k", "↑"}, "up"},
-	{[]string{"tab", "l"}, "next tab"},
-	{[]string{"shift+tab", "h"}, "prev tab"},
+// browserBindings is the keymap for the slice browser (landing screen).
+var browserBindings = []Binding{
+	{[]string{"j", "↓"}, "next slice"},
+	{[]string{"k", "↑"}, "previous slice"},
+	{[]string{"g", "G"}, "first / last slice"},
+	{[]string{"enter", "l"}, "open slice cockpit"},
+	{[]string{"/"}, "filter by name"},
 	{[]string{"a"}, "attach tmux session"},
-	{[]string{"P"}, "processes overlay"},
-	{[]string{"Y"}, "copy PR stack markdown (Stack tab)"},
-	{[]string{"c"}, "comments overlay (Stack tab)"},
-	{[]string{"F"}, "fix CI (Stack tab)"},
-	{[]string{"s"}, "AI summary (Summary tab)"},
-	{[]string{"o"}, "open in editor (Changes tab)"},
-	{[]string{"y"}, "copy patch (Changes tab)"},
-	{[]string{"pgup", "pgdn"}, "scroll (Changes tab)"},
+	{[]string{"P"}, "processes overlay (all slices)"},
 	{[]string{"r"}, "refresh"},
+	{[]string{"?"}, "help"},
+	{[]string{"q"}, "quit"},
+}
+
+// cockpitBindings is the keymap for the single-slice cockpit.
+var cockpitBindings = []Binding{
+	{[]string{"tab", "shift+tab"}, "focus next / previous panel"},
+	{[]string{"1", "2", "3", "4"}, "jump to panel"},
+	{[]string{"j", "k"}, "select within focused panel"},
+	{[]string{"⏶⏷", "^d/^u"}, "scroll right pane"},
+	{[]string{"g", "G"}, "top / bottom of right pane"},
+	{[]string{"enter"}, "zoom right pane (toggle)"},
+	{[]string{"s"}, "summary (toggle); S forces AI summary"},
+	{[]string{"a"}, "attach tmux session"},
+	{[]string{"o"}, "open worktree in editor"},
+	{[]string{"y", "Y"}, "yank diff / PR-stack markdown"},
+	{[]string{"c"}, "PR comments overlay"},
+	{[]string{"F"}, "fix CI (point Claude at failing CI)"},
+	{[]string{"x"}, "kill selected process (Processes panel)"},
+	{[]string{"esc", "h"}, "back to browser"},
 	{[]string{"?"}, "help"},
 	{[]string{"q"}, "quit"},
 }
@@ -43,22 +57,26 @@ var (
 	helpDescStyle = lipgloss.NewStyle().Faint(true)
 )
 
-// renderHelp formats Bindings into a help overlay box.
-func renderHelp() string {
-	var sb strings.Builder
-	sb.WriteString("Keyboard shortcuts\n\n")
-
-	for _, b := range Bindings {
-		keys := strings.Join(b.Keys, " / ")
-		line := fmt.Sprintf("  %-20s %s\n",
-			helpKeyStyle.Render(keys),
-			helpDescStyle.Render(b.Help),
-		)
-		sb.WriteString(line)
+// renderHelp formats the bindings for the active view into a help overlay box.
+func renderHelp(view viewMode) string {
+	bindings := browserBindings
+	title := "slis — Browser shortcuts"
+	if view == viewCockpit {
+		bindings = cockpitBindings
+		title = "slis — Cockpit shortcuts"
 	}
 
+	var sb strings.Builder
+	sb.WriteString(title + "\n\n")
+	for _, b := range bindings {
+		keys := strings.Join(b.Keys, " / ")
+		sb.WriteString(fmt.Sprintf("  %-22s %s\n",
+			helpKeyStyle.Render(keys),
+			helpDescStyle.Render(b.Help),
+		))
+	}
 	sb.WriteString("\n")
-	sb.WriteString(helpDescStyle.Render("Press ? to close"))
+	sb.WriteString(helpDescStyle.Render("Press ? or esc to close"))
 
 	return helpBoxStyle.Render(sb.String())
 }

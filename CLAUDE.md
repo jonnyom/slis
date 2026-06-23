@@ -60,8 +60,8 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 | `notify` | per-slice status event store + desktop notification + fsnotify watch |
 | `summary` | commit summary + `claude -p` AI summary (glamour render) |
 | `forge` | **read-only** `gh` wrapper: PR info, CI status, comments, stack markdown |
-| `diff` | combined per-slice diff (numstat + patch) |
-| `tui` | Bubble Tea app (slice list + tabbed detail + overlays) |
+| `diff` | combined per-slice diff (numstat + patch); `SliceDiff`/`SliceStat`/`CommitSummary` take `base=""` to auto-detect each repo's trunk |
+| `tui` | Bubble Tea app — two levels: **browser** (slice cards: repos/stack-health/PR/session/overview) and **cockpit** (lazygit-style stacked left panels Stack/PRs/Session/Processes whose focus drives a big right pane) + overlays. `app.go` routes; `slicelist.go`=browser, `cockpit.go`=cockpit, `detail.go`=stack loader+styles |
 | `cli` | cobra commands; `Execute()`; bare `slis` launches the TUI |
 | (`testutil`) | shared test scaffolding: temp git repos + worktrees |
 
@@ -79,6 +79,8 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 - All slow work (git, gh, gt, proc, tmux) runs inside `tea.Cmd` closures, never in `Update`/`View`. `View` must be pure.
 - Bubble Tea **v1** API (`tea.KeyMsg`, `Update(tea.Msg)(tea.Model,tea.Cmd)`, `View() string`).
 - **Do not render markdown with glamour's `WithAutoStyle` inside the running program** — it queries the terminal (OSC background detection), which blocks forever under Bubble Tea and hangs the tab. Use `summary.RenderMarkdownFixed` (fixed style, no query).
+
+**Per-repo trunk.** A slice spans repos with *different* trunks (one on `master`, another on `main`), so there is no single slice-wide base. `git.DetectBase(worktree)` resolves each repo's trunk (origin/HEAD → main/master/develop/trunk → fallback). Diff/summary callers pass `base=""` to auto-detect per repo; `model.Slice.Base` is an optional whole-slice override only (left empty by discovery). The cockpit Stack panel scopes to the member branch's lineage via `gt.State.Lineage(branch)` — never the whole repo's branch list.
 
 **Read-only integrations.** `gt` and `forge` never mutate state (no graphite metadata writes, only `gh pr view`). `forge.PRForBranch` returns `(nil,nil)` when there's no PR or `gh` is absent; callers must tolerate per-repo failures.
 

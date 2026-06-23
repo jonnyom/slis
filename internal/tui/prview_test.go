@@ -26,8 +26,8 @@ func prTestModel(t *testing.T) Model {
 		},
 	}
 	m.loading = false
-	m.activeTab = TabStack
-	// Pre-populate a stack so renderStackTab doesn't return "loading…"
+	m.view = viewCockpit
+	// Pre-populate a stack so the cockpit panels don't return "loading…"
 	m.stacks = map[string]map[string]gt.State{
 		"s": {
 			"web": gt.State{
@@ -78,9 +78,9 @@ func TestPrsLoadedMsg(t *testing.T) {
 	}
 }
 
-// TestRenderStackTabWithPR verifies that renderStackTab shows the PR number,
-// a CI emoji, and the comment-count bubble when PRs are cached.
-func TestRenderStackTabWithPR(t *testing.T) {
+// TestPRsPanelWithPR verifies the cockpit PRs panel shows the PR number, a CI
+// emoji, and the comment-count bubble when PRs are cached.
+func TestPRsPanelWithPR(t *testing.T) {
 	m := prTestModel(t)
 
 	// PR #9, one failing check, 2 comments.
@@ -97,48 +97,45 @@ func TestRenderStackTabWithPR(t *testing.T) {
 		"s": {"web": pr},
 	}
 
-	output := renderStackTab(m)
+	output := prsPanelContent(m, m.slices[0])
 
 	if !strings.Contains(output, "#9") {
-		t.Errorf("renderStackTab: expected '#9' in output; got:\n%s", output)
+		t.Errorf("prsPanelContent: expected '#9' in output; got:\n%s", output)
 	}
-	// CI should be failing → ❌
 	if !strings.Contains(output, "❌") {
-		t.Errorf("renderStackTab: expected fail CI emoji '❌' in output; got:\n%s", output)
+		t.Errorf("prsPanelContent: expected fail CI emoji '❌' in output; got:\n%s", output)
 	}
-	// Comment count
 	if !strings.Contains(output, "💬") {
-		t.Errorf("renderStackTab: expected comment bubble '💬' in output; got:\n%s", output)
+		t.Errorf("prsPanelContent: expected comment bubble '💬' in output; got:\n%s", output)
 	}
 }
 
-// TestRenderStackTabNoPR verifies that when PRs are loaded but a repo has none,
+// TestPRsPanelNoPR verifies that when PRs are loaded but a repo has none,
 // "(no PR)" is shown.
-func TestRenderStackTabNoPR(t *testing.T) {
+func TestPRsPanelNoPR(t *testing.T) {
 	m := prTestModel(t)
 
-	// prs loaded for slice "s" but web maps to nil.
 	m.prs = map[string]map[string]*forge.PR{
 		"s": {"web": nil},
 	}
 
-	output := renderStackTab(m)
+	output := prsPanelContent(m, m.slices[0])
 
 	if !strings.Contains(output, "(no PR)") {
-		t.Errorf("renderStackTab: expected '(no PR)' when PR is nil; got:\n%s", output)
+		t.Errorf("prsPanelContent: expected '(no PR)' when PR is nil; got:\n%s", output)
 	}
 }
 
-// TestRenderStackTabPRLoading verifies that while PRs are loading the tab shows
+// TestPRsPanelLoading verifies that while PRs are loading the panel shows
 // "PR: loading…".
-func TestRenderStackTabPRLoading(t *testing.T) {
+func TestPRsPanelLoading(t *testing.T) {
 	m := prTestModel(t)
 	m.prLoading = map[string]bool{"s": true}
 
-	output := renderStackTab(m)
+	output := prsPanelContent(m, m.slices[0])
 
 	if !strings.Contains(output, "PR: loading") {
-		t.Errorf("renderStackTab: expected 'PR: loading' while prLoading; got:\n%s", output)
+		t.Errorf("prsPanelContent: expected 'PR: loading' while prLoading; got:\n%s", output)
 	}
 }
 

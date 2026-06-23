@@ -1,9 +1,7 @@
 package tui
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -72,52 +70,4 @@ func membersSlice(sl model.Slice) []model.SliceMember {
 // isInsideTmux reports whether the current process is running inside tmux.
 func isInsideTmux() bool {
 	return os.Getenv("TMUX") != ""
-}
-
-// renderSessionsTab renders the Sessions tab body for the focused slice.
-func renderSessionsTab(m Model) string {
-	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
-		return "no slice selected\n"
-	}
-
-	sl := m.slices[m.focus]
-	var sb strings.Builder
-
-	// Session name.
-	sb.WriteString(fmt.Sprintf("session: %s\n", sl.Name))
-
-	// Status.
-	status := model.SessNone
-	if m.sessionStatus != nil {
-		status = m.sessionStatus[sl.Name]
-	}
-	sb.WriteString(fmt.Sprintf("status:  %s %s\n", sessionBadge(status), status.String()))
-
-	// tmux availability guard.
-	if !tmuxctl.Available() {
-		sb.WriteString("\ntmux not available on this system\n")
-		return sb.String()
-	}
-
-	// Session existence.
-	exists := tmuxctl.SessionExists(sl.Name)
-	existsStr := "no"
-	if exists {
-		existsStr = "yes"
-	}
-	sb.WriteString(fmt.Sprintf("tmux session exists: %s\n", existsStr))
-
-	// Repo windows.
-	repos := sl.Repos()
-	if len(repos) > 0 {
-		sb.WriteString("\nwindows (repos):\n")
-		for _, repo := range repos {
-			sm := sl.Members[repo]
-			sb.WriteString(fmt.Sprintf("  %s  %s\n", repo, sm.WorktreePath))
-		}
-	}
-
-	sb.WriteString("\n[a] attach / create session\n")
-
-	return sb.String()
 }

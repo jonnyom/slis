@@ -9,11 +9,11 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 )
 
-// TestSliceBase verifies that sliceBase returns "main" when Base is empty and
-// returns the actual Base value when set.
+// TestSliceBase verifies that sliceBase returns "" when Base is unset (meaning
+// auto-detect per repo) and returns the explicit Base override when set.
 func TestSliceBase(t *testing.T) {
-	if got := sliceBase(model.Slice{}); got != "main" {
-		t.Errorf("sliceBase(empty): want %q, got %q", "main", got)
+	if got := sliceBase(model.Slice{}); got != "" {
+		t.Errorf("sliceBase(empty): want %q (auto-detect), got %q", "", got)
 	}
 	if got := sliceBase(model.Slice{Base: "develop"}); got != "develop" {
 		t.Errorf("sliceBase(develop): want %q, got %q", "develop", got)

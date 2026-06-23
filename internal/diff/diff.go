@@ -52,6 +52,10 @@ func (d RepoDiff) TotalDeleted() int {
 // repo order (sl.Repos()). Per-repo errors are captured in RepoDiff.Err and
 // do not abort the whole slice. The top-level error is reserved for
 // catastrophic failures (e.g. nil slice).
+//
+// base is the ref to diff against. Pass "" to auto-detect each repo's trunk
+// independently (git.DetectBase) — required for slices spanning repos with
+// different trunks. A non-empty base is used verbatim for every member.
 func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 	if sl.Members == nil {
 		return nil, fmt.Errorf("diff: slice has nil Members map")
@@ -64,7 +68,12 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		m := sl.Members[repo]
 		rd := RepoDiff{Repo: repo}
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", base+"...HEAD")
+		b := base
+		if b == "" {
+			b = git.DetectBase(m.WorktreePath)
+		}
+
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
@@ -74,9 +83,43 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		rd.Files = parseNumstat(numstat)
 
 		// Best-effort full patch; ignore error (already have numstat).
-		patch, _ := git.Run(m.WorktreePath, "diff", base+"...HEAD")
+		patch, _ := git.Run(m.WorktreePath, "diff", b+"...HEAD")
 		rd.Patch = patch
 
+		results = append(results, rd)
+	}
+
+	return results, nil
+}
+
+// SliceStat is a lightweight variant of SliceDiff that fills only Files (the
+// numstat) and omits the full patch. It is used for the slice browser's summary
+// cards, where loading every repo's full diff would be wasteful. base follows
+// the same "" = auto-detect-per-repo rule as SliceDiff.
+func SliceStat(sl model.Slice, base string) ([]RepoDiff, error) {
+	if sl.Members == nil {
+		return nil, fmt.Errorf("diff: slice has nil Members map")
+	}
+
+	repos := sl.Repos()
+	results := make([]RepoDiff, 0, len(repos))
+
+	for _, repo := range repos {
+		m := sl.Members[repo]
+		rd := RepoDiff{Repo: repo}
+
+		b := base
+		if b == "" {
+			b = git.DetectBase(m.WorktreePath)
+		}
+
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
+		if err != nil {
+			rd.Err = err.Error()
+			results = append(results, rd)
+			continue
+		}
+		rd.Files = parseNumstat(numstat)
 		results = append(results, rd)
 	}
 

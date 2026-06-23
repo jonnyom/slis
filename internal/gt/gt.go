@@ -170,3 +170,63 @@ func (s State) Ordered() []OrderedBranch {
 
 	return result
 }
+
+// Lineage returns only the stack connected to branch: the chain of ancestors
+// from branch up to and including the trunk, plus branch's descendants. Branches
+// belonging to other, unrelated stacks in the same repo's Graphite metadata are
+// excluded — so a slice's Stack view shows the branches specific to that change,
+// not every branch in the repo. Depth is assigned relative to the trunk
+// (trunk = 0), matching Ordered.
+//
+// If branch is absent from the state, Lineage returns nil; the caller should
+// then fall back to showing the branch name on its own.
+func (s State) Lineage(branch string) []OrderedBranch {
+	if _, ok := s[branch]; !ok {
+		return nil
+	}
+
+	inLineage := map[string]bool{branch: true}
+
+	// Ancestors: walk first-parent links from branch up to a trunk (or a branch
+	// with no recorded parent). The visited guard tolerates malformed cycles.
+	for cur := branch; ; {
+		b, ok := s[cur]
+		if !ok || b.Trunk || len(b.Parents) == 0 {
+			break
+		}
+		parent := b.Parents[0].Ref
+		if parent == "" || inLineage[parent] {
+			break
+		}
+		inLineage[parent] = true
+		cur = parent
+	}
+
+	// Descendants: BFS down from branch (any branch whose parent list names a
+	// branch already in the lineage).
+	for queue := []string{branch}; len(queue) > 0; {
+		name := queue[0]
+		queue = queue[1:]
+		for child, cs := range s {
+			if inLineage[child] {
+				continue
+			}
+			for _, p := range cs.Parents {
+				if p.Ref == name {
+					inLineage[child] = true
+					queue = append(queue, child)
+					break
+				}
+			}
+		}
+	}
+
+	// Emit in trunk-first, depth order by filtering the full ordering.
+	out := make([]OrderedBranch, 0, len(inLineage))
+	for _, b := range s.Ordered() {
+		if inLineage[b.Name] {
+			out = append(out, b)
+		}
+	}
+	return out
+}
