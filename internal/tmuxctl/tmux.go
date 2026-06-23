@@ -157,7 +157,8 @@ func CapturePane(slice string) (string, error) {
 			continue
 		}
 		idx, wname, _ := strings.Cut(line, "\t")
-		captured, _ := exec.Command("tmux", "capture-pane", "-p", "-t", name+":"+idx).Output()
+		// -e preserves the pane's colour escapes (slis keeps SGR, strips the rest).
+		captured, _ := exec.Command("tmux", "capture-pane", "-p", "-e", "-t", name+":"+idx).Output()
 		sb.WriteString("── " + wname + " ──\n")
 		sb.Write(captured)
 		if !strings.HasSuffix(string(captured), "\n") {

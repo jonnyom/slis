@@ -637,9 +637,9 @@ type captureLoadedMsg struct {
 func loadCaptureCmd(slice string) tea.Cmd {
 	return func() tea.Msg {
 		text, _ := tmuxctl.CapturePane(slice)
-		// Pane content is arbitrary program output; strip terminal escapes
-		// before it is rendered into the slis UI.
-		return captureLoadedMsg{slice: slice, text: safeterm.Strip(text)}
+		// Keep the pane's colours (SGR) but strip cursor/OSC/other escapes so a
+		// hostile program in the session can't manipulate the slis terminal.
+		return captureLoadedMsg{slice: slice, text: safeterm.StripNonSGR(text)}
 	}
 }
 

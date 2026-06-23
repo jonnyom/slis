@@ -29,3 +29,24 @@ func TestStrip(t *testing.T) {
 		})
 	}
 }
+
+func TestStripNonSGR(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"keeps SGR colour", "a\x1b[31mred\x1b[0mb", "a\x1b[31mred\x1b[0mb"},
+		{"strips cursor move (CSI non-m)", "a\x1b[2Jb\x1b[10;5Hc", "abc"},
+		{"strips OSC 52 clipboard (BEL)", "x\x1b]52;c;ZXZ==\x07y", "xy"},
+		{"strips OSC (ST terminated)", "x\x1b]0;title\x1b\\y", "xy"},
+		{"strips lone ESC + charset seq", "a\x1b(Bb", "ab"},
+		{"keeps newline/tab, drops other C0", "a\nb\tc\x00d", "a\nb\tcd"},
+		{"plain text untouched", "hello", "hello"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := StripNonSGR(c.in); got != c.want {
+				t.Errorf("StripNonSGR(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}

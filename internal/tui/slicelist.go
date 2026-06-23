@@ -579,12 +579,18 @@ func slicesContent(m Model, vis []int, rows int) string {
 		case i == m.focus:
 			marker = cursorBar.Render("▎") + " "
 		}
+		// Make slices that need you pop: colour the name (orange = waiting, cyan =
+		// finished). Focus is still shown by the ▎ cursor marker. Live state is
+		// carried by the (green) status glyph, not a second dot on the name.
 		name := s.Name
-		if i == m.focus {
+		switch {
+		case m.workState(s) == stNeedsYou && m.sessionStatus[s.Name] == model.SessDone:
+			name = doneStyle.Render(name)
+		case m.workState(s) == stNeedsYou:
+			name = waitStyle.Render(name)
+		case i == m.focus:
 			name = focusStyle.Render(name)
 		}
-		// Live state is carried by the (green) status glyph, not a second dot on
-		// the name — avoids the confusing "● ●name" double-dot.
 		sb.WriteString(marker + sliceGlyph(m, s) + " " + name + "\n")
 	}
 	return sb.String()
