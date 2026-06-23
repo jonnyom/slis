@@ -26,24 +26,72 @@ func checkedOutElsewhere(err error) bool {
 		strings.Contains(msg, "already checked out")
 }
 
+// addWorktree runs `git worktree add -- <path> <branch>` against primary.
+func addWorktree(primary, path, branch string) error {
+	_, err := git.Run(primary, "worktree", "add", "--", path, branch)
+	return err
+}
+
+// freePrimaryBranch detaches the primary so a branch it has checked out can be
+// moved into a worktree. It only proceeds when the primary is actually ON that
+// branch and is CLEAN — never touching uncommitted work. Returns (freed,
+// message); message explains why it didn't proceed (empty = not the primary).
+func freePrimaryBranch(primary, branch string) (bool, string) {
+	cur, _ := git.CurrentBranch(primary)
+	if cur != branch {
+		// Checked out in another worktree, not this primary — leave it alone.
+		return false, ""
+	}
+	dirty, err := git.IsDirty(primary)
+	if err != nil {
+		return false, fmt.Sprintf("could not check primary status: %v", err)
+	}
+	if dirty {
+		return false, fmt.Sprintf("primary is on %q but has uncommitted changes — commit or stash there first, then re-run with --move", branch)
+	}
+	if _, err := git.Run(primary, "switch", "--detach"); err != nil {
+		return false, fmt.Sprintf("could not detach primary: %v", err)
+	}
+	return true, fmt.Sprintf("detached primary off %q to free it for a worktree", branch)
+}
+
 // adoptBranch creates managed worktrees for an existing branch (the core of
-// `slis adopt`, shared by the direct and interactive paths).
-func adoptBranch(ws config.Workspace, raw string, noSession bool) error {
+// `slis adopt`, shared by the direct and interactive paths). With move=true a
+// branch checked out in a CLEAN primary is freed (the primary is detached)
+// before the worktree is created.
+func adoptBranch(ws config.Workspace, raw string, noSession, move bool) error {
 	prefix := ws.Grouping.StripPrefix
 	sliceName := config.SliceNameFromBranch(raw, prefix)
 	branch := branchForSlice(prefix, raw)
 	plans := worktreePlan(ws, sliceName, branch)
 
 	var members []model.SliceMember
+	blockedByPrimary := false
 	for _, p := range plans {
 		hasLocal := git.RefExists(p.Primary, "refs/heads/"+p.Branch)
 		hasRemote := git.RefExists(p.Primary, "refs/remotes/origin/"+p.Branch)
 
 		switch {
 		case hasLocal:
-			if _, err := git.Run(p.Primary, "worktree", "add", "--", p.Path, p.Branch); err != nil {
+			err := addWorktree(p.Primary, p.Path, p.Branch)
+			explained := false
+			if err != nil && checkedOutElsewhere(err) && move {
+				freed, msg := freePrimaryBranch(p.Primary, p.Branch)
+				if msg != "" {
+					fmt.Printf("slis: %s — %s\n", p.Repo, msg)
+					explained = true
+				}
+				if freed {
+					err = addWorktree(p.Primary, p.Path, p.Branch)
+					explained = false
+				}
+			}
+			if err != nil {
 				if checkedOutElsewhere(err) {
-					fmt.Printf("slis: %s — branch %q is checked out elsewhere (the primary?); switch it off there and re-run, or keep working in the primary\n", p.Repo, p.Branch)
+					blockedByPrimary = true
+					if !explained {
+						fmt.Printf("slis: %s — branch %q is checked out elsewhere; switch the primary off it, or use `slis adopt --move` (clean primary only)\n", p.Repo, p.Branch)
+					}
 				} else {
 					fmt.Printf("slis: %s — could not adopt: %v\n", p.Repo, err)
 				}
@@ -66,6 +114,9 @@ func adoptBranch(ws config.Workspace, raw string, noSession bool) error {
 	}
 
 	if len(members) == 0 {
+		if blockedByPrimary {
+			return fmt.Errorf("branch %q is checked out in a primary checkout — commit or stash the work there and `git switch` off the branch, then re-run (--move auto-detaches a clean primary)", branch)
+		}
 		return fmt.Errorf("nothing adopted: no repo had branch %q free to check out", branch)
 	}
 
@@ -194,10 +245,14 @@ and lets you pick one interactively.
 For each repo that has the branch (locally or on origin) a worktree is created
 at .slis/worktrees/<slice>/<repo>. A repo where the branch is currently checked
 out elsewhere (e.g. the primary) is skipped with a note — git won't check the
-same branch out twice. strip_prefix is applied exactly once.`,
-	Args: cobra.MaximumNArgs(1),
+same branch out twice. Pass --move to detach a CLEAN primary that has the branch
+so it can be moved into the worktree (a dirty primary is never touched).
+strip_prefix is applied exactly once.`,
+	Args:         cobra.MaximumNArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		noSession, _ := cmd.Flags().GetBool("no-session")
+		move, _ := cmd.Flags().GetBool("move")
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
@@ -228,11 +283,12 @@ same branch out twice. strip_prefix is applied exactly once.`,
 		if err := validateSliceName(raw); err != nil {
 			return err
 		}
-		return adoptBranch(ws, raw, noSession)
+		return adoptBranch(ws, raw, noSession, move)
 	},
 }
 
 func init() {
 	adoptCmd.Flags().Bool("no-session", false, "Do not create a tmux session for the adopted slice")
+	adoptCmd.Flags().Bool("move", false, "Detach a clean primary that has the branch so it can move into the worktree")
 	rootCmd.AddCommand(adoptCmd)
 }
