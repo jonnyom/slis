@@ -38,6 +38,22 @@ func Run(dir string, args ...string) (string, error) {
 	return RunCtx(context.Background(), dir, args...)
 }
 
+// LocalBranches returns the local branch names (refs/heads) in the repo at dir,
+// in git's default (alphabetical) order.
+func LocalBranches(dir string) ([]string, error) {
+	out, err := Run(dir, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			names = append(names, s)
+		}
+	}
+	return names, nil
+}
+
 // RunCtx is like Run but accepts a context for cancellation / timeouts.
 func RunCtx(ctx context.Context, dir string, args ...string) (string, error) {
 	full := append([]string{"-C", dir}, args...)

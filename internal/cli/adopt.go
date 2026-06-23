@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
 	"github.com/jonnyom/slis/internal/config"
@@ -23,83 +25,206 @@ func checkedOutElsewhere(err error) bool {
 		strings.Contains(msg, "already checked out")
 }
 
+// adoptBranch creates managed worktrees for an existing branch (the core of
+// `slis adopt`, shared by the direct and interactive paths).
+func adoptBranch(ws config.Workspace, raw string, noSession bool) error {
+	prefix := ws.Grouping.StripPrefix
+	sliceName := config.SliceNameFromBranch(raw, prefix)
+	branch := branchForSlice(prefix, raw)
+	plans := worktreePlan(ws, sliceName, branch)
+
+	var members []model.SliceMember
+	for _, p := range plans {
+		hasLocal := git.RefExists(p.Primary, "refs/heads/"+p.Branch)
+		hasRemote := git.RefExists(p.Primary, "refs/remotes/origin/"+p.Branch)
+
+		switch {
+		case hasLocal:
+			if _, err := git.Run(p.Primary, "worktree", "add", "--", p.Path, p.Branch); err != nil {
+				if checkedOutElsewhere(err) {
+					fmt.Printf("slis: %s — branch %q is checked out elsewhere (the primary?); switch it off there and re-run, or keep working in the primary\n", p.Repo, p.Branch)
+				} else {
+					fmt.Printf("slis: %s — could not adopt: %v\n", p.Repo, err)
+				}
+				continue
+			}
+			fmt.Printf("adopted %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
+			members = append(members, model.SliceMember{Repo: p.Repo, WorktreePath: p.Path})
+
+		case hasRemote:
+			if _, err := git.Run(p.Primary, "worktree", "add", "-b", p.Branch, "--", p.Path, "origin/"+p.Branch); err != nil {
+				fmt.Printf("slis: %s — could not adopt from origin: %v\n", p.Repo, err)
+				continue
+			}
+			fmt.Printf("adopted %s at %s (branch: %s, tracking origin)\n", p.Repo, p.Path, p.Branch)
+			members = append(members, model.SliceMember{Repo: p.Repo, WorktreePath: p.Path})
+
+		default:
+			fmt.Printf("slis: %s — no branch %q locally or on origin (skipping)\n", p.Repo, p.Branch)
+		}
+	}
+
+	if len(members) == 0 {
+		return fmt.Errorf("nothing adopted: no repo had branch %q free to check out", branch)
+	}
+
+	if !noSession {
+		if !tmuxctl.Available() {
+			fmt.Println("note: tmux not found — skipping session creation")
+		} else if err := tmuxctl.EnsureSession(sliceName, members, tmuxctl.SessionOpts{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
+			fmt.Printf("note: could not start tmux session: %v\n", err)
+		} else {
+			fmt.Printf("started tmux session slis/%s\n", sliceName)
+		}
+	}
+	return nil
+}
+
+// adoptCandidate is a branch that could be adopted, grouped by slice name with
+// the repos that have it.
+type adoptCandidate struct {
+	Slice  string
+	Branch string
+	Repos  []string
+}
+
+// isTrunkBranch reports whether b is a repo's trunk (its configured default, or
+// a conventional trunk name) and therefore not an adoption candidate.
+func isTrunkBranch(b, defaultBranch string) bool {
+	if b == defaultBranch {
+		return true
+	}
+	switch b {
+	case "main", "master", "develop", "trunk":
+		return true
+	}
+	return false
+}
+
+// buildAdoptCandidates groups local branches across repos into adopt candidates,
+// excluding trunk branches and branches already managed in a slis worktree. Pure
+// (git/IO done by the caller) so it is unit-testable.
+func buildAdoptCandidates(prefix string, perRepo map[string][]string, trunks map[string]string, managed map[string]bool) []adoptCandidate {
+	byBranch := map[string]*adoptCandidate{}
+	for repo, branches := range perRepo {
+		for _, b := range branches {
+			if isTrunkBranch(b, trunks[repo]) || managed[b] {
+				continue
+			}
+			c, ok := byBranch[b]
+			if !ok {
+				c = &adoptCandidate{Slice: config.SliceNameFromBranch(b, prefix), Branch: b}
+				byBranch[b] = c
+			}
+			c.Repos = append(c.Repos, repo)
+		}
+	}
+	out := make([]adoptCandidate, 0, len(byBranch))
+	for _, c := range byBranch {
+		sort.Strings(c.Repos)
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Slice < out[j].Slice })
+	return out
+}
+
+// gatherAdoptCandidates collects adopt candidates for the workspace (lists each
+// repo's local branches, excludes trunk + already-managed branches).
+func gatherAdoptCandidates(ws config.Workspace) ([]adoptCandidate, error) {
+	sp := config.StatePaths()
+	managed := map[string]bool{}
+	if dtos, err := listSlices(ws, sp.Overrides, sp.ActiveJournal); err == nil {
+		for _, d := range dtos {
+			for _, m := range d.Members {
+				managed[m.Branch] = true
+			}
+		}
+	}
+
+	perRepo := map[string][]string{}
+	trunks := map[string]string{}
+	for name, repo := range ws.Repos {
+		trunks[name] = repo.DefaultBranch
+		branches, err := git.LocalBranches(repo.Primary)
+		if err != nil {
+			return nil, fmt.Errorf("listing branches in %s: %w", name, err)
+		}
+		perRepo[name] = branches
+	}
+	return buildAdoptCandidates(ws.Grouping.StripPrefix, perRepo, trunks, managed), nil
+}
+
+// pickAdoptCandidate shows an interactive single-select of candidates and
+// returns the chosen branch.
+func pickAdoptCandidate(candidates []adoptCandidate) (string, error) {
+	options := make([]huh.Option[string], len(candidates))
+	for i, c := range candidates {
+		label := fmt.Sprintf("%s  (%s)", c.Slice, strings.Join(c.Repos, ", "))
+		options[i] = huh.NewOption(label, c.Branch)
+	}
+	var chosen string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Adopt a branch into a slis slice").
+				Options(options...).
+				Value(&chosen),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return "", err
+	}
+	return chosen, nil
+}
+
 var adoptCmd = &cobra.Command{
-	Use:   "adopt <branch>",
+	Use:   "adopt [branch]",
 	Short: "Adopt an existing branch into a managed slis slice (creates worktrees)",
 	Long: `adopt creates slis-managed worktrees for a branch that already exists — work
 you started in a primary checkout, or a branch already pushed to origin — so the
 slice shows up in the hub with the right diff and PR.
 
+With no argument, adopt lists the local branches that aren't already slis slices
+and lets you pick one interactively.
+
 For each repo that has the branch (locally or on origin) a worktree is created
 at .slis/worktrees/<slice>/<repo>. A repo where the branch is currently checked
 out elsewhere (e.g. the primary) is skipped with a note — git won't check the
-same branch out twice. The branch is taken as given; strip_prefix is applied
-exactly once (a fully-qualified name like "jonny/wfm-1" is fine).`,
-	Args: cobra.ExactArgs(1),
+same branch out twice. strip_prefix is applied exactly once.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		raw := args[0]
 		noSession, _ := cmd.Flags().GetBool("no-session")
-
-		if err := validateSliceName(raw); err != nil {
-			return err
-		}
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
 			return fmt.Errorf("workspace not found — run `slis init` first: %w", err)
 		}
 
-		prefix := ws.Grouping.StripPrefix
-		sliceName := config.SliceNameFromBranch(raw, prefix)
-		branch := branchForSlice(prefix, raw)
-		plans := worktreePlan(ws, sliceName, branch)
-
-		var members []model.SliceMember
-		for _, p := range plans {
-			hasLocal := git.RefExists(p.Primary, "refs/heads/"+p.Branch)
-			hasRemote := git.RefExists(p.Primary, "refs/remotes/origin/"+p.Branch)
-
-			switch {
-			case hasLocal:
-				if _, err := git.Run(p.Primary, "worktree", "add", "--", p.Path, p.Branch); err != nil {
-					if checkedOutElsewhere(err) {
-						fmt.Printf("slis: %s — branch %q is checked out elsewhere (the primary?); switch it off there and re-run, or keep working in the primary\n", p.Repo, p.Branch)
-					} else {
-						fmt.Printf("slis: %s — could not adopt: %v\n", p.Repo, err)
-					}
-					continue
-				}
-				fmt.Printf("adopted %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
-				members = append(members, model.SliceMember{Repo: p.Repo, WorktreePath: p.Path})
-
-			case hasRemote:
-				if _, err := git.Run(p.Primary, "worktree", "add", "-b", p.Branch, "--", p.Path, "origin/"+p.Branch); err != nil {
-					fmt.Printf("slis: %s — could not adopt from origin: %v\n", p.Repo, err)
-					continue
-				}
-				fmt.Printf("adopted %s at %s (branch: %s, tracking origin)\n", p.Repo, p.Path, p.Branch)
-				members = append(members, model.SliceMember{Repo: p.Repo, WorktreePath: p.Path})
-
-			default:
-				fmt.Printf("slis: %s — no branch %q locally or on origin (skipping)\n", p.Repo, p.Branch)
+		var raw string
+		if len(args) == 1 {
+			raw = args[0]
+		} else {
+			candidates, err := gatherAdoptCandidates(ws)
+			if err != nil {
+				return err
+			}
+			if len(candidates) == 0 {
+				fmt.Println("no adoptable branches found (every local branch is trunk or already a slice)")
+				return nil
+			}
+			raw, err = pickAdoptCandidate(candidates)
+			if err != nil {
+				return err
+			}
+			if raw == "" {
+				return nil // nothing picked
 			}
 		}
 
-		if len(members) == 0 {
-			return fmt.Errorf("nothing adopted: no repo had branch %q free to check out", branch)
+		if err := validateSliceName(raw); err != nil {
+			return err
 		}
-
-		if !noSession {
-			if !tmuxctl.Available() {
-				fmt.Println("note: tmux not found — skipping session creation")
-			} else if err := tmuxctl.EnsureSession(sliceName, members, tmuxctl.SessionOpts{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
-				fmt.Printf("note: could not start tmux session: %v\n", err)
-			} else {
-				fmt.Printf("started tmux session slis/%s\n", sliceName)
-			}
-		}
-
-		return nil
+		return adoptBranch(ws, raw, noSession)
 	},
 }
 
