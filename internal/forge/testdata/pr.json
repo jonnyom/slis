@@ -1,0 +1,50 @@
+{
+  "number": 1,
+  "url": "https://github.com/jonnyom/slis/pull/1",
+  "state": "OPEN",
+  "title": "demo: PR features test",
+  "headRefName": "demo/pr-features",
+  "reviewDecision": "",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "name": "build / test / lint (ubuntu-latest)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/jonnyom/slis/actions/runs/1/jobs/1",
+      "workflowName": "CI",
+      "startedAt": "2026-06-23T06:00:00Z",
+      "completedAt": "2026-06-23T06:10:00Z"
+    },
+    {
+      "__typename": "CheckRun",
+      "name": "build / security-scan (ubuntu-latest)",
+      "status": "COMPLETED",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/jonnyom/slis/actions/runs/1/jobs/2",
+      "workflowName": "CI",
+      "startedAt": "2026-06-23T06:00:00Z",
+      "completedAt": "2026-06-23T06:05:00Z"
+    },
+    {
+      "__typename": "CheckRun",
+      "name": "build / deploy-preview (ubuntu-latest)",
+      "status": "QUEUED",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/jonnyom/slis/actions/runs/1/jobs/3",
+      "workflowName": "CI",
+      "startedAt": "2026-06-23T06:00:00Z",
+      "completedAt": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "comments": [
+    {
+      "id": "IC_kwDOtest123",
+      "author": {"login": "jonnyom"},
+      "authorAssociation": "OWNER",
+      "body": "Test comment on the demo PR.",
+      "createdAt": "2026-06-23T06:43:50Z",
+      "url": "https://github.com/jonnyom/slis/pull/1#issuecomment-1"
+    }
+  ]
+}
