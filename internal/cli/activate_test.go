@@ -94,7 +94,7 @@ func TestWorktreePlan(t *testing.T) {
 		},
 	}
 
-	plans := worktreePlan(ws, "checkout")
+	plans := worktreePlan(ws, "checkout", "jonny/checkout")
 
 	if len(plans) != 2 {
 		t.Fatalf("want 2 plans, got %d", len(plans))

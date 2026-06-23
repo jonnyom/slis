@@ -21,6 +21,24 @@ type Grouping struct {
 	StripPrefix string `yaml:"strip_prefix"`
 }
 
+// SliceNameFromBranch derives a slice name from a branch by removing the
+// configured strip_prefix. If the prefix was given without a trailing slash
+// (e.g. "jonny" instead of "jonny/"), a leftover leading slash is also trimmed,
+// so both "jonny" and "jonny/" turn "jonny/wfm-1" into "wfm-1". A branch that
+// doesn't start with the prefix is returned unchanged. Shared by discovery
+// (branch → slice) and create (so a fully-qualified name doesn't keep its
+// prefix in the slice's display name / path / session).
+func SliceNameFromBranch(branch, stripPrefix string) string {
+	if stripPrefix == "" || !strings.HasPrefix(branch, stripPrefix) {
+		return branch
+	}
+	name := branch[len(stripPrefix):]
+	if !strings.HasSuffix(stripPrefix, "/") {
+		name = strings.TrimPrefix(name, "/")
+	}
+	return name
+}
+
 // Sessions holds session-related configuration.
 type Sessions struct {
 	AutostartClaude bool `yaml:"autostart_claude"`

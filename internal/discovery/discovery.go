@@ -5,7 +5,6 @@ package discovery
 import (
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
@@ -51,7 +50,7 @@ func Discover(ws config.Workspace) ([]model.Slice, error) {
 				continue
 			}
 
-			key := strings.TrimPrefix(wt.Branch, ws.Grouping.StripPrefix)
+			key := config.SliceNameFromBranch(wt.Branch, ws.Grouping.StripPrefix)
 
 			tip, err := git.RevParse(wt.Path, "HEAD")
 			if err != nil {

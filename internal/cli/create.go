@@ -62,15 +62,17 @@ func branchForSlice(stripPrefix, slice string) string {
 }
 
 // worktreePlan computes the branch name and worktree path for each repo in the
-// workspace for the given slice name. It is a pure function (no git calls) so
-// it can be unit-tested without any side-effects.
-func worktreePlan(ws config.Workspace, slice string) []struct {
+// workspace. name is the canonical slice name (strip_prefix already removed);
+// branch is the fully-qualified git branch (strip_prefix applied exactly once).
+// Keeping the prefix off the slice name means the worktree path, tmux session,
+// and display stay clean even when create was handed a full branch name. Pure
+// (no git calls) so it can be unit-tested.
+func worktreePlan(ws config.Workspace, name, branch string) []struct {
 	Repo, Primary, Branch, Path string
 } {
 	result := make([]struct{ Repo, Primary, Branch, Path string }, 0, len(ws.Repos))
 	for repoName, repo := range ws.Repos {
-		branch := branchForSlice(ws.Grouping.StripPrefix, slice)
-		wtPath := filepath.Join(ws.Root, ".slis", "worktrees", slice, repoName)
+		wtPath := filepath.Join(ws.Root, ".slis", "worktrees", name, repoName)
 		result = append(result, struct{ Repo, Primary, Branch, Path string }{
 			Repo:    repoName,
 			Primary: repo.Primary,
@@ -86,10 +88,10 @@ var createCmd = &cobra.Command{
 	Short: "Create worktrees for all repos in a new slice",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sliceName := args[0]
+		rawName := args[0]
 		noWorktrees, _ := cmd.Flags().GetBool("no-worktrees")
 
-		if err := validateSliceName(sliceName); err != nil {
+		if err := validateSliceName(rawName); err != nil {
 			return err
 		}
 
@@ -98,7 +100,13 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("workspace not found — run `slis init` first: %w", err)
 		}
 
-		plans := worktreePlan(ws, sliceName)
+		// A name pasted from Linear is usually a full branch name (e.g.
+		// "jonny/wfm-123-..."). Canonicalise: the slice identity (path, session,
+		// display) drops the strip_prefix, while the branch keeps it exactly once.
+		sliceName := config.SliceNameFromBranch(rawName, ws.Grouping.StripPrefix)
+		branch := branchForSlice(ws.Grouping.StripPrefix, rawName)
+
+		plans := worktreePlan(ws, sliceName, branch)
 
 		for _, p := range plans {
 			if noWorktrees {

@@ -7,10 +7,56 @@ import (
 	"path/filepath"
 )
 
+// hookEvents are the Claude Code events slis installs a handler for.
+// Notification → waiting-input, Stop → done, UserPromptSubmit → running:
+// together a complete running⇄waiting⇄done state machine so the TUI reflects
+// live status and can notify on each transition.
+var hookEvents = []string{"Notification", "Stop", "UserPromptSubmit"}
+
 // hookCommand returns the command string for the given event using binPath.
 // e.g. hookCommand("/abs/slis", "Notification") → "/abs/slis hook Notification"
 func hookCommand(binPath, event string) string {
 	return fmt.Sprintf("%s hook %s", binPath, event)
+}
+
+// hookGroupsContain reports whether any group in groups holds a command-hook
+// equal to cmd. groups is the value of settings.hooks.<event> (a list of
+// {"hooks": [{"type","command"}]} objects); malformed entries are skipped.
+func hookGroupsContain(groups []interface{}, cmd string) bool {
+	for _, g := range groups {
+		gm, ok := g.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		inner, ok := gm["hooks"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, h := range inner {
+			hm, ok := h.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if c, ok := hm["command"].(string); ok && c == cmd {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// MissingHooks returns the slis hook events that are NOT present in the parsed
+// Claude settings for binPath (empty slice = all installed). settings may be nil.
+func MissingHooks(settings map[string]interface{}, binPath string) []string {
+	hooksMap, _ := settings["hooks"].(map[string]interface{})
+	var missing []string
+	for _, event := range hookEvents {
+		groups, _ := hooksMap[event].([]interface{})
+		if !hookGroupsContain(groups, hookCommand(binPath, event)) {
+			missing = append(missing, event)
+		}
+	}
+	return missing
 }
 
 // mergeHookConfig takes the parsed settings map (may be nil/empty), ensures
@@ -48,11 +94,7 @@ func mergeHookConfig(settings map[string]interface{}, binPath string) (map[strin
 
 	var changes []string
 
-	// Notification → waiting-input, Stop → done, UserPromptSubmit → running.
-	// Installing all three gives a complete running⇄waiting⇄done state machine so
-	// the TUI can both reflect live status and notify on each transition (a Stop
-	// after a fresh prompt is a real running→done edge, so repeat turns re-notify).
-	for _, event := range []string{"Notification", "Stop", "UserPromptSubmit"} {
+	for _, event := range hookEvents {
 		cmd := hookCommand(binPath, event)
 
 		// Retrieve existing groups for this event as []interface{}.
@@ -64,33 +106,7 @@ func mergeHookConfig(settings map[string]interface{}, binPath string) (map[strin
 			// If the type is wrong/malformed, treat as absent (groups stays nil).
 		}
 
-		// Scan every group → its hooks array → each entry's command string.
-		found := false
-		for _, g := range groups {
-			gm, ok := g.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			inner, ok := gm["hooks"].([]interface{})
-			if !ok {
-				continue
-			}
-			for _, h := range inner {
-				hm, ok := h.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if c, ok := hm["command"].(string); ok && c == cmd {
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-
-		if found {
+		if hookGroupsContain(groups, cmd) {
 			continue
 		}
 
