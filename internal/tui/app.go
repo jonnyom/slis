@@ -33,6 +33,7 @@ import (
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/restack"
+	"github.com/jonnyom/slis/internal/safeterm"
 	"github.com/jonnyom/slis/internal/summary"
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/internal/tmuxctl"
@@ -623,7 +624,9 @@ type captureLoadedMsg struct {
 func loadCaptureCmd(slice string) tea.Cmd {
 	return func() tea.Msg {
 		text, _ := tmuxctl.CapturePane(slice)
-		return captureLoadedMsg{slice: slice, text: text}
+		// Pane content is arbitrary program output; strip terminal escapes
+		// before it is rendered into the slis UI.
+		return captureLoadedMsg{slice: slice, text: safeterm.Strip(text)}
 	}
 }
 
@@ -654,10 +657,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case sessionsLoadedMsg:
-		newly := NewlyWaiting(m.sessionStatus, msg.statuses)
+		// Notify when Claude yields control: either blocked on input or finished
+		// a turn. Both are "your move" moments for an autonomous session.
+		var alerts []sessionAlert
+		for _, s := range NewlyInStatus(m.sessionStatus, msg.statuses, model.SessWaitingInput) {
+			alerts = append(alerts, sessionAlert{slice: s, status: model.SessWaitingInput})
+		}
+		for _, s := range NewlyInStatus(m.sessionStatus, msg.statuses, model.SessDone) {
+			alerts = append(alerts, sessionAlert{slice: s, status: model.SessDone})
+		}
 		m.sessionStatus = msg.statuses
-		if len(newly) > 0 {
-			return m, notifyCmd(newly)
+		if len(alerts) > 0 {
+			return m, notifyCmd(alerts)
 		}
 
 	case sessionsRefreshMsg:

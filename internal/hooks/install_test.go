@@ -24,8 +24,8 @@ func TestInitHooksFreshInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitHooks error: %v", err)
 	}
-	if len(changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d: %v", len(changes), changes)
+	if len(changes) != 3 {
+		t.Fatalf("expected 3 changes, got %d: %v", len(changes), changes)
 	}
 
 	data, err := os.ReadFile(path)
@@ -43,7 +43,7 @@ func TestInitHooksFreshInstall(t *testing.T) {
 		t.Fatal("hooks key missing or wrong type")
 	}
 
-	for _, event := range []string{"Notification", "Stop"} {
+	for _, event := range []string{"Notification", "Stop", "UserPromptSubmit"} {
 		groups, ok := hooksMap[event].([]interface{})
 		if !ok {
 			t.Errorf("hooks.%s is not an array", event)
@@ -151,7 +151,7 @@ func TestInitHooksPreservesExisting(t *testing.T) {
 	}
 
 	// Notification and Stop added
-	for _, event := range []string{"Notification", "Stop"} {
+	for _, event := range []string{"Notification", "Stop", "UserPromptSubmit"} {
 		groups, ok := hooksMap[event].([]interface{})
 		if !ok || len(groups) == 0 {
 			t.Errorf("hooks.%s missing or empty", event)
@@ -189,8 +189,8 @@ func TestMergeHookConfigNoDuplicate(t *testing.T) {
 	settings := map[string]interface{}{}
 
 	merged1, changes1 := mergeHookConfig(settings, "/x/slis")
-	if len(changes1) != 2 {
-		t.Fatalf("first merge: expected 2 changes, got %d: %v", len(changes1), changes1)
+	if len(changes1) != 3 {
+		t.Fatalf("first merge: expected 3 changes, got %d: %v", len(changes1), changes1)
 	}
 
 	merged2, changes2 := mergeHookConfig(merged1, "/x/slis")
@@ -201,7 +201,7 @@ func TestMergeHookConfigNoDuplicate(t *testing.T) {
 	// Verify array lengths didn't grow
 	hooksMap1, _ := merged1["hooks"].(map[string]interface{})
 	hooksMap2, _ := merged2["hooks"].(map[string]interface{})
-	for _, event := range []string{"Notification", "Stop"} {
+	for _, event := range []string{"Notification", "Stop", "UserPromptSubmit"} {
 		g1, _ := hooksMap1[event].([]interface{})
 		g2, _ := hooksMap2[event].([]interface{})
 		if len(g1) != len(g2) {

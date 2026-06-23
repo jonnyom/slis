@@ -24,15 +24,17 @@ type hookInput struct {
 // StatusForEvent maps a Claude hook event name to the corresponding
 // model.SessionStatus:
 //
-//	"Notification"  → SessWaitingInput
-//	"Stop" / "SubagentStop" → SessDone
-//	anything else   → SessRunning
+//	"Notification"                 → SessWaitingInput
+//	"Stop" / "SubagentStop"         → SessDone
+//	"UserPromptSubmit" / anything else → SessRunning
 func StatusForEvent(event string) model.SessionStatus {
 	switch event {
 	case "Notification":
 		return model.SessWaitingInput
 	case "Stop", "SubagentStop":
 		return model.SessDone
+	case "UserPromptSubmit":
+		return model.SessRunning
 	default:
 		return model.SessRunning
 	}

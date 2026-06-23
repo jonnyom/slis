@@ -24,20 +24,35 @@ var (
 	overviewStyle = lipgloss.NewStyle().Faint(true)
 	headerStyle   = lipgloss.NewStyle().Faint(true)
 	colHeadStyle  = lipgloss.NewStyle().Faint(true).Bold(true)
-	waitStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // needs-input
-	liveStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
-	mergedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))            // a merged PR
-	readyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag
-	emptyBoxStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(1, 3)
-	codeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("159"))
+	// create-mode input: a filled magenta chip so entering "new slice" mode is
+	// unmissable (the old faint label was easy to overlook).
+	createChipStyle = lipgloss.NewStyle().Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("198")).
+			Padding(0, 1)
+	createNameStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("213"))
+	waitStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // needs-input
+	doneStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true) // finished a turn — your move
+	liveStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
+	mergedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))            // a merged PR
+	readyStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag
+	emptyBoxStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(1, 3)
+	codeStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("159"))
 )
+
+// renderCreatePrompt renders the active "new slice" input as a loud magenta chip
+// plus the typed name and a cursor, so create mode is obvious at a glance.
+func renderCreatePrompt(name string) string {
+	return "  " + createChipStyle.Render("✎ new slice") + " " +
+		createNameStyle.Render(name) + cursorBar.Render("▏")
+}
 
 // renderEmptyState renders the hub when there are no slices: a welcome (no
 // workspace) or an "all clear" state (workspace set up, nothing in flight).
 func renderEmptyState(m Model) string {
 	hdr := titleStyle.Render("slis") + headerStyle.Render("  ·  0 slices")
 	if m.creating {
-		hdr += "   " + headerStyle.Render("new slice: ") + m.createName + "▏"
+		hdr += renderCreatePrompt(m.createName)
 	}
 	header := clip(hdr, m.width)
 	hint := "[c] new slice   [r] refresh   [?] help   [q] quit"
@@ -257,7 +272,8 @@ const (
 
 // workState classifies a slice for the state filters, using data already loaded.
 func (m Model) workState(s model.Slice) sliceState {
-	if m.sessionStatus[s.Name] == model.SessWaitingInput {
+	if st := m.sessionStatus[s.Name]; st == model.SessWaitingInput || st == model.SessDone {
+		// Blocked on input, or just finished a turn — either way it's your move.
 		return stNeedsYou
 	}
 	if m.sliceMergeState(s) == mergeReady {
@@ -307,6 +323,9 @@ func hubFilters() []hubFilter {
 func (m Model) attentionRank(s model.Slice) int {
 	if m.sessionStatus[s.Name] == model.SessWaitingInput {
 		return 0 // Claude is blocked on you
+	}
+	if m.sessionStatus[s.Name] == model.SessDone {
+		return 1 // Claude finished a turn — review / your move
 	}
 	if slicePRs, ok := m.prs[s.Name]; ok {
 		for _, repo := range s.Repos() {
@@ -457,7 +476,7 @@ func renderBrowser(m Model) string {
 		head.WriteString("   " + needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", rs)))
 	}
 	if m.creating {
-		head.WriteString("   " + headerStyle.Render("new slice: ") + m.createName + "▏")
+		head.WriteString(renderCreatePrompt(m.createName))
 	} else if m.naming {
 		head.WriteString("   " + headerStyle.Render("group name: ") + m.groupName + "▏")
 	} else if n := len(m.selected); n > 0 {
@@ -554,12 +573,11 @@ func slicesContent(m Model, vis []int, rows int) string {
 			marker = cursorBar.Render("▎") + " "
 		}
 		name := s.Name
-		if s.Active {
-			name = "●" + name
-		}
 		if i == m.focus {
 			name = focusStyle.Render(name)
 		}
+		// Live state is carried by the (green) status glyph, not a second dot on
+		// the name — avoids the confusing "● ●name" double-dot.
 		sb.WriteString(marker + sliceGlyph(m, s) + " " + name + "\n")
 	}
 	return sb.String()
@@ -569,15 +587,23 @@ func slicesContent(m Model, vis []int, rows int) string {
 func sliceGlyph(m Model, s model.Slice) string {
 	switch m.workState(s) {
 	case stNeedsYou:
-		if m.sessionStatus[s.Name] == model.SessWaitingInput {
+		switch m.sessionStatus[s.Name] {
+		case model.SessWaitingInput:
 			return waitStyle.Render("⏸")
+		case model.SessDone:
+			return doneStyle.Render("✦") // finished a turn — your move
+		default:
+			return "❌" // CI failing
 		}
-		return "❌"
 	case stReady:
 		return readyStyle.Render("♻")
 	case stInReview:
 		return syncedStyle.Render("✓")
 	default:
+		if s.Active {
+			// Live: this slice is swapped into the repos' primaries.
+			return liveStyle.Render("●")
+		}
 		if m.sessionStatus[s.Name] == model.SessRunning {
 			return "●"
 		}
@@ -643,16 +669,30 @@ func previewContent(m Model, sl model.Slice) string {
 			sb.WriteString(overviewStyle.Render("select to load…"))
 			break
 		}
-		shown := false
+		// Show every repo (not just the first) with a clear header naming the
+		// repo, its stat, and the base it is diffed against — so it's obvious
+		// what the changes are and from where. Each patch is capped; the full
+		// diff is in the cockpit ([enter]).
+		prefix := m.ws.Grouping.StripPrefix
 		for _, rd := range diffs {
-			if rd.Patch != "" {
-				sb.WriteString(diffHdrStyle.Render("▸ "+rd.Repo) + "\n" + colorizePatch(rd.Patch))
-				shown = true
-				break
+			base := shortBranch(rd.Base, prefix)
+			switch {
+			case rd.Err != "":
+				sb.WriteString(diffHdrStyle.Render("▸ "+rd.Repo) + " " +
+					overviewStyle.Render("diff unavailable") + "\n")
+			case rd.Patch == "":
+				sb.WriteString(diffHdrStyle.Render("▸ "+rd.Repo) + " " +
+					overviewStyle.Render("no changes vs "+base) + "\n")
+			default:
+				sb.WriteString(diffHdrStyle.Render(fmt.Sprintf("▸ %s  +%d -%d · vs %s",
+					rd.Repo, rd.TotalAdded(), rd.TotalDeleted(), base)) + "\n")
+				body, more := headLines(colorizePatch(rd.Patch), 10)
+				sb.WriteString(body + "\n")
+				if more > 0 {
+					sb.WriteString(overviewStyle.Render(
+						fmt.Sprintf("    … %d more lines — [enter] for full diff", more)) + "\n")
+				}
 			}
-		}
-		if !shown {
-			sb.WriteString(overviewStyle.Render("no changes vs trunk"))
 		}
 	}
 	return sb.String()

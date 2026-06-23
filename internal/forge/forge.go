@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/jonnyom/slis/internal/safeterm"
 )
 
 // CheckState represents the aggregated state of a single CI check.
@@ -120,7 +122,10 @@ func normalizeCheck(e ghCheckEntry) Check {
 		}
 	}
 
-	return Check{Name: name, State: state, URL: url}
+	// Name and URL are GitHub-controlled (and, for forks/external PRs,
+	// attacker-controlled); strip terminal escapes before they reach a render
+	// path or an LLM prompt.
+	return Check{Name: safeterm.Strip(name), State: state, URL: safeterm.Strip(url)}
 }
 
 // checkRunState maps a CheckRun's (status, conclusion) pair to a CheckState.
@@ -178,20 +183,22 @@ func ParsePR(branch string, data []byte) (*PR, error) {
 	comments := make([]Comment, 0, len(raw.Comments))
 	for _, c := range raw.Comments {
 		comments = append(comments, Comment{
-			Author:    c.Author.Login,
-			Body:      c.Body,
-			CreatedAt: c.CreatedAt,
-			URL:       c.URL,
+			Author:    safeterm.Strip(c.Author.Login),
+			Body:      safeterm.Strip(c.Body),
+			CreatedAt: safeterm.Strip(c.CreatedAt),
+			URL:       safeterm.Strip(c.URL),
 		})
 	}
 
+	// Every string below is sourced from `gh` (i.e. GitHub) and is rendered in
+	// the TUI / shareable markdown; sanitise terminal escapes at this boundary.
 	return &PR{
 		Branch:         branch,
 		Number:         raw.Number,
-		URL:            raw.URL,
-		State:          raw.State,
-		Title:          raw.Title,
-		ReviewDecision: raw.ReviewDecision,
+		URL:            safeterm.Strip(raw.URL),
+		State:          safeterm.Strip(raw.State),
+		Title:          safeterm.Strip(raw.Title),
+		ReviewDecision: safeterm.Strip(raw.ReviewDecision),
 		Checks:         checks,
 		Comments:       comments,
 	}, nil

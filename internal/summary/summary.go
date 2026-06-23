@@ -14,6 +14,7 @@ import (
 
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/safeterm"
 )
 
 // aiSummaryTimeout bounds the AI summary call so a hung `claude` process can't
@@ -45,7 +46,10 @@ func CommitSummaryBases(sl model.Slice, bases map[string]string) (map[string][]s
 		if b == "" {
 			b = git.DetectBase(m.WorktreePath)
 		}
-		out, err := git.Run(m.WorktreePath, "log", "--format=%s", b+"..HEAD")
+		// --end-of-options: ensure a base ref that begins with '-' is treated as
+		// a revision, never a git option (defence-in-depth; trunk refs don't, but
+		// a whole-slice Base override comes from config).
+		out, err := git.Run(m.WorktreePath, "log", "--format=%s", "--end-of-options", b+"..HEAD")
 		if err != nil {
 			// base ref may be absent — treat as no commits for this repo.
 			result[repo] = []string{}
@@ -53,7 +57,9 @@ func CommitSummaryBases(sl model.Slice, bases map[string]string) (map[string][]s
 		}
 		var subjects []string
 		for _, line := range strings.Split(out, "\n") {
-			if s := strings.TrimSpace(line); s != "" {
+			// Commit subjects are attacker-controllable in a cloned repo and are
+			// rendered to the terminal — strip escape sequences.
+			if s := strings.TrimSpace(safeterm.Strip(line)); s != "" {
 				subjects = append(subjects, s)
 			}
 		}

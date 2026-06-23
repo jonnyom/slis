@@ -48,7 +48,11 @@ func mergeHookConfig(settings map[string]interface{}, binPath string) (map[strin
 
 	var changes []string
 
-	for _, event := range []string{"Notification", "Stop"} {
+	// Notification → waiting-input, Stop → done, UserPromptSubmit → running.
+	// Installing all three gives a complete running⇄waiting⇄done state machine so
+	// the TUI can both reflect live status and notify on each transition (a Stop
+	// after a fresh prompt is a real running→done edge, so repeat turns re-notify).
+	for _, event := range []string{"Notification", "Stop", "UserPromptSubmit"} {
 		cmd := hookCommand(binPath, event)
 
 		// Retrieve existing groups for this event as []interface{}.
@@ -150,8 +154,41 @@ func InitHooks(settingsPath, binPath string) ([]string, error) {
 		return nil, fmt.Errorf("marshalling settings: %w", err)
 	}
 
-	if err := os.WriteFile(settingsPath, out, 0o644); err != nil {
-		return nil, fmt.Errorf("writing %s: %w", settingsPath, err)
+	// Resolve symlinks first: settings.json is often a symlink into a dotfiles
+	// repo. Renaming over the link path would replace the symlink with a regular
+	// file (breaking the dotfiles link); instead we write the temp file beside —
+	// and rename over — the real target so the symlink and its destination are
+	// both preserved. EvalSymlinks fails for a not-yet-existing file, in which
+	// case we keep the original path (fresh create).
+	target := settingsPath
+	if resolved, rerr := filepath.EvalSymlinks(settingsPath); rerr == nil {
+		target = resolved
+	}
+
+	// Write atomically: a crash or disk-full midway through os.WriteFile would
+	// otherwise leave the user's Claude settings.json truncated/corrupted. Write
+	// a sibling temp file, then rename over the target (atomic on the same fs).
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".slis-settings-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("creating temp settings file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(out); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return nil, fmt.Errorf("writing temp settings file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return nil, fmt.Errorf("closing temp settings file: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		os.Remove(tmpName)
+		return nil, fmt.Errorf("chmod temp settings file: %w", err)
+	}
+	if err := os.Rename(tmpName, settingsPath); err != nil {
+		os.Remove(tmpName)
+		return nil, fmt.Errorf("replacing %s: %w", settingsPath, err)
 	}
 
 	return changes, nil

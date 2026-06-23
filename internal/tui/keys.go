@@ -23,7 +23,7 @@ var browserBindings = []Binding{
 	{[]string{"enter", "l"}, "open slice cockpit"},
 	{[]string{"c"}, "create a new slice (worktrees across repos)"},
 	{[]string{"C"}, "launch the agent (claude) in the session + attach"},
-	{[]string{"a"}, "attach tmux session"},
+	{[]string{"a"}, "attach tmux session  ·  detach with C-b d (not Ctrl-D)"},
 	{[]string{"w"}, "set as live (swap into primaries) / deactivate"},
 	{[]string{"R"}, "stack actions: restack / submit / merge (Graphite) / sync"},
 	{[]string{"d"}, "clear finished slice(s) — selection if any, else focused"},
@@ -51,7 +51,7 @@ var cockpitBindings = []Binding{
 	{[]string{"d"}, "clear this finished slice (worktrees/branches/session)"},
 	{[]string{"R"}, "stack actions: restack / submit / merge (Graphite) / sync"},
 	{[]string{"s"}, "summary (toggle); S forces AI summary"},
-	{[]string{"a"}, "attach tmux session"},
+	{[]string{"a"}, "attach tmux session  ·  detach with C-b d (not Ctrl-D)"},
 	{[]string{"C"}, "launch the agent (claude) in the session + attach"},
 	{[]string{"o"}, "open worktree in editor"},
 	{[]string{"y", "Y"}, "yank diff / PR-stack markdown"},
@@ -93,6 +93,16 @@ func renderHelp(view viewMode) string {
 		))
 	}
 	sb.WriteString("\n")
+	sb.WriteString(helpDescStyle.Render("Slice glyph:  ") +
+		waitStyle.Render("⏸") + helpDescStyle.Render(" waiting on you   ") +
+		doneStyle.Render("✦") + helpDescStyle.Render(" finished (your move)   ") +
+		helpDescStyle.Render("❌ attention   ") +
+		liveStyle.Render("●") + helpDescStyle.Render(" live (swapped in)   ") +
+		helpDescStyle.Render("● running   ") +
+		readyStyle.Render("♻") + helpDescStyle.Render(" ready   ") +
+		syncedStyle.Render("✓") + helpDescStyle.Render(" in review   ") +
+		overviewStyle.Render("·") + helpDescStyle.Render(" idle") + "\n")
+	sb.WriteString(helpDescStyle.Render("In a session: detach with C-b d (prefix, then d) — Ctrl-D sends EOF and quits Claude.\n"))
 	sb.WriteString(helpDescStyle.Render("Press ? or esc to close"))
 
 	return helpBoxStyle.Render(sb.String())

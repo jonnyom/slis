@@ -108,8 +108,15 @@ var activateCmd = &cobra.Command{
 				if install == "" {
 					return nil
 				}
+				// SECURITY: `install` is an arbitrary shell command taken from the
+				// user's own workspace.yaml (swap.dep_reconcile.<repo>.install) and
+				// run via `sh -c` in the primary checkout when a lockfile changed.
+				// This is by design (it's how you run `bun install` etc.), but it
+				// means workspace.yaml is trusted input — slis loads it only from
+				// the global XDG config dir, never from a repo, so cloning a hostile
+				// repo cannot inject it. The command is printed before it runs.
 				fmt.Fprintf(os.Stdout, "slis: lockfile changed in %s, running: %s\n", repoName, install)
-				c := exec.Command("sh", "-c", install)
+				c := exec.Command("sh", "-c", install) //nolint:gosec // intentional: user-configured reconcile hook from global config
 				c.Dir = primaryDir
 				c.Stdout = os.Stdout
 				c.Stderr = os.Stderr

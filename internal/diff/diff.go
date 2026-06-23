@@ -8,6 +8,7 @@ import (
 
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/safeterm"
 )
 
 // FileStat holds the per-file line change summary from git diff --numstat.
@@ -75,7 +76,7 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--end-of-options", b+"...HEAD")
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
@@ -85,8 +86,10 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		rd.Files = parseNumstat(numstat)
 
 		// Best-effort full patch; ignore error (already have numstat).
-		patch, _ := git.Run(m.WorktreePath, "diff", b+"...HEAD")
-		rd.Patch = patch
+		patch, _ := git.Run(m.WorktreePath, "diff", "--end-of-options", b+"...HEAD")
+		// Patch contains repo file contents (and filenames) which can embed
+		// terminal escapes; strip them before this string is rendered.
+		rd.Patch = safeterm.Strip(patch)
 
 		results = append(results, rd)
 	}
@@ -114,15 +117,17 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--end-of-options", b+"...HEAD")
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
 			continue
 		}
 		rd.Files = parseNumstat(numstat)
-		patch, _ := git.Run(m.WorktreePath, "diff", b+"...HEAD")
-		rd.Patch = patch
+		patch, _ := git.Run(m.WorktreePath, "diff", "--end-of-options", b+"...HEAD")
+		// Patch contains repo file contents (and filenames) which can embed
+		// terminal escapes; strip them before this string is rendered.
+		rd.Patch = safeterm.Strip(patch)
 		results = append(results, rd)
 	}
 	return results, nil
@@ -159,7 +164,7 @@ func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--end-of-options", b+"...HEAD")
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
@@ -185,7 +190,7 @@ func parseNumstat(output string) []FileStat {
 		if len(parts) != 3 {
 			continue
 		}
-		fs := FileStat{Path: parts[2]}
+		fs := FileStat{Path: safeterm.Strip(parts[2])}
 		if parts[0] == "-" || parts[1] == "-" {
 			fs.Added = -1
 			fs.Deleted = -1

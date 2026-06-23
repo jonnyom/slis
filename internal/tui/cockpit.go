@@ -371,6 +371,16 @@ func tailLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// headLines returns the first n lines of s plus the count of lines omitted (0 if
+// none). Used to cap each repo's patch in the hub preview.
+func headLines(s string, n int) (string, int) {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) <= n {
+		return strings.Join(lines, "\n"), 0
+	}
+	return strings.Join(lines[:n], "\n"), len(lines) - n
+}
+
 // procsPanelContent renders the top processes by CPU with a warning badge.
 func procsPanelContent(m Model, sl model.Slice) string {
 	if m.procLoading[sl.Name] {

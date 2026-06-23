@@ -12,6 +12,55 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// validateSliceName rejects slice names that would be unsafe once interpolated
+// into a filesystem path (worktree location), a git branch, or a tmux session.
+// Internal '/' is allowed because a slice name is a branch minus its strip-prefix
+// and branches legitimately nest (e.g. "feat/sub"); what is rejected is anything
+// that could escape the worktrees directory or be parsed as a git flag:
+//   - empty
+//   - a leading '-' (would look like a git option)
+//   - an absolute path
+//   - a '.' or '..' (or empty) path segment — i.e. traversal or // or leading/trailing '/'
+//   - any backslash or ASCII control character
+func validateSliceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("slice name must not be empty")
+	}
+	if strings.HasPrefix(name, "-") {
+		return fmt.Errorf("slice name %q must not start with '-'", name)
+	}
+	if filepath.IsAbs(name) {
+		return fmt.Errorf("slice name %q must not be an absolute path", name)
+	}
+	if strings.ContainsRune(name, '\\') {
+		return fmt.Errorf("slice name %q must not contain a backslash", name)
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("slice name %q must not contain control characters", name)
+		}
+	}
+	for _, seg := range strings.Split(name, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return fmt.Errorf("slice name %q contains an invalid path segment %q", name, seg)
+		}
+	}
+	return nil
+}
+
+// branchForSlice forms the git branch name for a slice, applying the workspace's
+// strip_prefix EXACTLY ONCE. The slice name may already be fully-qualified — e.g.
+// when `slis create` is handed a real branch name like "jonny/wfm-123" — and
+// blindly prepending the prefix produced malformed doubled branches such as
+// "jonnyjonny/wfm-123" (which then match no PR and aren't in Graphite). If the
+// name already starts with the prefix, it is used as-is.
+func branchForSlice(stripPrefix, slice string) string {
+	if stripPrefix == "" || strings.HasPrefix(slice, stripPrefix) {
+		return slice
+	}
+	return stripPrefix + slice
+}
+
 // worktreePlan computes the branch name and worktree path for each repo in the
 // workspace for the given slice name. It is a pure function (no git calls) so
 // it can be unit-tested without any side-effects.
@@ -20,7 +69,7 @@ func worktreePlan(ws config.Workspace, slice string) []struct {
 } {
 	result := make([]struct{ Repo, Primary, Branch, Path string }, 0, len(ws.Repos))
 	for repoName, repo := range ws.Repos {
-		branch := ws.Grouping.StripPrefix + slice
+		branch := branchForSlice(ws.Grouping.StripPrefix, slice)
 		wtPath := filepath.Join(ws.Root, ".slis", "worktrees", slice, repoName)
 		result = append(result, struct{ Repo, Primary, Branch, Path string }{
 			Repo:    repoName,
@@ -40,6 +89,10 @@ var createCmd = &cobra.Command{
 		sliceName := args[0]
 		noWorktrees, _ := cmd.Flags().GetBool("no-worktrees")
 
+		if err := validateSliceName(sliceName); err != nil {
+			return err
+		}
+
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
 			return fmt.Errorf("workspace not found — run `slis init` first: %w", err)
@@ -53,13 +106,14 @@ var createCmd = &cobra.Command{
 				continue
 			}
 
-			// Try creating a new branch + worktree.
-			_, err := git.Run(p.Primary, "worktree", "add", "-b", p.Branch, p.Path)
+			// Try creating a new branch + worktree. The "--" separates options
+			// from the positional path so a path is never parsed as a git flag.
+			_, err := git.Run(p.Primary, "worktree", "add", "-b", p.Branch, "--", p.Path)
 			if err != nil {
 				// Branch may already exist; try attaching to the existing branch.
 				errStr := err.Error()
 				if strings.Contains(errStr, "already exists") || strings.Contains(errStr, "already checked out") {
-					_, err2 := git.Run(p.Primary, "worktree", "add", p.Path, p.Branch)
+					_, err2 := git.Run(p.Primary, "worktree", "add", "--", p.Path, p.Branch)
 					if err2 != nil {
 						fmt.Printf("slis: skipping %s — worktree already exists or branch in use: %v\n", p.Repo, err2)
 						continue

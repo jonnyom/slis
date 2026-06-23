@@ -81,13 +81,29 @@ func sessionWindows(members []model.SliceMember, opts SessionOpts) []window {
 	return wins
 }
 
+// detachHint is the reminder shown in a slis session's status bar. Claude exits
+// on Ctrl-D (EOF), which users reach for instinctively when they mean "leave";
+// the correct, Claude-preserving way out is the tmux prefix detach (C-b d).
+const detachHint = " detach: C-b d  (Ctrl-D quits Claude) "
+
+// setStatusHint writes detachHint into the named session's status bar. It is set
+// per-session (no -g) so it only affects slis-owned sessions, never the user's
+// other tmux sessions. Best-effort: any failure (e.g. status bar disabled) is
+// ignored — it is a hint, not load-bearing.
+func setStatusHint(name string) {
+	_ = exec.Command("tmux", "set-option", "-t", name, "status-right-length", "40").Run()
+	_ = exec.Command("tmux", "set-option", "-t", name, "status-right", detachHint).Run()
+}
+
 // EnsureSession creates the slice's tmux session (detached) if it does not
 // already exist, with windows determined by opts (a root window, per-repo
 // windows, or both — see SessionOpts). Idempotent: returns nil if the session
 // already exists. The first window becomes the session's initial (attached) one.
+// Either way the session's status bar is (re)stamped with the detach hint.
 func EnsureSession(slice string, members []model.SliceMember, opts SessionOpts) error {
 	name := SessionName(slice)
 	if SessionExists(slice) {
+		setStatusHint(name)
 		return nil
 	}
 
@@ -97,6 +113,7 @@ func EnsureSession(slice string, members []model.SliceMember, opts SessionOpts) 
 		if out, err := exec.Command("tmux", "new-session", "-d", "-s", name).CombinedOutput(); err != nil {
 			return fmt.Errorf("tmux new-session: %w: %s", err, out)
 		}
+		setStatusHint(name)
 		return nil
 	}
 
@@ -119,6 +136,7 @@ func EnsureSession(slice string, members []model.SliceMember, opts SessionOpts) 
 		}
 	}
 
+	setStatusHint(name)
 	return nil
 }
 

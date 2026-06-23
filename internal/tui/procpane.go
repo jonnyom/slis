@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jonnyom/slis/internal/proc"
+	"github.com/jonnyom/slis/internal/safeterm"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
@@ -89,7 +90,10 @@ func flattenProcs(bySlice map[string][]proc.ProcInfo) []proc.ProcInfo {
 
 var (
 	procTableHeaderStyle = lipgloss.NewStyle().Bold(true).Faint(true)
-	procTableSelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212")).Reverse(true)
+	// Selected row: a subtle dark band with a soft magenta text accent — NOT a
+	// full-width reversed block (the old Reverse(true) painted the whole row, and
+	// any newlines, e.g. claude's --system-prompt, smeared pink across lines).
+	procTableSelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212")).Background(lipgloss.Color("236"))
 	procTableNormalStyle = lipgloss.NewStyle()
 	procOverlayBoxStyle  = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -132,9 +136,12 @@ func renderProcTable(procs []proc.ProcInfo, sel int, max int) string {
 	sb.WriteString("\n")
 
 	for i, p := range procs {
-		cmd := p.Cmd
-		if len(cmd) > cmdWidth {
-			cmd = cmd[:cmdWidth-1] + "…"
+		// Flatten the command to a single sanitised line: a process argv can
+		// contain newlines/control chars (e.g. claude's multi-line --system-prompt),
+		// which would otherwise wrap into a multi-line highlighted block.
+		cmd := strings.Join(strings.Fields(safeterm.Strip(p.Cmd)), " ")
+		if r := []rune(cmd); len(r) > cmdWidth {
+			cmd = string(r[:cmdWidth-1]) + "…"
 		}
 		row := fmt.Sprintf("%-*d  %-*.1f  %-*.1f  %s",
 			pidWidth, p.PID,
