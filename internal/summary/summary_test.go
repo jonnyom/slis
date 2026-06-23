@@ -180,3 +180,28 @@ func TestDefaultClaudeRunnerMissingClaude(t *testing.T) {
 		t.Errorf("error should mention 'claude'; got: %v", err)
 	}
 }
+
+// TestRenderMarkdownFixed verifies that RenderMarkdownFixed renders without panicking
+// and returns non-empty output for a non-empty input (using a fixed dark style,
+// no terminal query).
+func TestRenderMarkdownFixed(t *testing.T) {
+	// Non-empty input should produce non-empty output.
+	out := summary.RenderMarkdownFixed("# Title\n- item", 80)
+	if out == "" {
+		t.Error("RenderMarkdownFixed should return non-empty output for non-empty input")
+	}
+	// The rendered output should not be identical to the raw input (glamour applies styling).
+	if out == "# Title\n- item" {
+		t.Error("RenderMarkdownFixed should render markdown, not return the raw input unchanged")
+	}
+
+	// Empty input must not panic and should return an empty (or whitespace-only) string.
+	empty := summary.RenderMarkdownFixed("", 0)
+	_ = empty // just must not panic
+
+	// wrap=0 should fall back to 80 and still work.
+	out2 := summary.RenderMarkdownFixed("# Hello\n\nworld", 0)
+	if out2 == "" {
+		t.Error("RenderMarkdownFixed with wrap=0 should return non-empty output")
+	}
+}

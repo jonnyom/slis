@@ -101,3 +101,25 @@ func RenderMarkdown(md string) string {
 	}
 	return out
 }
+
+// RenderMarkdownFixed renders markdown with a FIXED dark style and word-wrap,
+// performing NO terminal background-color query. Safe to call from inside a
+// running Bubble Tea program (unlike RenderMarkdown, which uses WithAutoStyle
+// and would block on a terminal query there). Returns md unchanged on any error.
+func RenderMarkdownFixed(md string, wrap int) string {
+	if wrap <= 0 {
+		wrap = 80
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("dark"),
+		glamour.WithWordWrap(wrap),
+	)
+	if err != nil {
+		return md
+	}
+	out, err := r.Render(md)
+	if err != nil {
+		return md
+	}
+	return out
+}

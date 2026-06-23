@@ -193,7 +193,7 @@ func loadSummaryCmd(sl model.Slice, base string) tea.Cmd {
 	return func() tea.Msg {
 		byRepo, _ := summary.CommitSummary(sl, base)
 		md := summary.RenderCommitSummary(byRepo)
-		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdown(md)}
+		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdownFixed(md, 0)}
 	}
 }
 
@@ -213,7 +213,7 @@ func aiSummaryCmd(sl model.Slice, diffs []diff.RepoDiff) tea.Cmd {
 		if err != nil {
 			return summaryLoadedMsg{slice: sl.Name, text: "AI summary unavailable: " + err.Error()}
 		}
-		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdown(out)}
+		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdownFixed(out, 0)}
 	}
 }
 
@@ -228,7 +228,7 @@ func aiSummaryFromSliceCmd(sl model.Slice) tea.Cmd {
 		if err != nil {
 			return summaryLoadedMsg{slice: sl.Name, text: "AI summary unavailable: " + err.Error()}
 		}
-		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdown(out)}
+		return summaryLoadedMsg{slice: sl.Name, text: summary.RenderMarkdownFixed(out, 0)}
 	}
 }
 
