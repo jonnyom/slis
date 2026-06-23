@@ -211,7 +211,11 @@ func cockpitFooter(m Model) string {
 		if m.splitDiff {
 			split = "[t]unified"
 		}
-		hint = "[tab]panel [w]swap [R]restack [s]ummary [a]ttach [o]pen [y]ank " + split + " [⏶⏷^d/^u]scroll [esc]back"
+		base := "[b]vs-trunk"
+		if m.diffVsTrunk {
+			base = "[b]vs-parent"
+		}
+		hint = "[tab]panel [w]swap [R]stack [a]ttach [o]pen [y]ank " + split + " " + base + " [⏶⏷^d/^u]scroll [esc]back"
 	case panelProcs:
 		hint = "[tab]panel [j/k]select [x]kill [X]kill-tree [w]swap [a]ttach [esc]back"
 	case panelSession:
@@ -449,7 +453,12 @@ func repoDiffContent(m Model, sl model.Slice) string {
 		return "no changes vs trunk\n"
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%d files  +%d -%d\n\n", len(rd.Files), rd.TotalAdded(), rd.TotalDeleted())
+	base := shortBranch(rd.Base, m.ws.Grouping.StripPrefix)
+	if base == "" {
+		base = "trunk"
+	}
+	fmt.Fprintf(&sb, "%d files  +%d −%d   %s\n\n", len(rd.Files), rd.TotalAdded(), rd.TotalDeleted(),
+		cockpitDimStyle.Render("vs "+base))
 	for _, f := range rd.Files {
 		if f.Added == -1 {
 			fmt.Fprintf(&sb, "  %s  (binary)\n", f.Path)
@@ -800,6 +809,16 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.splitDiff = !m.splitDiff
 		m.refreshRight()
 		return m, nil
+	case "b":
+		// Toggle the diff base: this branch's changes (vs Graphite parent) ↔ the
+		// whole feature (vs trunk). Reload the diff with the new base.
+		m.diffVsTrunk = !m.diffVsTrunk
+		if sl, ok := m.currentSlice(); ok {
+			delete(m.diffs, sl.Name)
+		}
+		cmd := m.maybeLoadDiff()
+		m.refreshRight()
+		return m, cmd
 	case "a":
 		return m, m.attachCmd()
 	case "C":

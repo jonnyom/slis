@@ -62,10 +62,11 @@ type Model struct {
 	height  int
 	loading bool
 
-	view      viewMode // browser or cockpit
-	panel     panel    // focused left panel within the cockpit
-	zoom      bool     // cockpit: right pane expanded full-width
-	splitDiff bool     // cockpit: side-by-side diff instead of unified
+	view        viewMode // browser or cockpit
+	panel       panel    // focused left panel within the cockpit
+	zoom        bool     // cockpit: right pane expanded full-width
+	splitDiff   bool     // cockpit: side-by-side diff instead of unified
+	diffVsTrunk bool     // cockpit: diff vs trunk (whole downstack) instead of vs the stack parent
 
 	// Browser filter ("/" to type a substring; matches slice names).
 	filter    string
@@ -278,7 +279,7 @@ func (m *Model) maybeLoadDiff() tea.Cmd {
 		return nil
 	}
 	m.diffLoading[sl.Name] = true
-	return loadDiffCmd(sl, sliceBase(sl))
+	return loadDiffCmd(sl, m.diffVsTrunk)
 }
 
 func (m *Model) maybeLoadProcs() tea.Cmd {

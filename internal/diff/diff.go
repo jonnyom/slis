@@ -20,6 +20,7 @@ type FileStat struct {
 // RepoDiff holds the diff result for a single repo member of a slice.
 type RepoDiff struct {
 	Repo  string
+	Base  string // the ref this repo was diffed against (trunk, or the stack parent)
 	Files []FileStat
 	Patch string // full git diff text (hunks)
 	Err   string // non-empty if this repo's diff failed
@@ -72,6 +73,7 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		if b == "" {
 			b = git.DetectBase(m.WorktreePath)
 		}
+		rd.Base = b
 
 		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
 		if err != nil {
@@ -89,6 +91,40 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		results = append(results, rd)
 	}
 
+	return results, nil
+}
+
+// SliceDiffBases is like SliceDiff but takes a per-repo base ref (bases[repo]).
+// A repo with no entry (or "") falls back to auto-detecting its trunk. This is
+// how the cockpit diffs a stacked branch against its Graphite parent (so it
+// shows only that branch's changes, not the whole downstack).
+func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error) {
+	if sl.Members == nil {
+		return nil, fmt.Errorf("diff: slice has nil Members map")
+	}
+	repos := sl.Repos()
+	results := make([]RepoDiff, 0, len(repos))
+	for _, repo := range repos {
+		m := sl.Members[repo]
+		rd := RepoDiff{Repo: repo}
+
+		b := bases[repo]
+		if b == "" {
+			b = git.DetectBase(m.WorktreePath)
+		}
+		rd.Base = b
+
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
+		if err != nil {
+			rd.Err = err.Error()
+			results = append(results, rd)
+			continue
+		}
+		rd.Files = parseNumstat(numstat)
+		patch, _ := git.Run(m.WorktreePath, "diff", b+"...HEAD")
+		rd.Patch = patch
+		results = append(results, rd)
+	}
 	return results, nil
 }
 

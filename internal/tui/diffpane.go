@@ -12,6 +12,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jonnyom/slis/internal/diff"
+	"github.com/jonnyom/slis/internal/git"
+	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 )
 
@@ -21,12 +23,43 @@ type diffLoadedMsg struct {
 	diffs []diff.RepoDiff
 }
 
-// loadDiffCmd returns a Cmd that calls diff.SliceDiff off the UI goroutine and
-// delivers a diffLoadedMsg on completion. Per-repo errors are captured inside
-// RepoDiff.Err; the top-level error is discarded to keep the model simple.
-func loadDiffCmd(sl model.Slice, base string) tea.Cmd {
+// gtParent returns the Graphite parent branch of branch in dir's repo, or "".
+func gtParent(dir, branch string) string {
+	st, err := gt.ReadState(dir)
+	if err != nil {
+		return ""
+	}
+	bs, ok := st[branch]
+	if !ok || len(bs.Parents) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(bs.Parents[0].Ref)
+}
+
+// loadDiffCmd computes each member's diff off the UI goroutine. By default it
+// diffs against the branch's Graphite PARENT (so a stacked branch shows only its
+// own changes, not the whole downstack), falling back to the repo's trunk when
+// the branch isn't stacked. vsTrunk forces diffing against the trunk (the
+// cumulative feature change). An explicit sl.Base override wins over both.
+func loadDiffCmd(sl model.Slice, vsTrunk bool) tea.Cmd {
+	override := sl.Base
 	return func() tea.Msg {
-		diffs, _ := diff.SliceDiff(sl, base)
+		bases := make(map[string]string, len(sl.Members))
+		for repo, mem := range sl.Members {
+			switch {
+			case override != "":
+				bases[repo] = override
+			case !vsTrunk:
+				if p := gtParent(mem.WorktreePath, mem.Branch); p != "" {
+					bases[repo] = p
+				} else {
+					bases[repo] = git.DetectBase(mem.WorktreePath)
+				}
+			default:
+				bases[repo] = git.DetectBase(mem.WorktreePath)
+			}
+		}
+		diffs, _ := diff.SliceDiffBases(sl, bases)
 		return diffLoadedMsg{slice: sl.Name, diffs: diffs}
 	}
 }
