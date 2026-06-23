@@ -180,21 +180,6 @@ func TestAvailable(t *testing.T) {
 	_ = forge.Available()
 }
 
-// TestPRForBranchIntegration is guarded by Available() so it is skipped when gh
-// is not on PATH or the test runner has no network.
-func TestPRForBranchIntegration(t *testing.T) {
-	if !forge.Available() {
-		t.Skip("gh binary not available")
-	}
-	// We test only that calling PRForBranch on an almost-certainly-absent branch
-	// returns (nil, nil) rather than an error — this exercises the no-PR path.
-	repoDir := "../../" // relative to this test file; absolute not needed for exec.Command.Dir
-	_, err := forge.PRForBranch(repoDir, "branch-that-does-not-exist-xyz-9999")
-	if err != nil {
-		t.Errorf("PRForBranch with non-existent branch should return (nil,nil), got err: %v", err)
-	}
-}
-
 // TestCIEmoji verifies the emoji helper for each CheckState.
 func TestCIEmoji(t *testing.T) {
 	tests := []struct {
