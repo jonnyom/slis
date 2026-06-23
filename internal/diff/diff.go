@@ -133,21 +133,31 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 // cards, where loading every repo's full diff would be wasteful. base follows
 // the same "" = auto-detect-per-repo rule as SliceDiff.
 func SliceStat(sl model.Slice, base string) ([]RepoDiff, error) {
+	bases := make(map[string]string, len(sl.Members))
+	for repo := range sl.Members {
+		bases[repo] = base
+	}
+	return SliceStatBases(sl, bases)
+}
+
+// SliceStatBases is SliceStat with a per-repo base (bases[repo]); a repo with no
+// entry (or "") auto-detects its trunk. Used by the browser cards to stat a
+// stacked branch against its Graphite parent.
+func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error) {
 	if sl.Members == nil {
 		return nil, fmt.Errorf("diff: slice has nil Members map")
 	}
-
 	repos := sl.Repos()
 	results := make([]RepoDiff, 0, len(repos))
-
 	for _, repo := range repos {
 		m := sl.Members[repo]
 		rd := RepoDiff{Repo: repo}
 
-		b := base
+		b := bases[repo]
 		if b == "" {
 			b = git.DetectBase(m.WorktreePath)
 		}
+		rd.Base = b
 
 		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", b+"...HEAD")
 		if err != nil {
@@ -158,7 +168,6 @@ func SliceStat(sl model.Slice, base string) ([]RepoDiff, error) {
 		rd.Files = parseNumstat(numstat)
 		results = append(results, rd)
 	}
-
 	return results, nil
 }
 

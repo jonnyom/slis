@@ -27,10 +27,21 @@ const aiSummaryTimeout = 120 * time.Second
 // base is the ref to log against. Pass "" to auto-detect each repo's trunk
 // independently (git.DetectBase); a non-empty base is used verbatim for all.
 func CommitSummary(sl model.Slice, base string) (map[string][]string, error) {
+	bases := make(map[string]string, len(sl.Members))
+	for repo := range sl.Members {
+		bases[repo] = base
+	}
+	return CommitSummaryBases(sl, bases)
+}
+
+// CommitSummaryBases is like CommitSummary but takes a per-repo base (bases[repo]).
+// A repo with no entry (or "") auto-detects its trunk. Used to log a stacked
+// branch against its Graphite parent so the count reflects only that branch.
+func CommitSummaryBases(sl model.Slice, bases map[string]string) (map[string][]string, error) {
 	result := make(map[string][]string, len(sl.Members))
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
-		b := base
+		b := bases[repo]
 		if b == "" {
 			b = git.DetectBase(m.WorktreePath)
 		}

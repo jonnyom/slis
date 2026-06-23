@@ -143,27 +143,16 @@ type cardLoadedMsg struct {
 }
 
 // loadCardCmd computes a slice's browser card off the UI goroutine: commit
-// subjects/count, diffstat (numstat only), and stack health — each per repo,
-// using auto-detected trunks.
+// subjects/count, diffstat (numstat only), and stack health. Stats are measured
+// against each branch's Graphite PARENT (this slice's own changes), matching the
+// cockpit diff, falling back to the repo trunk when not stacked.
 func loadCardCmd(sl model.Slice) tea.Cmd {
 	return func() tea.Msg {
 		var card sliceCard
 
-		byRepo, _ := summary.CommitSummary(sl, "")
-		for _, repo := range sl.Repos() {
-			subs := byRepo[repo]
-			card.commits += len(subs)
-			if card.overview == "" && len(subs) > 0 {
-				card.overview = subs[0] // newest first
-			}
-		}
-
-		stats, _ := diff.SliceStat(sl, "")
-		for _, rd := range stats {
-			card.added += rd.TotalAdded()
-			card.deleted += rd.TotalDeleted()
-		}
-
+		// One gt.ReadState per member: derive the parent (the stat base) and the
+		// stack health in a single pass.
+		bases := make(map[string]string, len(sl.Members))
 		for _, repo := range sl.Repos() {
 			member := sl.Members[repo]
 			if member.WorktreePath == "" {
@@ -173,16 +162,32 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 			if err != nil || len(st) == 0 {
 				continue
 			}
-			lineage := st.Lineage(member.Branch)
-			if len(lineage) == 0 {
-				continue // branch isn't in a Graphite stack — leave health unknown
+			if bs, ok := st[member.Branch]; ok && len(bs.Parents) > 0 {
+				bases[repo] = strings.TrimSpace(bs.Parents[0].Ref)
 			}
-			card.stackKnown = true
-			for _, b := range lineage {
-				if b.NeedsRestack {
-					card.restack++
+			if lineage := st.Lineage(member.Branch); len(lineage) > 0 {
+				card.stackKnown = true
+				for _, b := range lineage {
+					if b.NeedsRestack {
+						card.restack++
+					}
 				}
 			}
+		}
+
+		byRepo, _ := summary.CommitSummaryBases(sl, bases)
+		for _, repo := range sl.Repos() {
+			subs := byRepo[repo]
+			card.commits += len(subs)
+			if card.overview == "" && len(subs) > 0 {
+				card.overview = subs[0] // newest first
+			}
+		}
+
+		stats, _ := diff.SliceStatBases(sl, bases)
+		for _, rd := range stats {
+			card.added += rd.TotalAdded()
+			card.deleted += rd.TotalDeleted()
 		}
 
 		return cardLoadedMsg{slice: sl.Name, card: card}
