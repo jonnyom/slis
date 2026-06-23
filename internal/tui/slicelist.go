@@ -28,7 +28,48 @@ var (
 	liveStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
 	mergedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))            // a merged PR
 	readyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag
+	emptyBoxStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(1, 3)
+	codeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("159"))
 )
+
+// renderEmptyState renders the hub when there are no slices: a welcome (no
+// workspace) or an "all clear" state (workspace set up, nothing in flight).
+func renderEmptyState(m Model) string {
+	header := clip(titleStyle.Render("slis")+headerStyle.Render("  ·  0 slices"), m.width)
+	hint := "[r] refresh   [?] help   [q] quit"
+	if m.status != "" {
+		hint = m.status
+	}
+	footer := clip(footerStyle.Render(hint), m.width)
+
+	var b strings.Builder
+	if len(m.ws.Repos) == 0 {
+		b.WriteString(titleStyle.Render("Welcome to slis") + "\n\n")
+		b.WriteString("No workspace configured yet. Point slis at your project:\n\n")
+		b.WriteString(codeStyle.Render("slis init <project-root> --repos repoA,repoB --strip-prefix you/") + "\n\n")
+		b.WriteString(overviewStyle.Render("…then press [r] to refresh."))
+	} else {
+		var repos []string
+		for n := range m.ws.Repos {
+			repos = append(repos, n)
+		}
+		sort.Strings(repos)
+
+		b.WriteString(readyStyle.Render("✦  All clear — no active slices") + "\n\n")
+		b.WriteString("A slice is a feature's git worktrees across your repos.\n")
+		b.WriteString("Start one with a worktree on a feature branch:\n\n")
+		b.WriteString(codeStyle.Render("git -C <repo> worktree add .worktrees/<name> -b <name>") + "\n\n")
+		b.WriteString(overviewStyle.Render("workspace:  ") + strings.Join(repos, " · ") + "\n\n")
+		b.WriteString(overviewStyle.Render("…then press [r] to refresh."))
+	}
+	card := emptyBoxStyle.Render(b.String())
+
+	if m.width <= 0 || m.height <= 0 {
+		return header + "\n\n" + card + "\n" + footer
+	}
+	centered := lipgloss.Place(m.width, max(1, m.height-2), lipgloss.Center, lipgloss.Center, card)
+	return header + "\n" + centered + "\n" + footer
+}
 
 // mergeState summarises a slice's PRs for the "ready to clean up" signal.
 type mergeState int
@@ -367,6 +408,12 @@ func (m Model) previewSlice(vis []int) (model.Slice, bool) {
 // renderBrowser renders the dashboard hub: a pulse bar, a state-filter rail +
 // slice list on the left, and a live preview of the selected slice on the right.
 func renderBrowser(m Model) string {
+	// No slices: a proper empty state (NOT "run init" — inside the TUI a
+	// workspace is always loaded, so 0 slices means "all clear", not "unset").
+	if len(m.slices) == 0 {
+		return renderEmptyState(m)
+	}
+
 	// Pre-resize / headless (no known terminal size): a simple list of all
 	// visible slices, so the first frame and tests render sensibly.
 	if m.width <= 0 || m.height <= 0 {
@@ -417,10 +464,6 @@ func renderBrowser(m Model) string {
 		footerText = m.status
 	}
 	footer := clip(footerStyle.Render(footerText), m.width)
-
-	if len(m.slices) == 0 {
-		return top + "\n\n  No slices found. Run 'slis init' to set up your workspace.\n\n" + footer
-	}
 
 	leftW := clamp(m.width/4, 20, 30)
 	rightW := m.width - leftW
@@ -638,6 +681,13 @@ func plural(n int) string {
 
 // updateBrowserKeys handles key events while the dashboard hub is showing.
 func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Empty workspace: nothing to navigate or act on. Ignore browser keys (q / r
+	// / ? still work — they're handled globally before this). Status was already
+	// cleared in handleKey, so no key leaves a stuck message.
+	if len(m.slices) == 0 {
+		return m, nil
+	}
+
 	// Text-search input.
 	if m.filtering {
 		switch msg.Type {

@@ -746,6 +746,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey routes a key press to overlays, then to the active view.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Transient status: any keypress dismisses the last status line, so messages
+	// like "cleared 3 slices" or "inbox zero" never get stuck. A handler may set
+	// a fresh one below.
+	m.status = ""
+
 	// Overlays take priority.
 	if m.pendingSwap != nil {
 		return m.updateSwapKeys(msg)
