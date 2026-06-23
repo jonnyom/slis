@@ -85,7 +85,7 @@ var createCmd = &cobra.Command{
 						WorktreePath: p.Path,
 					})
 				}
-				if err := tmuxctl.EnsureSession(sliceName, members); err != nil {
+				if err := tmuxctl.EnsureSession(sliceName, members, tmuxctl.SessionOpts{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
 					fmt.Printf("note: could not start tmux session: %v\n", err)
 				} else {
 					fmt.Printf("started tmux session slis/%s\n", sliceName)

@@ -81,7 +81,7 @@ func TestEnsureSessionLifecycle(t *testing.T) {
 	}
 
 	// Create the session.
-	if err := tmuxctl.EnsureSession(slice, members); err != nil {
+	if err := tmuxctl.EnsureSession(slice, members, tmuxctl.SessionOpts{}); err != nil {
 		t.Fatalf("EnsureSession: %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestEnsureSessionLifecycle(t *testing.T) {
 	}
 
 	// Calling EnsureSession again must be idempotent.
-	if err := tmuxctl.EnsureSession(slice, members); err != nil {
+	if err := tmuxctl.EnsureSession(slice, members, tmuxctl.SessionOpts{}); err != nil {
 		t.Fatalf("idempotent EnsureSession: %v", err)
 	}
 

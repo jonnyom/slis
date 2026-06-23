@@ -34,44 +34,88 @@ func SessionExists(slice string) bool {
 	return err == nil
 }
 
-// EnsureSession creates the slice's tmux session (detached) with one window per
-// member (window name = repo, cwd = member.WorktreePath) if it does not already
-// exist. Idempotent: returns nil if the session already exists. Members are used
-// in sorted-by-Repo order; the first becomes the session's initial window.
-func EnsureSession(slice string, members []model.SliceMember) error {
-	name := SessionName(slice)
+// SessionOpts controls the window layout of a slice's tmux session.
+type SessionOpts struct {
+	// Root is the workspace root. When set and the layout includes it, the
+	// session opens a window there (so you can run Claude across the whole stack).
+	Root string
+	// Layout is "root", "repos", or "both". Empty defaults to "root" when Root is
+	// set, else "repos".
+	Layout string
+}
 
+// window is one tmux window: a name and a starting directory.
+type window struct{ name, cwd string }
+
+// sessionWindows builds the ordered window list for the given members + opts.
+func sessionWindows(members []model.SliceMember, opts SessionOpts) []window {
+	sorted := make([]model.SliceMember, len(members))
+	copy(sorted, members)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Repo < sorted[j].Repo })
+
+	layout := opts.Layout
+	if layout == "" {
+		if opts.Root != "" {
+			layout = "root"
+		} else {
+			layout = "repos"
+		}
+	}
+
+	var wins []window
+	if (layout == "root" || layout == "both") && opts.Root != "" {
+		wins = append(wins, window{name: "root", cwd: opts.Root})
+	}
+	if layout == "repos" || layout == "both" {
+		for _, m := range sorted {
+			wins = append(wins, window{name: m.Repo, cwd: m.WorktreePath})
+		}
+	}
+	// Fallback: if the chosen layout produced nothing (e.g. "root" with no Root),
+	// fall back to per-repo windows so the session is still useful.
+	if len(wins) == 0 {
+		for _, m := range sorted {
+			wins = append(wins, window{name: m.Repo, cwd: m.WorktreePath})
+		}
+	}
+	return wins
+}
+
+// EnsureSession creates the slice's tmux session (detached) if it does not
+// already exist, with windows determined by opts (a root window, per-repo
+// windows, or both — see SessionOpts). Idempotent: returns nil if the session
+// already exists. The first window becomes the session's initial (attached) one.
+func EnsureSession(slice string, members []model.SliceMember, opts SessionOpts) error {
+	name := SessionName(slice)
 	if SessionExists(slice) {
 		return nil
 	}
 
-	// Sort members by Repo for deterministic window ordering.
-	sorted := make([]model.SliceMember, len(members))
-	copy(sorted, members)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Repo < sorted[j].Repo
-	})
-
-	if len(sorted) == 0 {
-		// No members: create a bare session.
+	wins := sessionWindows(members, opts)
+	if len(wins) == 0 {
+		// No members and no root: create a bare session.
 		if out, err := exec.Command("tmux", "new-session", "-d", "-s", name).CombinedOutput(); err != nil {
 			return fmt.Errorf("tmux new-session: %w: %s", err, out)
 		}
 		return nil
 	}
 
-	// Create the session with the first member as the initial window.
-	first := sorted[0]
-	args := []string{"new-session", "-d", "-s", name, "-n", first.Repo, "-c", first.WorktreePath}
+	first := wins[0]
+	args := []string{"new-session", "-d", "-s", name, "-n", first.name}
+	if first.cwd != "" {
+		args = append(args, "-c", first.cwd)
+	}
 	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux new-session: %w: %s", err, out)
 	}
 
-	// Add remaining members as additional windows.
-	for _, m := range sorted[1:] {
-		args := []string{"new-window", "-t", name, "-n", m.Repo, "-c", m.WorktreePath}
-		if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
-			return fmt.Errorf("tmux new-window %q: %w: %s", m.Repo, err, out)
+	for _, w := range wins[1:] {
+		a := []string{"new-window", "-t", name, "-n", w.name}
+		if w.cwd != "" {
+			a = append(a, "-c", w.cwd)
+		}
+		if out, err := exec.Command("tmux", a...).CombinedOutput(); err != nil {
+			return fmt.Errorf("tmux new-window %q: %w: %s", w.name, err, out)
 		}
 	}
 

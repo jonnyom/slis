@@ -888,7 +888,10 @@ func (m *Model) attachCmd() tea.Cmd {
 		m.status = "tmux not found on PATH"
 		return nil
 	}
-	if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl)); err != nil {
+	if err := tmuxctl.EnsureSession(sl.Name, membersSlice(sl), tmuxctl.SessionOpts{
+		Root:   m.ws.Root,
+		Layout: m.ws.Sessions.Layout,
+	}); err != nil {
 		m.status = "session error: " + err.Error()
 		return nil
 	}

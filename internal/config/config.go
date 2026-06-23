@@ -24,6 +24,12 @@ type Grouping struct {
 // Sessions holds session-related configuration.
 type Sessions struct {
 	AutostartClaude bool `yaml:"autostart_claude"`
+	// Layout controls a slice's tmux session windows:
+	//   "root"  — a single window at the workspace root (run Claude across the stack)
+	//   "repos" — one window per repo worktree
+	//   "both"  — a root window first, then one per repo
+	// Empty defaults to "root" when a workspace root is set, else "repos".
+	Layout string `yaml:"layout"`
 }
 
 // Processes holds process-monitoring thresholds.

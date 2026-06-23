@@ -54,7 +54,7 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 | `discovery` | group worktrees → slices by branch name (+ manual overrides) |
 | `swap` | **the data-safety-critical engine** — activate/deactivate/refresh, journal, dep-reconcile |
 | `gt` | **read-only** Graphite stack reader (`gt state` JSON + refs fallback) |
-| `tmuxctl` | per-slice tmux session create/attach/list, pane PIDs |
+| `tmuxctl` | per-slice tmux session create/attach/list, pane PIDs, `CapturePane`. Window layout via `SessionOpts` — `sessions.layout: root` (default when a workspace root is set; one window at root to run Claude across the stack) / `repos` (one per worktree) / `both` |
 | `proc` | process tree sampler (gopsutil) + kill |
 | `hooks` | Claude Code hook handler (`slis hook`) + `init-hooks` installer |
 | `notify` | per-slice status event store + desktop notification + fsnotify watch |

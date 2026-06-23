@@ -518,7 +518,10 @@ func sessionDetailContent(m Model, sl model.Slice) string {
 		sb.WriteString("\ntmux not found on PATH\n")
 		return sb.String()
 	}
-	sb.WriteString("\nwindows (repos):\n")
+	if m.ws.Root != "" && m.ws.Sessions.Layout != "repos" {
+		fmt.Fprintf(&sb, "\nattach opens at root:  %s\n", m.ws.Root)
+	}
+	sb.WriteString("\nrepos:\n")
 	for _, repo := range sl.Repos() {
 		fmt.Fprintf(&sb, "  %s  %s\n", repo, sl.Members[repo].WorktreePath)
 	}
