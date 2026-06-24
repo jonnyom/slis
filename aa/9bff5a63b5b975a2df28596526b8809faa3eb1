@@ -1,0 +1,21 @@
+internal/tui/app_test.go
+  s_ca8a92e5dd9970::t_49a261720ea42f 38-60
+internal/tui/app.go
+  s_ca8a92e5dd9970::t_b601f23e84adcc 935-942
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "aa9bff5a63b5b975a2df28596526b8809faa3eb1",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
