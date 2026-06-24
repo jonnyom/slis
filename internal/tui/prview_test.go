@@ -205,30 +205,29 @@ func TestCommentsOverlayScrollKeys(t *testing.T) {
 	m.showCommentsOverlay = true
 	m.commentsSel = 0
 
-	// Build a PR with 3 comments to have something to scroll through.
-	pr := &forge.PR{
-		Number: 1,
-		Comments: []forge.Comment{
-			{Author: "a1", Body: "c1"},
-			{Author: "a2", Body: "c2"},
-			{Author: "a3", Body: "c3"},
-		},
+	// Enough comments that rendered lines exceed the scroll window (each comment
+	// renders as header + body + blank ≈ 3 lines; window is 22).
+	cs := make([]forge.Comment, 0, 12)
+	for i := 0; i < 12; i++ {
+		cs = append(cs, forge.Comment{Author: "a", Body: "comment body"})
 	}
 	m.prs = map[string]map[string]*forge.PR{
-		"s": {"web": pr},
+		"s": {"web": &forge.PR{Number: 1, Comments: cs}},
 	}
 
-	// Press "j" → sel should increase.
+	// commentsSel is a scroll offset now: "j" scrolls down one line.
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m = next.(Model)
 	if m.commentsSel != 1 {
 		t.Errorf("after j in comments overlay: want commentsSel=1, got %d", m.commentsSel)
 	}
 
-	// Press "k" → back to 0.
+	// "k" scrolls back up; another "k" at the top stays clamped at 0.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = next.(Model)
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	m = next.(Model)
 	if m.commentsSel != 0 {
-		t.Errorf("after k in comments overlay: want commentsSel=0, got %d", m.commentsSel)
+		t.Errorf("after k at top: want commentsSel=0, got %d", m.commentsSel)
 	}
 }

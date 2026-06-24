@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"os/exec"
 	"regexp"
@@ -22,17 +23,56 @@ var (
 	mdLinkRe      = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`) // keep the link text
 )
 
-// cleanCommentBody turns a raw PR comment body into a single readable line:
-// bot comments (Graphite, Linear) embed HTML and markdown that otherwise render
-// as garbage. Strips HTML comments/tags and markdown image/link syntax, then
-// collapses whitespace and removes terminal escapes.
+// cleanCommentBody turns a raw PR comment body into a single readable line. Bot
+// comments (Graphite, Linear, CI) embed HTML and markdown that otherwise render
+// as garbage. It decodes HTML entities (&gt; → >, &#39; → ') BEFORE stripping
+// tags (so entity-encoded tags like &lt;img&gt; are removed too), drops HTML
+// comments/tags and markdown image/link syntax, removes terminal escapes, and
+// collapses whitespace. The overlay wraps the result to the pane width.
 func cleanCommentBody(s string) string {
 	s = htmlCommentRe.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
 	s = mdImageRe.ReplaceAllString(s, "")
 	s = mdLinkRe.ReplaceAllString(s, "$1") // keep link text, drop the URL
 	s = htmlTagRe.ReplaceAllString(s, "")
 	s = safeterm.Strip(s)
 	return strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+}
+
+// wrapText word-wraps s to width columns (byte-approximate; fine for the mostly
+// ASCII prose of PR comments). Returns at least one line.
+func wrapText(s string, width int) []string {
+	if width < 20 {
+		width = 20
+	}
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return []string{""}
+	}
+	var lines []string
+	cur := words[0]
+	for _, w := range words[1:] {
+		if len(cur)+1+len(w) > width {
+			lines = append(lines, cur)
+			cur = w
+		} else {
+			cur += " " + w
+		}
+	}
+	return append(lines, cur)
+}
+
+// commentsWidth is the wrap width for the comments overlay, derived from the
+// terminal width with sensible bounds.
+func commentsWidth(m Model) int {
+	w := m.width - 10
+	if w > 100 {
+		w = 100
+	}
+	if w < 40 {
+		w = 40
+	}
+	return w
 }
 
 // prsLoadedMsg is sent when PR data for a slice has been loaded off the UI goroutine.
@@ -185,23 +225,42 @@ func ciLogContent(m Model) string {
 }
 
 // commentLine flattens a single comment from a PR into a clean displayable line.
-func commentLine(repo string, pr *forge.PR, c forge.Comment) string {
-	body := cleanCommentBody(c.Body)
-	if body == "" {
-		body = "(no text)"
-	}
-	const maxLen = 120
-	if r := []rune(body); len(r) > maxLen {
-		body = string(r[:maxLen-1]) + "…"
-	}
+// commentSummaryLine renders a comment as one compact line — repo #N author:
+// cleaned body, truncated — for the PR-detail pane's list.
+func commentSummaryLine(repo string, pr *forge.PR, c forge.Comment) string {
 	author := c.Author
 	if author == "" {
 		author = "?"
 	}
+	body := cleanCommentBody(c.Body)
+	if body == "" {
+		body = "(no text)"
+	}
+	if r := []rune(body); len(r) > 100 {
+		body = string(r[:99]) + "…"
+	}
 	return fmt.Sprintf("%s #%d %s: %s", repo, pr.Number, author, body)
 }
 
-// flattenComments returns all comment lines across the focused slice's PRs, in repo order.
+// commentBlock renders one comment as a header line, its cleaned body wrapped to
+// width, then a trailing blank line as a separator.
+func commentBlock(repo string, pr *forge.PR, c forge.Comment, width int) []string {
+	author := c.Author
+	if author == "" {
+		author = "?"
+	}
+	lines := []string{commentHeaderStyle.Render(fmt.Sprintf("%s #%d — %s", repo, pr.Number, author))}
+
+	body := cleanCommentBody(c.Body)
+	if body == "" {
+		body = "(no text)"
+	}
+	lines = append(lines, wrapText(body, width)...)
+	return append(lines, "")
+}
+
+// flattenComments returns the rendered comment lines across the focused slice's
+// PRs, in repo order (header + wrapped body + separator per comment).
 func flattenComments(m Model) []string {
 	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
 		return nil
@@ -211,6 +270,7 @@ func flattenComments(m Model) []string {
 	if slicePRs == nil {
 		return nil
 	}
+	width := commentsWidth(m)
 	repos := sl.Repos()
 	var lines []string
 	for _, repo := range repos {
@@ -219,7 +279,7 @@ func flattenComments(m Model) []string {
 			continue
 		}
 		for _, c := range pr.Comments {
-			lines = append(lines, commentLine(repo, pr, c))
+			lines = append(lines, commentBlock(repo, pr, c, width)...)
 		}
 	}
 	return lines
@@ -230,11 +290,31 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				Padding(0, 1).
 				BorderForeground(lipgloss.Color("99"))
-	commentsOverlaySelStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75")).Reverse(true)
 	commentsOverlayNormStyle = lipgloss.NewStyle()
+	commentHeaderStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
 )
 
+// commentsWindow is how many rendered comment lines are shown at once.
+const commentsWindow = 22
+
+// clampCommentScroll bounds the scroll offset so the window never runs past the
+// end of the rendered lines.
+func clampCommentScroll(sel, total int) int {
+	maxStart := total - commentsWindow
+	if maxStart < 0 {
+		maxStart = 0
+	}
+	if sel < 0 {
+		return 0
+	}
+	if sel > maxStart {
+		return maxStart
+	}
+	return sel
+}
+
 // renderCommentsOverlay renders the comments overlay for the focused slice.
+// m.commentsSel is the scroll offset (top visible line), not a selection.
 func renderCommentsOverlay(m Model) string {
 	var sb strings.Builder
 
@@ -253,37 +333,22 @@ func renderCommentsOverlay(m Model) string {
 		return commentsOverlayBoxStyle.Render(sb.String())
 	}
 
-	const windowSize = 20
 	total := len(lines)
-	sel := m.commentsSel
-	if sel < 0 {
-		sel = 0
-	}
-	if sel >= total {
-		sel = total - 1
-	}
-
-	start := sel - windowSize/2
-	if start < 0 {
-		start = 0
-	}
-	end := start + windowSize
+	start := clampCommentScroll(m.commentsSel, total)
+	end := start + commentsWindow
 	if end > total {
 		end = total
-		start = end - windowSize
-		if start < 0 {
-			start = 0
-		}
 	}
 
+	if start > 0 {
+		sb.WriteString(cockpitDimStyle.Render("    ↑ more above") + "\n")
+	}
 	for i := start; i < end; i++ {
-		line := lines[i]
-		if i == sel {
-			sb.WriteString(commentsOverlaySelStyle.Render(line))
-		} else {
-			sb.WriteString(commentsOverlayNormStyle.Render(line))
-		}
+		sb.WriteString(commentsOverlayNormStyle.Render(lines[i]))
 		sb.WriteString("\n")
+	}
+	if end < total {
+		sb.WriteString(cockpitDimStyle.Render("    ↓ more below"))
 	}
 
 	return commentsOverlayBoxStyle.Render(sb.String())

@@ -515,7 +515,7 @@ func prDetailContent(m Model, sl model.Slice) string {
 	if len(pr.Comments) > 0 {
 		sb.WriteString("\nComments:\n")
 		for _, c := range pr.Comments {
-			sb.WriteString("  " + commentLine(repo, pr, c) + "\n")
+			sb.WriteString("  " + commentSummaryLine(repo, pr, c) + "\n")
 		}
 	}
 	return sb.String()

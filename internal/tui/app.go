@@ -1240,18 +1240,21 @@ func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // updateCommentsOverlayKeys handles key events while the comments overlay is open.
 func (m Model) updateCommentsOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	lines := flattenComments(m)
-	n := len(lines)
+	total := len(flattenComments(m))
 
 	switch msg.String() {
 	case "j", "down":
-		if n > 0 && m.commentsSel < n-1 {
-			m.commentsSel++
-		}
+		m.commentsSel = clampCommentScroll(m.commentsSel+1, total)
 	case "k", "up":
-		if m.commentsSel > 0 {
-			m.commentsSel--
-		}
+		m.commentsSel = clampCommentScroll(m.commentsSel-1, total)
+	case "ctrl+d", "pgdown", " ":
+		m.commentsSel = clampCommentScroll(m.commentsSel+commentsWindow/2, total)
+	case "ctrl+u", "pgup":
+		m.commentsSel = clampCommentScroll(m.commentsSel-commentsWindow/2, total)
+	case "g":
+		m.commentsSel = 0
+	case "G":
+		m.commentsSel = clampCommentScroll(total, total)
 	case "c", "esc":
 		m.showCommentsOverlay = false
 	}

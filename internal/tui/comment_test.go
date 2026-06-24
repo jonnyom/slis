@@ -12,6 +12,8 @@ func TestCleanCommentBody(t *testing.T) {
 		{"collapses whitespace/newlines", "a\n\n  b\tc", "a b c"},
 		{"keeps markdown link text, drops url", "review [#8062](https://app.graphite.dev/x) now", "review #8062 now"},
 		{"drops markdown image", "before ![alt](http://img.png) after", "before after"},
+		{"decodes html entities", "use a &gt; b &amp;&amp; c", "use a > b && c"},
+		{"strips entity-encoded tags", "x &lt;b&gt;bold&lt;/b&gt; y", "x bold y"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
