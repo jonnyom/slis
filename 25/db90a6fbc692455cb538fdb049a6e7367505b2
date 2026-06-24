@@ -1,0 +1,23 @@
+internal/cli/create.go
+  s_ca8a92e5dd9970::t_df9db24a7d23f2 141-145,147-151,155-157,159-160
+  s_ca8a92e5dd9970::t_77e453ed5316ef 121
+  s_ca8a92e5dd9970::t_0173ef4ecf764e 92-113
+internal/cli/create_test.go
+  s_ca8a92e5dd9970::t_df146fb8f488fd 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "25db90a6fbc692455cb538fdb049a6e7367505b2",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
