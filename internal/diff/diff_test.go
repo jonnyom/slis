@@ -168,6 +168,43 @@ func TestSliceDiffIncludesUncommitted(t *testing.T) {
 	}
 }
 
+func TestSliceDiffIncludesUntracked(t *testing.T) {
+	// An agent's brand-new, not-yet-`git add`-ed file must still show.
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat", wt)
+
+	if err := os.WriteFile(filepath.Join(wt, "new.go"), []byte("package x\n\nfunc A() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sl := model.Slice{
+		Name: "s",
+		Members: map[string]model.SliceMember{
+			"r": {Repo: "r", Branch: "feat", WorktreePath: wt},
+		},
+	}
+	diffs, err := diff.SliceDiff(sl, "main")
+	if err != nil {
+		t.Fatalf("SliceDiff: %v", err)
+	}
+	var found *diff.FileStat
+	for i, fs := range diffs[0].Files {
+		if fs.Path == "new.go" {
+			found = &diffs[0].Files[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("untracked new.go not in diff Files: %+v", diffs[0].Files)
+	}
+	if found.Added != 3 {
+		t.Errorf("new.go Added = %d, want 3", found.Added)
+	}
+	if !strings.Contains(diffs[0].Patch, "new.go") || !strings.Contains(diffs[0].Patch, "+func A() {}") {
+		t.Errorf("patch missing untracked file content:\n%s", diffs[0].Patch)
+	}
+}
+
 func TestSliceDiffBinaryAndMissingBase(t *testing.T) {
 	// Create a fresh repo and a worktree; the base ref "nonexistent-base" won't exist.
 	repo := testutil.NewRepo(t)

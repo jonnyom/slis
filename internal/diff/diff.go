@@ -2,7 +2,10 @@
 package diff
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -10,6 +13,77 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/safeterm"
 )
+
+// maxUntrackedPatchLines caps how many lines of a single untracked file are
+// emitted into the patch (the FileStat count stays exact) so one huge generated
+// file can't produce a multi-megabyte diff.
+const maxUntrackedPatchLines = 1000
+
+// untrackedDiff returns FileStats and a synthesized unified patch for the
+// worktree's untracked (non-ignored) files. `git diff` omits untracked files, so
+// an agent's brand-new, not-yet-`git add`-ed files would otherwise read as "no
+// changes". This reads them directly (read-only — it never stages anything).
+func untrackedDiff(worktree string) ([]FileStat, string) {
+	out, err := git.Run(worktree, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil || out == "" {
+		return nil, ""
+	}
+	var stats []FileStat
+	var patch strings.Builder
+	for _, rel := range strings.Split(out, "\x00") {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(worktree, rel))
+		if err != nil {
+			continue
+		}
+		if bytes.IndexByte(data, 0) >= 0 { // binary
+			stats = append(stats, FileStat{Path: rel, Added: -1, Deleted: -1})
+			fmt.Fprintf(&patch, "diff --git a/%s b/%s\nnew file mode 100644\nBinary files /dev/null and b/%s differ\n", rel, rel, rel)
+			continue
+		}
+		lines := contentLines(data)
+		stats = append(stats, FileStat{Path: rel, Added: len(lines), Deleted: 0})
+		fmt.Fprintf(&patch, "diff --git a/%s b/%s\nnew file mode 100644\n--- /dev/null\n+++ b/%s\n@@ -0,0 +1,%d @@\n", rel, rel, rel, len(lines))
+		shown := lines
+		if len(shown) > maxUntrackedPatchLines {
+			shown = shown[:maxUntrackedPatchLines]
+		}
+		for _, ln := range shown {
+			patch.WriteString("+" + ln + "\n")
+		}
+		if len(lines) > len(shown) {
+			fmt.Fprintf(&patch, "… (%d more lines)\n", len(lines)-len(shown))
+		}
+	}
+	return stats, safeterm.Strip(patch.String())
+}
+
+// addUntracked appends the worktree's untracked files to rd's Files (and, when
+// withPatch, its Patch).
+func addUntracked(rd *RepoDiff, worktree string, withPatch bool) {
+	uStats, uPatch := untrackedDiff(worktree)
+	rd.Files = append(rd.Files, uStats...)
+	if withPatch && uPatch != "" {
+		if rd.Patch != "" && !strings.HasSuffix(rd.Patch, "\n") {
+			rd.Patch += "\n"
+		}
+		rd.Patch += uPatch
+	}
+}
+
+// contentLines splits file bytes into content lines, dropping a single trailing
+// newline's empty element so the count matches git's added-line count.
+func contentLines(data []byte) []string {
+	s := strings.ReplaceAll(string(data), "\r\n", "\n")
+	lines := strings.Split(s, "\n")
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
+	return lines
+}
 
 // FileStat holds the per-file line change summary from git diff --numstat.
 type FileStat struct {
@@ -94,6 +168,7 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		// Patch contains repo file contents (and filenames) which can embed
 		// terminal escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
+		addUntracked(&rd, m.WorktreePath, true)
 
 		results = append(results, rd)
 	}
@@ -132,6 +207,7 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 		// Patch contains repo file contents (and filenames) which can embed
 		// terminal escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
+		addUntracked(&rd, m.WorktreePath, true)
 		results = append(results, rd)
 	}
 	return results, nil
@@ -175,6 +251,7 @@ func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 			continue
 		}
 		rd.Files = parseNumstat(numstat)
+		addUntracked(&rd, m.WorktreePath, false)
 		results = append(results, rd)
 	}
 	return results, nil
