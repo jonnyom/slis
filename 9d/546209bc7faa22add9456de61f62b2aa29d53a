@@ -1,0 +1,26 @@
+internal/config/paths.go
+  s_ca8a92e5dd9970::t_64974d99589df3 60
+  s_ca8a92e5dd9970::t_edc3ac8023d25c 70-73
+  s_ca8a92e5dd9970::t_84670013e95467 20-21
+internal/editor/editor.go
+  s_ca8a92e5dd9970::t_0c67fc4ff14d1a 1-215
+internal/editor/editor_test.go
+  s_ca8a92e5dd9970::t_6f4a64c4454575 96
+  s_ca8a92e5dd9970::t_ba283987e904ef 1-95,97-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "9d546209bc7faa22add9456de61f62b2aa29d53a",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
