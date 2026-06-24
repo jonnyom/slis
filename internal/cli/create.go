@@ -89,6 +89,28 @@ func worktreePlan(ws config.Workspace, name, branch string) []struct {
 	return result
 }
 
+// trunkStartPoint resolves the freshest trunk commit-ish a new slice's worktree
+// should fork from. When fetch is true it first refreshes the remote-tracking
+// trunk (best-effort — offline / no remote is ignored). It prefers
+// origin/<trunk> (the latest pushed trunk) over the possibly-stale local <trunk>
+// branch, and returns "" when neither resolves so the caller falls back to the
+// primary's current HEAD.
+func trunkStartPoint(primary, trunk string, fetch bool) string {
+	if trunk == "" {
+		return ""
+	}
+	if fetch {
+		_, _ = git.Run(primary, "fetch", "origin", trunk) // best-effort; ignore offline/no-remote
+	}
+	if _, err := git.Run(primary, "rev-parse", "--verify", "--quiet", "origin/"+trunk); err == nil {
+		return "origin/" + trunk
+	}
+	if _, err := git.Run(primary, "rev-parse", "--verify", "--quiet", trunk); err == nil {
+		return trunk
+	}
+	return ""
+}
+
 var createCmd = &cobra.Command{
 	Use:   "create <slice>",
 	Short: "Create worktrees for all repos in a new slice",
@@ -96,6 +118,7 @@ var createCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rawName := args[0]
 		noWorktrees, _ := cmd.Flags().GetBool("no-worktrees")
+		noFetch, _ := cmd.Flags().GetBool("no-fetch")
 
 		if err := validateSliceName(rawName); err != nil {
 			return err
@@ -115,18 +138,26 @@ var createCmd = &cobra.Command{
 		plans := worktreePlan(ws, sliceName, branch)
 
 		for _, p := range plans {
+			// Resolve the freshest trunk to fork from (fetches origin trunk unless
+			// --no-fetch / dry-run). Forking from trunk — not the primary's current
+			// HEAD — keeps the slice from inheriting unrelated in-flight commits.
+			start := trunkStartPoint(p.Primary, p.StartPoint, !noWorktrees && !noFetch)
+
 			if noWorktrees {
-				fmt.Printf("would create worktree for %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
+				from := start
+				if from == "" {
+					from = "current HEAD"
+				}
+				fmt.Printf("would create worktree for %s at %s (branch: %s, from: %s)\n", p.Repo, p.Path, p.Branch, from)
 				continue
 			}
 
-			// Try creating a new branch + worktree, forking from the repo's trunk
-			// (StartPoint) so the slice doesn't inherit whatever the primary's HEAD
-			// happens to be sitting on. The "--" separates options from the
-			// positional path/commit so neither is ever parsed as a git flag.
+			// Try creating a new branch + worktree, forking from trunk (start). The
+			// "--" separates options from the positional path/commit so neither is
+			// ever parsed as a git flag.
 			addArgs := []string{"worktree", "add", "-b", p.Branch, "--", p.Path}
-			if p.StartPoint != "" {
-				addArgs = append(addArgs, p.StartPoint)
+			if start != "" {
+				addArgs = append(addArgs, start)
 			}
 			_, err := git.Run(p.Primary, addArgs...)
 			if err != nil {
@@ -173,5 +204,6 @@ var createCmd = &cobra.Command{
 
 func init() {
 	createCmd.Flags().Bool("no-worktrees", false, "Print what would be created without running git")
+	createCmd.Flags().Bool("no-fetch", false, "Skip fetching origin trunk before forking new worktrees")
 	rootCmd.AddCommand(createCmd)
 }
