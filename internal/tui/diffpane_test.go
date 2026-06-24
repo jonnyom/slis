@@ -86,33 +86,14 @@ func TestDiffLoadedMsg(t *testing.T) {
 	}
 }
 
-// TestExternalEditorCmdAndClipboardCmd verifies:
-//   - clipboardCmd returns a non-empty tool name on this platform (darwin)
-//   - externalEditorCmd returns ok=true when EDITOR env var is set
-func TestExternalEditorCmdAndClipboardCmd(t *testing.T) {
+// TestClipboardCmd verifies clipboardCmd returns a non-empty tool name on this
+// platform (editor resolution moved to internal/editor, tested there).
+func TestClipboardCmd(t *testing.T) {
 	name, _, ok := clipboardCmd()
 	if !ok {
 		t.Skip("no clipboard tool available on this platform")
 	}
 	if name == "" {
 		t.Error("clipboardCmd: name should not be empty when ok=true")
-	}
-
-	t.Setenv("VISUAL", "")
-	t.Setenv("EDITOR", "vi")
-	editorName, _, gui, editorOk := resolveOpener()
-	if !editorOk {
-		t.Error("resolveOpener: expected ok=true when EDITOR=vi")
-	}
-	if editorName == "" {
-		t.Error("resolveOpener: name should not be empty when ok=true")
-	}
-	if gui {
-		t.Error("resolveOpener: vi is a terminal editor, gui should be false")
-	}
-
-	t.Setenv("EDITOR", "cursor")
-	if _, _, gui, _ := resolveOpener(); !gui {
-		t.Error("resolveOpener: cursor is a GUI editor, gui should be true")
 	}
 }

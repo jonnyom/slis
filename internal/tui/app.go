@@ -27,6 +27,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
+	"github.com/jonnyom/slis/internal/editor"
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
@@ -155,6 +156,14 @@ type Model struct {
 	// Comments overlay.
 	showCommentsOverlay bool
 	commentsSel         int
+
+	// Editor picker overlay: shown when no editor is configured and several are
+	// detected. The pending request is run once the user picks (and the choice is
+	// persisted to workspace.yaml).
+	showEditorPicker bool
+	editorOptions    []editor.Editor
+	editorSel        int
+	pendingEditor    *editorReq
 
 	// Transient status line (e.g. an attach error), shown in the footer.
 	status string
@@ -821,6 +830,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.loadPreview())
 
+	case editorOpenedMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+		}
+		return m, nil
+
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 
@@ -845,7 +860,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Ignore while an overlay/help is up.
 	if m.showHelp || m.pendingSwap != nil || m.pendingRemove != nil ||
 		m.pendingStack != nil || m.showProcOverlay || m.showCommentsOverlay ||
-		m.showConflictOverlay {
+		m.showConflictOverlay || m.showEditorPicker {
 		return m, nil
 	}
 
@@ -911,6 +926,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.showCommentsOverlay {
 		return m.updateCommentsOverlayKeys(msg)
+	}
+	if m.showEditorPicker {
+		return m.updateEditorPickerKeys(msg)
 	}
 	if m.showConflictOverlay {
 		switch msg.String() {
@@ -1272,6 +1290,9 @@ func (m Model) View() string {
 	}
 	if m.showConflictOverlay {
 		return renderConflictOverlay(m)
+	}
+	if m.showEditorPicker {
+		return m.editorPickerView()
 	}
 	if m.view == viewCockpit {
 		return renderCockpit(m)

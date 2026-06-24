@@ -2,9 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -191,46 +189,6 @@ func combinedPatch(diffs []diff.RepoDiff) string {
 	return sb.String()
 }
 
-// guiEditors open their own window and return immediately — they must NOT go
-// through tea.ExecProcess (which suspends the TUI and produces a flash).
-var guiEditors = map[string]bool{
-	"code": true, "code-insiders": true, "codium": true, "cursor": true,
-	"windsurf": true, "subl": true, "sublime_text": true, "zed": true,
-	"atom": true, "idea": true, "webstorm": true, "goland": true, "pycharm": true,
-}
-
-// resolveOpener picks how to open a worktree: $VISUAL/$EDITOR first (classified
-// gui vs terminal), then lazygit (terminal UI), then the OS opener (gui). The
-// gui flag tells the caller to spawn detached rather than via ExecProcess.
-func resolveOpener() (name string, args []string, gui, ok bool) {
-	for _, env := range []string{os.Getenv("VISUAL"), os.Getenv("EDITOR")} {
-		if strings.TrimSpace(env) == "" {
-			continue
-		}
-		fields := strings.Fields(env) // $EDITOR may carry args, e.g. "code -w"
-		bin := fields[0]
-		isGUI := guiEditors[filepath.Base(bin)]
-		if path, err := exec.LookPath(bin); err == nil {
-			return path, fields[1:], isGUI, true
-		}
-		return bin, fields[1:], isGUI, true
-	}
-	if path, err := exec.LookPath("lazygit"); err == nil {
-		return path, nil, false, true
-	}
-	switch runtime.GOOS {
-	case "darwin":
-		if path, err := exec.LookPath("open"); err == nil {
-			return path, nil, true, true
-		}
-	case "linux":
-		if path, err := exec.LookPath("xdg-open"); err == nil {
-			return path, nil, true, true
-		}
-	}
-	return "", nil, false, false
-}
-
 // osOpener returns the OS "open in default app" command (open / xdg-open) —
 // used to open URLs in the browser (unlike resolveOpener, which prefers $EDITOR).
 func osOpener() (string, bool) {
@@ -277,39 +235,6 @@ func clipboardCmd() (string, []string, bool) {
 		}
 	}
 	return "", nil, false
-}
-
-// openExternalCmd opens the selected repo's worktree in the user's editor.
-// GUI editors (and the OS opener) are spawned detached so the TUI is never
-// suspended; terminal editors (vim, lazygit, …) take over via ExecProcess.
-func openExternalCmd(m Model) tea.Cmd {
-	sl, ok := m.currentSlice()
-	if !ok {
-		return nil
-	}
-	repos := sl.Repos()
-	if len(repos) == 0 {
-		return nil
-	}
-	member := sl.Members[repos[clamp(m.repoSel, 0, len(repos)-1)]]
-	if member.WorktreePath == "" {
-		return nil
-	}
-	name, args, gui, ok := resolveOpener()
-	if !ok {
-		return nil
-	}
-	cmdArgs := append(args, member.WorktreePath)
-	c := exec.Command(name, cmdArgs...) //nolint:gosec
-	c.Dir = member.WorktreePath
-	if gui {
-		// Detached: open the window, don't suspend the TUI (no flash).
-		return func() tea.Msg {
-			_ = c.Start()
-			return nil
-		}
-	}
-	return tea.ExecProcess(c, func(error) tea.Msg { return nil })
 }
 
 // copyPatchCmd returns a tea.Cmd that writes the combined patch of the focused

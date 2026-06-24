@@ -494,7 +494,7 @@ func renderBrowser(m Model) string {
 	}
 	top := clip(head.String(), m.width)
 
-	footerText := "n next-todo · enter open · c new · C claude · a attach · w live · d clear · R stack · space/A select · / search · ? help"
+	footerText := "n next-todo · enter open · c new · C claude · a attach · e editor · w live · d clear · R stack · space/A select · / search · ? help"
 	if m.status != "" {
 		footerText = m.status
 	}
@@ -929,6 +929,13 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.attachCmd()
 	case "C":
 		return m, m.launchAgentCmd()
+	case "o", "e":
+		// Browser is slice-level (no per-repo selection): both open the whole
+		// slice in one editor window.
+		if sl, ok := m.currentSlice(); ok {
+			return m, m.openInEditor(editorReq{slice: sl})
+		}
+		return m, nil
 	case "c":
 		m.creating = true
 		m.createName = ""

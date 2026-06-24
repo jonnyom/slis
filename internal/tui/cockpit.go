@@ -216,7 +216,7 @@ func cockpitFooter(m Model) string {
 		if m.diffVsTrunk {
 			base = "[b]vs-parent"
 		}
-		hint = "[tab]panel [w]swap [R]stack [a]ttach [o]pen [y]ank " + split + " " + base + " [⏶⏷^d/^u]scroll [esc]back"
+		hint = "[tab]panel [w]swap [R]stack [a]ttach [o]pen-repo [e]dit-slice [y]ank " + split + " " + base + " [⏶⏷^d/^u]scroll [esc]back"
 	case panelPRs:
 		hint = "[tab]panel [O]open-PR [^r]rerun-CI [v]CI-logs [c]omments [F]ix-ci [esc]back"
 	case panelProcs:
@@ -843,7 +843,14 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "C":
 		return m, m.launchAgentCmd()
 	case "o":
-		return m, openExternalCmd(m)
+		repos := sl.Repos()
+		if len(repos) == 0 {
+			return m, nil
+		}
+		repo := repos[clamp(m.repoSel, 0, len(repos)-1)]
+		return m, m.openInEditor(editorReq{slice: sl, repo: repo})
+	case "e":
+		return m, m.openInEditor(editorReq{slice: sl})
 	case "O":
 		pr, _ := m.focusedPR(sl)
 		if pr == nil || pr.URL == "" {
