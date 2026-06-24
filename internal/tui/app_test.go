@@ -35,6 +35,29 @@ func upMsg() tea.Msg {
 	return tea.KeyMsg{Type: tea.KeyUp}
 }
 
+// TestCreatingSwallowsGlobalKeys verifies that while typing a new-slice name,
+// keys that are otherwise global commands (r=refresh, q=quit, a=attach) insert
+// into the name instead of firing — only esc/enter should act as commands.
+func TestCreatingSwallowsGlobalKeys(t *testing.T) {
+	m := threeSlices(t)
+	m.creating = true
+	m.createName = ""
+
+	for _, r := range []rune{'r', 'q', 'a', 'r'} {
+		next, cmd := m.Update(keyMsg(r))
+		m = next.(Model)
+		if cmd != nil {
+			t.Fatalf("key %q while creating returned a command (want none)", r)
+		}
+	}
+	if !m.creating {
+		t.Fatal("creating flag was cleared by a command key; want still creating")
+	}
+	if m.createName != "rqar" {
+		t.Errorf("createName = %q, want %q", m.createName, "rqar")
+	}
+}
+
 // TestUpdateNavigation verifies j/down moves focus down (clamped) and k/up moves it up.
 func TestUpdateNavigation(t *testing.T) {
 	m := threeSlices(t)

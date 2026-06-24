@@ -932,6 +932,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Text-input modes (new-slice name, group name, search filter) own every key
+	// except their own handler's (enter/esc/backspace/runes). Route straight to the
+	// browser handler so typing a name containing q/r/?/P/! inserts the letter
+	// instead of firing a global command.
+	if m.creating || m.naming || m.filtering {
+		return m.updateBrowserKeys(msg)
+	}
+
 	// Global keys available in both views.
 	switch msg.String() {
 	case "q", "ctrl+c":
