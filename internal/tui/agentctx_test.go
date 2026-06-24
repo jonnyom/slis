@@ -24,8 +24,8 @@ func TestWithSlisContext(t *testing.T) {
 	sl := model.Slice{
 		Name: "wfm-1",
 		Members: map[string]model.SliceMember{
-			"web": {Repo: "web", Branch: "jonny/wfm-1"},
-			"api": {Repo: "api", Branch: "jonny/wfm-1"},
+			"web": {Repo: "web", Branch: "jonny/wfm-1", WorktreePath: "/root/.slis/worktrees/wfm-1/web"},
+			"api": {Repo: "api", Branch: "jonny/wfm-1", WorktreePath: "/root/.slis/worktrees/wfm-1/api"},
 		},
 		Active: true,
 	}
@@ -39,7 +39,14 @@ func TestWithSlisContext(t *testing.T) {
 	if !strings.HasPrefix(got, "claude --append-system-prompt ") {
 		t.Fatalf("expected appended flag, got: %q", got)
 	}
-	for _, want := range []string{"wfm-1", "web", "api", "LIVE"} {
+	for _, want := range []string{
+		"wfm-1", "web", "api", "LIVE",
+		// The worktree paths must be present so the agent edits the worktrees…
+		"/root/.slis/worktrees/wfm-1/web",
+		"/root/.slis/worktrees/wfm-1/api",
+		// …and it must be told NOT to touch the primaries.
+		"primary",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("context missing %q in: %s", want, got)
 		}
