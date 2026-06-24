@@ -92,6 +92,20 @@ func TestCreatingSwallowsGlobalKeys(t *testing.T) {
 	}
 }
 
+// TestRefreshClearsPRCache verifies `r` drops cached PR state so merge status
+// (→ "Ready") re-fetches after a merge done outside slis.
+func TestRefreshClearsPRCache(t *testing.T) {
+	m := threeSlices(t) // browser view
+	m.prs = map[string]map[string]*forge.PR{
+		"alpha": {"web": {Number: 1, State: "OPEN"}},
+	}
+	next, _ := m.Update(keyMsg('r'))
+	m = next.(Model)
+	if len(m.prs) != 0 {
+		t.Errorf("after r: m.prs should be cleared to force a reload, got %v", m.prs)
+	}
+}
+
 // TestUpdateNavigation verifies j/down moves focus down (clamped) and k/up moves it up.
 func TestUpdateNavigation(t *testing.T) {
 	m := threeSlices(t)

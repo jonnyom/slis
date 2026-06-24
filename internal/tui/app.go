@@ -757,13 +757,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.commentCache = msg.store
 
 	case prsTickMsg:
-		// Periodically refresh the focused slice's PRs/comments so counts and the
-		// comments overlay stay current without manual reload.
-		var cmd tea.Cmd
-		if m.view == viewCockpit {
-			cmd = m.forceLoadPRs()
-		}
-		return m, tea.Batch(cmd, prsTickCmd())
+		// Periodically refresh the focused slice's PRs so its merge state ("Ready")
+		// and comments stay current without a manual reload — in either view.
+		return m, tea.Batch(m.forceLoadPRs(), prsTickCmd())
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
@@ -1014,6 +1010,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.maybeLoadCapture()
 		}
 		m.loading = true
+		// Drop cached PR state so merge status (→ "Ready") re-fetches: a merge
+		// done outside slis is invisible until PRs reload, and batchLoadAllPRs
+		// skips slices already in m.prs.
+		m.prs = make(map[string]map[string]*forge.PR)
+		m.prLoading = make(map[string]bool)
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 	}
