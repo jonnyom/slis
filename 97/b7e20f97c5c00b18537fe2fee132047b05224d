@@ -1,0 +1,41 @@
+internal/commentcache/commentcache_test.go
+  s_ca8a92e5dd9970::t_9e202e549315d9 1-52
+internal/tui/prview_test.go
+  s_ca8a92e5dd9970::t_a498f4a3f82412 61-63
+internal/tui/prview.go
+  s_ca8a92e5dd9970::t_219b695aec4456 319-322,330,333-347,350-352
+  s_ca8a92e5dd9970::t_46c44147969e4d 10,15-16
+  s_ca8a92e5dd9970::t_97b735505cd788 118-171
+internal/cli/comments.go
+  s_ca8a92e5dd9970::t_d6b6cd609f642f 1-21,23-30,32-77
+  s_ca8a92e5dd9970::t_46293dbbcfaf6d 22,31
+internal/config/paths.go
+  s_ca8a92e5dd9970::t_a59a196b699d41 63
+  s_ca8a92e5dd9970::t_ca9715ae5effc8 22-23
+internal/commentcache/commentcache.go
+  s_ca8a92e5dd9970::t_da63d07bb8eab8 1-90
+internal/tui/cockpit.go
+  s_ca8a92e5dd9970::t_1b912e084a4fd5 898
+internal/tui/app.go
+  s_ca8a92e5dd9970::t_d8a38ca44e685f 235
+  s_ca8a92e5dd9970::t_877211d3588171 27
+  s_ca8a92e5dd9970::t_af26ff45e04395 157-159
+  s_ca8a92e5dd9970::t_b95ee2d27a0e9c 742-754
+  s_ca8a92e5dd9970::t_1a188200bf76fa 214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "97b7e20f97c5c00b18537fe2fee132047b05224d",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
