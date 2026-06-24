@@ -1,0 +1,29 @@
+internal/diff/diff.go
+  s_ca8a92e5dd9970::t_f5745350e3f4d2 83,124,171
+  s_ca8a92e5dd9970::t_b4da58266186b1 93,131
+  s_ca8a92e5dd9970::t_d07efc9bae9827 53-60
+internal/cli/create.go
+  s_ca8a92e5dd9970::t_85c8beaa633442 123-131
+  s_ca8a92e5dd9970::t_640b94695c2f7b 68-74,76,78,81-86
+internal/diff/diff_test.go
+  s_ca8a92e5dd9970::t_34740a5a7c39ad 119-170
+internal/cli/activate_test.go
+  s_ca8a92e5dd9970::t_317e3ae612984d 127-130
+  s_ca8a92e5dd9970::t_71379267c2b731 104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "0e4c1f7db8f5192b06432ce87d0554989127f4e9",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
