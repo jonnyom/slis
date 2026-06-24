@@ -1,0 +1,22 @@
+internal/cli/editor.go
+  s_ca8a92e5dd9970::t_ed4a27b1f111ee 1-88
+internal/cli/edit.go
+  s_ca8a92e5dd9970::t_a5238b2b55b5d4 1-7,9-12,19-91
+  s_ca8a92e5dd9970::t_944379552b7543 8,13-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "840ca8f1fb8b87d157f75386f40b974d7b674bbf",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
