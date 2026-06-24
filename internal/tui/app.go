@@ -32,6 +32,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
+	"github.com/jonnyom/slis/internal/radar"
 	"github.com/jonnyom/slis/internal/restack"
 	"github.com/jonnyom/slis/internal/safeterm"
 	"github.com/jonnyom/slis/internal/summary"
@@ -123,6 +124,12 @@ type Model struct {
 	diffLoading  map[string]bool
 	cards        map[string]sliceCard // slice → browser summary card
 	cardLoading  map[string]bool
+
+	// Cross-slice conflict radar: files changed by more than one slice. Rebuilt
+	// from the loaded cards' retained stats as cards arrive (so View stays pure).
+	conflicts           *radar.Index
+	showConflictOverlay bool
+	conflictScroll      int
 
 	viewport viewport.Model // scrollable right pane (cockpit)
 
@@ -707,6 +714,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case cardLoadedMsg:
 		m.cards[msg.slice] = msg.card
 		delete(m.cardLoading, msg.slice)
+		m.conflicts = m.buildConflicts()
 
 	case summaryLoadedMsg:
 		m.summaries[msg.slice] = msg.text
@@ -836,7 +844,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	// Ignore while an overlay/help is up.
 	if m.showHelp || m.pendingSwap != nil || m.pendingRemove != nil ||
-		m.pendingStack != nil || m.showProcOverlay || m.showCommentsOverlay {
+		m.pendingStack != nil || m.showProcOverlay || m.showCommentsOverlay ||
+		m.showConflictOverlay {
 		return m, nil
 	}
 
@@ -903,6 +912,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.showCommentsOverlay {
 		return m.updateCommentsOverlayKeys(msg)
 	}
+	if m.showConflictOverlay {
+		switch msg.String() {
+		case "!", "esc", "q":
+			m.showConflictOverlay = false
+		case "j", "down":
+			m.conflictScroll++
+		case "k", "up":
+			if m.conflictScroll > 0 {
+				m.conflictScroll--
+			}
+		}
+		return m, nil
+	}
 	if m.showHelp {
 		if msg.String() == "?" || msg.String() == "esc" || msg.String() == "q" {
 			m.showHelp = false
@@ -925,6 +947,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.overlaySel = 0
 		m.overlayProcs = flattenProcs(m.procs)
 		return m, m.batchLoadAllProcs()
+	case "!":
+		m.showConflictOverlay = true
+		m.conflictScroll = 0
+		return m, nil
 	case "r":
 		// On the cockpit Session panel, [r] refreshes the live pane capture
 		// rather than reloading the whole workspace.
@@ -1236,10 +1262,24 @@ func (m Model) View() string {
 	if m.showCommentsOverlay {
 		return renderCommentsOverlay(m)
 	}
+	if m.showConflictOverlay {
+		return renderConflictOverlay(m)
+	}
 	if m.view == viewCockpit {
 		return renderCockpit(m)
 	}
 	return renderBrowser(m)
+}
+
+// buildConflicts rebuilds the cross-slice conflict radar from the loaded cards'
+// retained per-repo file stats. Slices whose card has not loaded yet are simply
+// absent — they contribute no overlaps until their stats arrive.
+func (m Model) buildConflicts() *radar.Index {
+	stats := make(map[string][]diff.RepoDiff, len(m.cards))
+	for name, c := range m.cards {
+		stats[name] = c.stats
+	}
+	return radar.Build(stats)
 }
 
 // clamp constrains v to [lo, hi]; if hi < lo it returns lo.

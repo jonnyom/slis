@@ -634,6 +634,17 @@ func renderStackOverlay(m Model) string {
 	sb.WriteString("for you). Submit pushes the stack + opens/updates PRs. Merge hands off to\n")
 	sb.WriteString("Graphite's server-side queue (squash/merge/restack handled for you — no\n")
 	sb.WriteString("local waiting). Sync is repo-wide. Submit/merge/sync act on the first target.\n\n")
+	// Soft pre-merge warning: the merge acts on the first target, so flag when it
+	// shares changed files with another in-flight slice. Non-blocking — the radar
+	// is a heads-up (file overlap, committed changes only), not a hard gate.
+	if m.conflicts != nil && len(m.pendingStack.slices) > 0 {
+		target := m.pendingStack.slices[0]
+		if others := m.conflicts.ConflictsFor(target); len(others) > 0 {
+			sb.WriteString(waitStyle.Render(fmt.Sprintf(
+				"⚠ %s shares changed files with: %s (may be stale; committed changes only)",
+				target, strings.Join(others, ", "))) + "\n\n")
+		}
+	}
 	sb.WriteString(key("[r]") + " restack   " + key("[p]") + " submit   " + key("[m]") + " merge (Graphite)   " + key("[s]") + " sync   " + key("[n]") + " cancel\n")
 	return helpBoxStyle.Render(sb.String())
 }

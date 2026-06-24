@@ -176,6 +176,67 @@ func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 	return results, nil
 }
 
+// ExpandPaths decodes a path as emitted by `git diff --numstat` into the
+// concrete file path(s) it refers to. A plain path returns itself. Git emits a
+// rename in one of two forms:
+//
+//	old/path => new/path        (whole-path rename)
+//	a/{old => new}/f.go          (brace form: shared prefix/suffix factored out)
+//
+// Conflict detection cares about BOTH endpoints — a rename of foo→bar in one
+// slice collides with an edit to foo in another — so a rename expands to the
+// old and new paths. Returns nil for empty input; never returns empty strings.
+// Plain paths (the common case, since the diff command sets no -M) pass through
+// untouched, so missing rename detection degrades to a no-op, never a crash.
+func ExpandPaths(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if !strings.Contains(raw, "=>") {
+		return []string{raw}
+	}
+
+	var oldPath, newPath string
+	if open := strings.IndexByte(raw, '{'); open >= 0 {
+		if closeIdx := strings.IndexByte(raw, '}'); closeIdx > open {
+			prefix, suffix := raw[:open], raw[closeIdx+1:]
+			oldSide, newSide, _ := strings.Cut(raw[open+1:closeIdx], "=>")
+			oldPath = collapseSlashes(prefix + strings.TrimSpace(oldSide) + suffix)
+			newPath = collapseSlashes(prefix + strings.TrimSpace(newSide) + suffix)
+		}
+	}
+	if oldPath == "" && newPath == "" {
+		oldSide, newSide, _ := strings.Cut(raw, "=>")
+		oldPath = strings.TrimSpace(oldSide)
+		newPath = strings.TrimSpace(newSide)
+	}
+
+	out := make([]string, 0, 2)
+	for _, p := range []string{oldPath, newPath} {
+		if p == "" {
+			continue
+		}
+		if len(out) == 1 && out[0] == p {
+			continue // collapse a no-op "rename" to one path
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return []string{raw}
+	}
+	return out
+}
+
+// collapseSlashes removes empty path segments left by the brace rename form when
+// one side is empty (e.g. "a/{ => b}/f" → "a//f" → "a/f").
+func collapseSlashes(p string) string {
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
+	return strings.TrimSpace(p)
+}
+
 // parseNumstat parses the output of `git diff --numstat`.
 // Each line is: <added>\t<deleted>\t<path>
 // Binary files produce: -\t-\t<path>  (Added and Deleted are set to -1).

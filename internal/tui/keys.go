@@ -34,6 +34,7 @@ var browserBindings = []Binding{
 	{[]string{"Y"}, "copy PR-stack markdown to clipboard"},
 	{[]string{"/"}, "search by name"},
 	{[]string{"P"}, "processes overlay (all slices)"},
+	{[]string{"!"}, "conflict radar (files changed by >1 slice)"},
 	{[]string{"r"}, "refresh"},
 	{[]string{"?"}, "help"},
 	{[]string{"q"}, "quit"},
@@ -65,6 +66,7 @@ var cockpitBindings = []Binding{
 	{[]string{"F"}, "fix CI (point Claude at failing CI)"},
 	{[]string{"x"}, "kill selected process (Processes panel)"},
 	{[]string{"P"}, "processes overlay (all slices)"},
+	{[]string{"!"}, "conflict radar (files changed by >1 slice)"},
 	{[]string{"esc", "h"}, "back to browser"},
 	{[]string{"?"}, "help"},
 	{[]string{"q"}, "quit"},
@@ -107,7 +109,8 @@ func renderHelp(view viewMode) string {
 		helpDescStyle.Render("● running   ") +
 		readyStyle.Render("♻") + helpDescStyle.Render(" ready   ") +
 		syncedStyle.Render("✓") + helpDescStyle.Render(" in review   ") +
-		overviewStyle.Render("·") + helpDescStyle.Render(" idle") + "\n")
+		overviewStyle.Render("·") + helpDescStyle.Render(" idle   ") +
+		waitStyle.Render("⚠") + helpDescStyle.Render(" file overlap (press !)") + "\n")
 	sb.WriteString(helpDescStyle.Render("In a session: detach with C-b d (prefix, then d) — Ctrl-D sends EOF and quits Claude.\n"))
 	sb.WriteString(helpDescStyle.Render("Press ? or esc to close"))
 

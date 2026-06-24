@@ -149,6 +149,9 @@ type sliceCard struct {
 	commits    int
 	restack    int  // needs-restack branches across the slice's lineages
 	stackKnown bool // Graphite data was available for at least one repo
+	// stats is the per-repo numstat (paths only, no patch) retained so the
+	// cross-slice conflict radar can run in-TUI without recomputing diffs.
+	stats []diff.RepoDiff
 }
 
 // cardLoadedMsg is delivered when a slice's browser card has been computed.
@@ -204,6 +207,7 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 			card.added += rd.TotalAdded()
 			card.deleted += rd.TotalDeleted()
 		}
+		card.stats = stats // retained for the conflict radar
 
 		return cardLoadedMsg{slice: sl.Name, card: card}
 	}
@@ -591,9 +595,18 @@ func slicesContent(m Model, vis []int, rows int) string {
 		case i == m.focus:
 			name = focusStyle.Render(name)
 		}
-		sb.WriteString(marker + sliceGlyph(m, s) + " " + name + "\n")
+		sb.WriteString(marker + sliceGlyph(m, s) + " " + name + m.conflictBadge(s.Name) + "\n")
 	}
 	return sb.String()
+}
+
+// conflictBadge returns a compact ⚠ marker when the slice shares a changed file
+// with another slice (cross-slice conflict radar), else "". Press ! for detail.
+func (m Model) conflictBadge(name string) string {
+	if m.conflicts != nil && m.conflicts.HasConflict(name) {
+		return " " + waitStyle.Render("⚠")
+	}
+	return ""
 }
 
 // sliceGlyph is the compact status glyph for a slice in the list.
@@ -641,6 +654,11 @@ func previewContent(m Model, sl model.Slice) string {
 	}
 	if c, ok := m.cards[sl.Name]; ok && c.restack > 0 {
 		tags = append(tags, needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", c.restack)))
+	}
+	if m.conflicts != nil {
+		if other := m.conflicts.ConflictsFor(sl.Name); len(other) > 0 {
+			tags = append(tags, waitStyle.Render("⚠ overlaps "+strings.Join(other, ", ")))
+		}
 	}
 	if len(tags) > 0 {
 		sb.WriteString(strings.Join(tags, "  ") + "\n")
