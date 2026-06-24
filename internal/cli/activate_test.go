@@ -101,7 +101,7 @@ func TestWorktreePlan(t *testing.T) {
 	}
 
 	// Build a map for order-independent lookup.
-	type planEntry = struct{ Repo, Primary, Branch, Path string }
+	type planEntry = struct{ Repo, Primary, Branch, Path, StartPoint string }
 	byRepo := make(map[string]planEntry, len(plans))
 	for _, p := range plans {
 		byRepo[p.Repo] = p
@@ -123,6 +123,10 @@ func TestWorktreePlan(t *testing.T) {
 		wantPrimary := "/x/" + repoName
 		if p.Primary != wantPrimary {
 			t.Errorf("repo %s Primary = %q, want %q", repoName, p.Primary, wantPrimary)
+		}
+		// New slices fork from the repo's trunk, not the primary's current HEAD.
+		if p.StartPoint != "main" {
+			t.Errorf("repo %s StartPoint = %q, want %q", repoName, p.StartPoint, "main")
 		}
 	}
 }

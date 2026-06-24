@@ -65,19 +65,25 @@ func branchForSlice(stripPrefix, slice string) string {
 // workspace. name is the canonical slice name (strip_prefix already removed);
 // branch is the fully-qualified git branch (strip_prefix applied exactly once).
 // Keeping the prefix off the slice name means the worktree path, tmux session,
-// and display stay clean even when create was handed a full branch name. Pure
-// (no git calls) so it can be unit-tested.
+// and display stay clean even when create was handed a full branch name.
+//
+// StartPoint is the commit-ish the new branch forks from — the repo's configured
+// trunk (default_branch). Forking from trunk (rather than the primary's current
+// HEAD, which may be sitting on unrelated in-flight work after a swap) keeps a
+// fresh slice's diff empty until the slice itself makes changes. Pure (no git
+// calls) so it can be unit-tested.
 func worktreePlan(ws config.Workspace, name, branch string) []struct {
-	Repo, Primary, Branch, Path string
+	Repo, Primary, Branch, Path, StartPoint string
 } {
-	result := make([]struct{ Repo, Primary, Branch, Path string }, 0, len(ws.Repos))
+	result := make([]struct{ Repo, Primary, Branch, Path, StartPoint string }, 0, len(ws.Repos))
 	for repoName, repo := range ws.Repos {
 		wtPath := filepath.Join(ws.Root, ".slis", "worktrees", name, repoName)
-		result = append(result, struct{ Repo, Primary, Branch, Path string }{
-			Repo:    repoName,
-			Primary: repo.Primary,
-			Branch:  branch,
-			Path:    wtPath,
+		result = append(result, struct{ Repo, Primary, Branch, Path, StartPoint string }{
+			Repo:       repoName,
+			Primary:    repo.Primary,
+			Branch:     branch,
+			Path:       wtPath,
+			StartPoint: repo.DefaultBranch,
 		})
 	}
 	return result
@@ -114,9 +120,15 @@ var createCmd = &cobra.Command{
 				continue
 			}
 
-			// Try creating a new branch + worktree. The "--" separates options
-			// from the positional path so a path is never parsed as a git flag.
-			_, err := git.Run(p.Primary, "worktree", "add", "-b", p.Branch, "--", p.Path)
+			// Try creating a new branch + worktree, forking from the repo's trunk
+			// (StartPoint) so the slice doesn't inherit whatever the primary's HEAD
+			// happens to be sitting on. The "--" separates options from the
+			// positional path/commit so neither is ever parsed as a git flag.
+			addArgs := []string{"worktree", "add", "-b", p.Branch, "--", p.Path}
+			if p.StartPoint != "" {
+				addArgs = append(addArgs, p.StartPoint)
+			}
+			_, err := git.Run(p.Primary, addArgs...)
 			if err != nil {
 				// Branch may already exist; try attaching to the existing branch.
 				errStr := err.Error()

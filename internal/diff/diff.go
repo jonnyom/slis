@@ -50,10 +50,14 @@ func (d RepoDiff) TotalDeleted() int {
 }
 
 // SliceDiff returns one RepoDiff per member of sl, computed in each member's
-// worktree using `git diff <base>...HEAD`. Members are processed in sorted
-// repo order (sl.Repos()). Per-repo errors are captured in RepoDiff.Err and
-// do not abort the whole slice. The top-level error is reserved for
-// catastrophic failures (e.g. nil slice).
+// worktree using `git diff --merge-base <base>` — i.e. the diff from the
+// merge-base of <base> and HEAD to the WORKING TREE. That captures everything
+// the slice has changed since it forked from <base>, INCLUDING uncommitted
+// (staged + unstaged) edits, so an agent's in-progress work shows up.
+// (Untracked, never-`git add`-ed files are not shown — git diff omits them.)
+// Members are processed in sorted repo order (sl.Repos()). Per-repo errors are
+// captured in RepoDiff.Err and do not abort the whole slice. The top-level
+// error is reserved for catastrophic failures (e.g. nil slice).
 //
 // base is the ref to diff against. Pass "" to auto-detect each repo's trunk
 // independently (git.DetectBase) — required for slices spanning repos with
@@ -76,7 +80,7 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--end-of-options", b+"...HEAD")
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
@@ -86,7 +90,7 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		rd.Files = parseNumstat(numstat)
 
 		// Best-effort full patch; ignore error (already have numstat).
-		patch, _ := git.Run(m.WorktreePath, "diff", "--end-of-options", b+"...HEAD")
+		patch, _ := git.Run(m.WorktreePath, "diff", "--merge-base", "--end-of-options", b)
 		// Patch contains repo file contents (and filenames) which can embed
 		// terminal escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
@@ -117,14 +121,14 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--end-of-options", b+"...HEAD")
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
 			continue
 		}
 		rd.Files = parseNumstat(numstat)
-		patch, _ := git.Run(m.WorktreePath, "diff", "--end-of-options", b+"...HEAD")
+		patch, _ := git.Run(m.WorktreePath, "diff", "--merge-base", "--end-of-options", b)
 		// Patch contains repo file contents (and filenames) which can embed
 		// terminal escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
@@ -164,7 +168,7 @@ func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--end-of-options", b+"...HEAD")
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)

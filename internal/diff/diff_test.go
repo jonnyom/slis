@@ -116,6 +116,58 @@ func TestSliceDiffCountsChanges(t *testing.T) {
 	}
 }
 
+func TestSliceDiffIncludesUncommitted(t *testing.T) {
+	// A slice's in-progress (uncommitted) work must show in the diff — the agent
+	// edits before it commits, and the cockpit should reflect that.
+	repo := testutil.NewRepo(t)
+
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("line1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(repo, "add", "a.txt"); err != nil {
+		t.Fatal(err)
+	}
+	commitInDir(t, repo, "add a.txt on main")
+
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat", wt)
+
+	// Modify a.txt (unstaged) and add a new b.txt (staged) — but DO NOT commit.
+	if err := os.WriteFile(filepath.Join(wt, "a.txt"), []byte("line1\nline2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, "b.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "add", "b.txt"); err != nil {
+		t.Fatal(err)
+	}
+
+	sl := model.Slice{
+		Name: "s",
+		Members: map[string]model.SliceMember{
+			"r": {Repo: "r", Branch: "feat", WorktreePath: wt},
+		},
+	}
+	diffs, err := diff.SliceDiff(sl, "main")
+	if err != nil {
+		t.Fatalf("SliceDiff: %v", err)
+	}
+	statsMap := make(map[string]diff.FileStat)
+	for _, fs := range diffs[0].Files {
+		statsMap[fs.Path] = fs
+	}
+	if _, ok := statsMap["a.txt"]; !ok {
+		t.Error("uncommitted (unstaged) a.txt modification not shown in diff")
+	}
+	if _, ok := statsMap["b.txt"]; !ok {
+		t.Error("uncommitted (staged) new file b.txt not shown in diff")
+	}
+	if !strings.Contains(diffs[0].Patch, "b.txt") {
+		t.Errorf("patch missing uncommitted b.txt:\n%s", diffs[0].Patch)
+	}
+}
+
 func TestSliceDiffBinaryAndMissingBase(t *testing.T) {
 	// Create a fresh repo and a worktree; the base ref "nonexistent-base" won't exist.
 	repo := testutil.NewRepo(t)
