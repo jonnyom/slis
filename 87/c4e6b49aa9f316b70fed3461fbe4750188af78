@@ -1,0 +1,32 @@
+internal/tui/prview.go
+  s_ca8a92e5dd9970::t_a7ad643ceeff0e 27,30,34,42-75
+  s_ca8a92e5dd9970::t_aca6407c1dd5f9 229,239-240,242,245-246,255,258
+  s_ca8a92e5dd9970::t_c78b3da2b0d4f0 247,252-254,256,259,262-263,273,282
+  s_ca8a92e5dd9970::t_a0d4c88c45af18 347,350-351
+  s_ca8a92e5dd9970::t_71e969224ecb4b 76,228,230-234,243-244,257,306,309,312,314,345,352
+  s_ca8a92e5dd9970::t_f229bcb9f0e407 26,28-29,31
+internal/tui/comment_test.go
+  s_ca8a92e5dd9970::t_a5954804a91c35 15-16
+internal/tui/app.go
+  s_ca8a92e5dd9970::t_79bd4dc3531182 1243,1247,1249-1257
+internal/tui/prview_test.go
+  s_ca8a92e5dd9970::t_d0b50817349aba 208-212,215,218,225-227,231
+internal/tui/cockpit.go
+  s_ca8a92e5dd9970::t_961be028773afc 518
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "87c4e6b49aa9f316b70fed3461fbe4750188af78",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
