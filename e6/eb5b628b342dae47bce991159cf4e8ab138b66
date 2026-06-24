@@ -1,0 +1,26 @@
+internal/tui/prview.go
+  s_ca8a92e5dd9970::t_b191bc46fdebc9 164-179
+internal/tui/app_test.go
+  s_ca8a92e5dd9970::t_a453e71558846c 10,14-45
+internal/tui/app.go
+  s_ca8a92e5dd9970::t_c39ffefc205d6b 745-752
+  s_ca8a92e5dd9970::t_edf66bb532cd61 160-163
+internal/tui/cockpit.go
+  s_ca8a92e5dd9970::t_78d938be37526e 686-691
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "e6eb5b628b342dae47bce991159cf4e8ab138b66",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
