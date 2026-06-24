@@ -1,0 +1,40 @@
+internal/tui/slicelist.go
+  s_ca8a92e5dd9970::t_6e1d0648890b20 497
+  s_ca8a92e5dd9970::t_13b7ee91196195 932-938
+internal/tui/keys.go
+  s_ca8a92e5dd9970::t_4798eca72d26ca 29
+  s_ca8a92e5dd9970::t_4e2db64f2cc558 60-61
+internal/tui/app.go
+  s_ca8a92e5dd9970::t_d96c8e37bb97c5 863
+  s_ca8a92e5dd9970::t_2cf0fe670e46db 160-167
+  s_ca8a92e5dd9970::t_1a03351050e223 833-838
+  s_ca8a92e5dd9970::t_a3593418de7c5d 30
+  s_ca8a92e5dd9970::t_06d89225f8cdc3 930-932,1296
+internal/tui/editorpane.go
+  s_ca8a92e5dd9970::t_24171e44ccd96a 1-133
+internal/config/config.go
+  s_ca8a92e5dd9970::t_8a0c4721bf76da 48-51
+internal/tui/cockpit.go
+  s_ca8a92e5dd9970::t_515eb835ed6901 846-853
+  s_ca8a92e5dd9970::t_dc6ab55ecfa963 219
+internal/tui/diffpane_test.go
+  s_ca8a92e5dd9970::t_a7e84fe647ac41 89-91
+internal/tui/editorpane_test.go
+  s_ca8a92e5dd9970::t_6e6bed9d40496c 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "9989001f3586777e0ad002f2e7bffca92e1c2939",
+  "prompts": {},
+  "sessions": {
+    "s_ca8a92e5dd9970": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dadcefe-70cf-416b-b397-97f248eaa8ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
