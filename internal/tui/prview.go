@@ -7,10 +7,13 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jonnyom/slis/internal/commentcache"
+	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/safeterm"
@@ -110,6 +113,60 @@ func (m *Model) maybeLoadPRs() tea.Cmd {
 	}
 	m.prLoading[sl.Name] = true
 	return loadPRsCmd(sl)
+}
+
+// forceLoadPRs reloads the focused slice's PRs/comments unconditionally, ignoring
+// the cache — used when opening the comments overlay so it always shows fresh
+// data ("reload on each open").
+func (m *Model) forceLoadPRs() tea.Cmd {
+	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
+		return nil
+	}
+	sl := m.slices[m.focus]
+	m.prLoading[sl.Name] = true
+	return loadPRsCmd(sl)
+}
+
+// commentCacheMsg carries the (re)loaded persistent comment cache.
+type commentCacheMsg struct{ store commentcache.Store }
+
+// loadCommentCacheCmd reads the persisted comment cache off the UI loop.
+func loadCommentCacheCmd() tea.Cmd {
+	return func() tea.Msg {
+		store, _ := commentcache.Load(config.StatePaths().Comments)
+		return commentCacheMsg{store: store}
+	}
+}
+
+// persistCommentsCmd writes a slice's freshly-fetched comments into the on-disk
+// cache (so they survive the slice being cleared) and returns the updated store
+// so the in-memory copy stays current. Empty/absent PRs are skipped, never
+// clobbering previously-cached comments.
+func persistCommentsCmd(slice string, prs map[string]*forge.PR) tea.Cmd {
+	return func() tea.Msg {
+		path := config.StatePaths().Comments
+		store, _ := commentcache.Load(path)
+		for repo, pr := range prs {
+			if pr == nil || len(pr.Comments) == 0 {
+				continue
+			}
+			cs := make([]commentcache.Comment, 0, len(pr.Comments))
+			for _, c := range pr.Comments {
+				cs = append(cs, commentcache.Comment{Author: c.Author, Body: c.Body, URL: c.URL})
+			}
+			store.Put(slice, repo, pr.Number, pr.URL, cs)
+		}
+		_ = store.Save(path)
+		return commentCacheMsg{store: store}
+	}
+}
+
+// prsTickMsg drives periodic refresh of the focused slice's PRs/comments.
+type prsTickMsg struct{}
+
+// prsTickCmd schedules the next PR/comments refresh.
+func prsTickCmd() tea.Cmd {
+	return tea.Tick(30*time.Second, func(time.Time) tea.Msg { return prsTickMsg{} })
 }
 
 // copyToClipboardCmd returns a tea.Cmd that writes text to the system clipboard.
@@ -259,27 +316,40 @@ func commentBlock(repo string, pr *forge.PR, c forge.Comment, width int) []strin
 	return append(lines, "")
 }
 
-// flattenComments returns the rendered comment lines across the focused slice's
-// PRs, in repo order (header + wrapped body + separator per comment).
+// flattenComments returns the rendered comment lines for the focused slice's
+// PRs (header + wrapped body + separator per comment). It uses live PR data when
+// present and falls back to the persisted cache otherwise — so comments still
+// show when the PR's branch has been deleted (live fetch finds nothing).
 func flattenComments(m Model) []string {
 	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
 		return nil
 	}
 	sl := m.slices[m.focus]
-	slicePRs := m.prs[sl.Name]
-	if slicePRs == nil {
-		return nil
-	}
 	width := commentsWidth(m)
 	repos := sl.Repos()
+
 	var lines []string
 	for _, repo := range repos {
-		pr := slicePRs[repo]
-		if pr == nil {
+		if pr := m.prs[sl.Name][repo]; pr != nil {
+			for _, c := range pr.Comments {
+				lines = append(lines, commentBlock(repo, pr, c, width)...)
+			}
+		}
+	}
+	if len(lines) > 0 {
+		return lines
+	}
+
+	// Fall back to the persisted cache (branch may be gone but comments survive).
+	cached := m.commentCache[sl.Name]
+	for _, repo := range repos {
+		rc, ok := cached[repo]
+		if !ok {
 			continue
 		}
-		for _, c := range pr.Comments {
-			lines = append(lines, commentBlock(repo, pr, c, width)...)
+		pr := &forge.PR{Number: rc.PR, URL: rc.URL}
+		for _, c := range rc.Comments {
+			lines = append(lines, commentBlock(repo, pr, forge.Comment{Author: c.Author, Body: c.Body, URL: c.URL}, width)...)
 		}
 	}
 	return lines

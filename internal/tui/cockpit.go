@@ -895,7 +895,7 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.showCommentsOverlay = true
 		m.commentsSel = 0
-		return m, m.maybeLoadPRs()
+		return m, m.forceLoadPRs() // reload comments on each open
 	case "F":
 		return m, fixCICmd(sl)
 	case "x":

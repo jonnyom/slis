@@ -24,6 +24,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/jonnyom/slis/internal/cleanup"
+	"github.com/jonnyom/slis/internal/commentcache"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
@@ -153,6 +154,9 @@ type Model struct {
 	prs       map[string]map[string]*forge.PR
 	prLoading map[string]bool
 
+	// Persisted PR comments (survive slice removal; backs the overlay fallback).
+	commentCache commentcache.Store
+
 	// Comments overlay.
 	showCommentsOverlay bool
 	commentsSel         int
@@ -207,6 +211,7 @@ func New(ws config.Workspace) Model {
 		summaryLoading: make(map[string]bool),
 		prs:            make(map[string]map[string]*forge.PR),
 		prLoading:      make(map[string]bool),
+		commentCache:   commentcache.Store{},
 		captures:       make(map[string]string),
 		captureLoading: make(map[string]bool),
 		selected:       make(map[string]bool),
@@ -227,7 +232,7 @@ func captureTickCmd() tea.Cmd {
 // Init loads slices in the background, starts the fsnotify watch loop, and the
 // capture-refresh ticker.
 func (m Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{loadSlicesCmd(m.ws), captureTickCmd()}
+	cmds := []tea.Cmd{loadSlicesCmd(m.ws), captureTickCmd(), prsTickCmd(), loadCommentCacheCmd()}
 	if watchCmd := waitForEventCmd(m.watcher); watchCmd != nil {
 		cmds = append(cmds, watchCmd)
 	}
@@ -734,6 +739,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prs[msg.slice] = msg.prs
 		delete(m.prLoading, msg.slice)
 		m.refreshRight()
+		return m, persistCommentsCmd(msg.slice, msg.prs)
+
+	case commentCacheMsg:
+		m.commentCache = msg.store
+
+	case prsTickMsg:
+		// Periodically refresh the focused slice's PRs/comments so counts and the
+		// comments overlay stay current without manual reload.
+		var cmd tea.Cmd
+		if m.view == viewCockpit {
+			cmd = m.forceLoadPRs()
+		}
+		return m, tea.Batch(cmd, prsTickCmd())
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks

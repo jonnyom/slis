@@ -19,6 +19,8 @@ type Paths struct {
 	Prefs string
 	// WorkspacesDir holds generated editor workspace files (e.g. .code-workspace).
 	WorkspacesDir string
+	// Comments is the path to the persisted PR-comment cache (survives slice removal).
+	Comments string
 }
 
 // stateBase returns the base directory for XDG state, honouring XDG_STATE_HOME
@@ -58,6 +60,7 @@ func StatePaths() Paths {
 		EventsDir:     filepath.Join(stateDir, "events"),
 		Prefs:         filepath.Join(stateDir, "prefs.json"),
 		WorkspacesDir: filepath.Join(stateDir, "workspaces"),
+		Comments:      filepath.Join(stateDir, "comments.json"),
 	}
 }
 

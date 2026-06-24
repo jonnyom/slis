@@ -58,8 +58,9 @@ func TestPrsLoadedMsg(t *testing.T) {
 	})
 	m = next.(Model)
 
-	if cmd != nil {
-		t.Errorf("after prsLoadedMsg: want nil cmd, got non-nil")
+	// prsLoadedMsg now also returns a cmd to persist comments to the cache.
+	if cmd == nil {
+		t.Errorf("after prsLoadedMsg: want a persist cmd, got nil")
 	}
 
 	slicePRs, ok := m.prs["s"]
