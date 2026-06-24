@@ -157,6 +157,10 @@ type Model struct {
 	// Persisted PR comments (survive slice removal; backs the overlay fallback).
 	commentCache commentcache.Store
 
+	// awaitCommentsFor is the slice we just entered and want to auto-show comments
+	// for once its fresh PR load lands ("" = nothing pending).
+	awaitCommentsFor string
+
 	// Comments overlay.
 	showCommentsOverlay bool
 	commentsSel         int
@@ -738,6 +742,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case prsLoadedMsg:
 		m.prs[msg.slice] = msg.prs
 		delete(m.prLoading, msg.slice)
+		// Auto-show comments for a slice we just opened, once, if it has any.
+		if msg.slice == m.awaitCommentsFor {
+			m.awaitCommentsFor = ""
+			if m.view == viewCockpit && sliceHasComments(msg.prs, m.commentCache[msg.slice]) {
+				m.showCommentsOverlay = true
+				m.commentsSel = 0
+			}
+		}
 		m.refreshRight()
 		return m, persistCommentsCmd(msg.slice, msg.prs)
 

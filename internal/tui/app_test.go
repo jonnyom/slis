@@ -7,8 +7,42 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/model"
 )
+
+// TestEnterCockpitAutoShowsComments verifies that opening a slice arms a fresh
+// comment check, and the overlay auto-opens once the load lands iff comments exist.
+func TestEnterCockpitAutoShowsComments(t *testing.T) {
+	m := threeSlices(t) // focus=0 → "alpha", browser view
+
+	next, _ := m.Update(keyMsg('l')) // open the cockpit
+	m = next.(Model)
+	if m.awaitCommentsFor != "alpha" {
+		t.Fatalf("awaitCommentsFor = %q, want alpha", m.awaitCommentsFor)
+	}
+
+	// Fresh load WITH comments → overlay auto-opens, flag clears.
+	withComments := map[string]*forge.PR{"web": {Number: 1, Comments: []forge.Comment{{Author: "a", Body: "hi"}}}}
+	next, _ = m.Update(prsLoadedMsg{slice: "alpha", prs: withComments})
+	m = next.(Model)
+	if !m.showCommentsOverlay {
+		t.Error("comments overlay should auto-open on enter when comments exist")
+	}
+	if m.awaitCommentsFor != "" {
+		t.Error("awaitCommentsFor should be cleared after auto-show")
+	}
+
+	// Re-entering a slice with NO comments must not pop the overlay.
+	m.showCommentsOverlay = false
+	m.awaitCommentsFor = "beta"
+	m.view = viewCockpit
+	next, _ = m.Update(prsLoadedMsg{slice: "beta", prs: map[string]*forge.PR{"web": {Number: 2}}})
+	m = next.(Model)
+	if m.showCommentsOverlay {
+		t.Error("overlay should not open when the slice has no comments")
+	}
+}
 
 // threeSlices returns a model with three named slices already loaded (loading=false).
 func threeSlices(t *testing.T) Model {

@@ -683,7 +683,12 @@ func (m *Model) enterCockpit() tea.Cmd {
 	m.repoSel, m.prSel, m.procSel = 0, 0, 0
 	m.status = ""
 	m.resizeViewport()
-	cmds := []tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.maybeLoadPRs(), m.maybeLoadProcs()}
+	// Opening a slice checks for fresh comments and pops the overlay if any exist
+	// (handled when the forced PR load lands, see prsLoadedMsg).
+	if sl, ok := m.currentSlice(); ok {
+		m.awaitCommentsFor = sl.Name
+	}
+	cmds := []tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.forceLoadPRs(), m.maybeLoadProcs()}
 	m.refreshRight()
 	return tea.Batch(filterNil(cmds)...)
 }

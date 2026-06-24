@@ -161,6 +161,22 @@ func persistCommentsCmd(slice string, prs map[string]*forge.PR) tea.Cmd {
 	}
 }
 
+// sliceHasComments reports whether a slice has any comments, in freshly-loaded
+// PRs or (fallback) the persisted cache.
+func sliceHasComments(prs map[string]*forge.PR, cache map[string]commentcache.RepoComments) bool {
+	for _, pr := range prs {
+		if pr != nil && len(pr.Comments) > 0 {
+			return true
+		}
+	}
+	for _, rc := range cache {
+		if len(rc.Comments) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // prsTickMsg drives periodic refresh of the focused slice's PRs/comments.
 type prsTickMsg struct{}
 
