@@ -17,6 +17,8 @@ type Paths struct {
 	EventsDir string
 	// Prefs is the path to the small UI-preferences file (persistent toggles).
 	Prefs string
+	// WorkspacesDir holds generated editor workspace files (e.g. .code-workspace).
+	WorkspacesDir string
 }
 
 // stateBase returns the base directory for XDG state, honouring XDG_STATE_HOME
@@ -55,6 +57,7 @@ func StatePaths() Paths {
 		ActiveJournal: filepath.Join(stateDir, "active.json"),
 		EventsDir:     filepath.Join(stateDir, "events"),
 		Prefs:         filepath.Join(stateDir, "prefs.json"),
+		WorkspacesDir: filepath.Join(stateDir, "workspaces"),
 	}
 }
 
@@ -64,7 +67,10 @@ func (p Paths) EnsureDirs() error {
 	if err := os.MkdirAll(p.StateDir, 0o755); err != nil {
 		return err
 	}
-	return os.MkdirAll(p.EventsDir, 0o755)
+	if err := os.MkdirAll(p.EventsDir, 0o755); err != nil {
+		return err
+	}
+	return os.MkdirAll(p.WorkspacesDir, 0o755)
 }
 
 // ConfigDir returns the slis configuration directory:
