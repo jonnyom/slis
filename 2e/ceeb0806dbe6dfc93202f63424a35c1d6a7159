@@ -1,0 +1,32 @@
+internal/cleanup/cleanup.go
+  s_f952113662ebc3::t_3fd1a0b3345d77 68-73,76-80
+  s_f952113662ebc3::t_901b3a112718b9 114
+  s_f952113662ebc3::t_bb22cbeae16110 9-10,14,20-22
+internal/cli/rm.go
+  s_f952113662ebc3::t_a6125628450bc2 47
+  s_f952113662ebc3::t_13800adbc7a2b1 66-69
+internal/tui/app.go
+  s_f952113662ebc3::t_a918274f220a97 516-524
+internal/cleanup/cleanup_test.go
+  s_f952113662ebc3::t_05306628a99772 61
+  s_f952113662ebc3::t_4341bdebfc89ba 81-109
+  s_f952113662ebc3::t_e3d3fdd554cd56 12
+  s_f952113662ebc3::t_3d7076f2c4499b 33-36
+  s_f952113662ebc3::t_adfd0491389829 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "2eceeb0806dbe6dfc93202f63424a35c1d6a7159",
+  "prompts": {},
+  "sessions": {
+    "s_f952113662ebc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc43aca5-0579-456e-a732-035b6d1b1727",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
