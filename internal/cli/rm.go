@@ -44,7 +44,7 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 			return err
 		}
 
-		opts := cleanup.Options{DeleteBranches: !keepBranches, Force: force}
+		opts := cleanup.Options{DeleteBranches: !keepBranches, Force: force, ActiveJournal: sp.ActiveJournal}
 
 		if dry {
 			p := cleanup.PlanRemove(sl, opts)
@@ -63,7 +63,10 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 			return nil
 		}
 
-		rep := cleanup.Remove(ws, sl, opts)
+		rep, err := cleanup.Remove(ws, sl, opts)
+		if err != nil {
+			return err
+		}
 		clearSliceState(sp, name)
 
 		fmt.Printf("Removed slice %q:\n", rep.Slice)

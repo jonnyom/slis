@@ -6,16 +6,20 @@
 package cleanup
 
 import (
+	"fmt"
+
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
 // Options controls what a removal touches.
 type Options struct {
-	DeleteBranches bool // also delete each member branch (git branch -d, merged-only)
-	Force          bool // git worktree remove --force + git branch -D
+	DeleteBranches bool   // also delete each member branch (git branch -d, merged-only)
+	Force          bool   // git worktree remove --force + git branch -D
+	ActiveJournal  string // path to the swap journal; when set, Remove refuses a live slice
 }
 
 // RepoResult is the per-repo outcome of a removal.
@@ -61,8 +65,19 @@ func PlanRemove(sl model.Slice, opts Options) Plan {
 // Remove performs the cleanup for sl using the repo primaries from ws. The
 // worktree is removed first so the branch is no longer checked out and can be
 // deleted. Per-repo errors are captured in the Report rather than aborting.
-func Remove(ws config.Workspace, sl model.Slice, opts Options) Report {
+//
+// If opts.ActiveJournal is set, Remove re-reads the journal at removal time and
+// refuses (returning an error, touching nothing) when the slice is currently
+// live (swapped in). This is the authoritative, race-free guard — callers must
+// not rely on a stale in-memory "is live" flag.
+func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 	rep := Report{Slice: sl.Name}
+
+	if opts.ActiveJournal != "" {
+		if j, _ := swap.Load(opts.ActiveJournal); j != nil && j.Slice == sl.Name {
+			return rep, fmt.Errorf("slice %q is live (swapped in); run `slis deactivate` first", sl.Name)
+		}
+	}
 
 	allRemoved := len(sl.Repos()) > 0
 	for _, repo := range sl.Repos() {
@@ -96,5 +111,5 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) Report {
 		}
 	}
 
-	return rep
+	return rep, nil
 }

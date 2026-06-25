@@ -513,7 +513,15 @@ func (m Model) removeCmd(slices []string, force bool) tea.Cmd {
 		sp := config.StatePaths()
 		cleared, failed := 0, ""
 		for _, sl := range targets {
-			rep := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: force})
+			rep, err := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: force, ActiveJournal: sp.ActiveJournal})
+			if err != nil {
+				// Slice went live between the last refresh and now — the engine's
+				// journal re-check refused it. Don't clear it.
+				if failed == "" {
+					failed = sl.Name + " (live)"
+				}
+				continue
+			}
 			ok := len(rep.Repos) > 0
 			for _, r := range rep.Repos {
 				if r.Err != "" {

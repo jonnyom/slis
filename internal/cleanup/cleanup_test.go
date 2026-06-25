@@ -9,6 +9,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/testutil"
 )
 
@@ -29,7 +30,10 @@ func TestRemoveDeletesWorktreeAndMergedBranch(t *testing.T) {
 	testutil.AddWorktree(t, repo, "feat", wt) // branch tips at main HEAD → merged
 
 	ws, sl := sliceFor("r", repo, "feat", wt)
-	rep := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true})
+	rep, err := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true})
+	if err != nil {
+		t.Fatalf("Remove returned error: %v", err)
+	}
 
 	if _, err := os.Stat(wt); !os.IsNotExist(err) {
 		t.Errorf("worktree dir should be gone, stat err = %v", err)
@@ -54,7 +58,7 @@ func TestRemoveRefusesDirtyWithoutForce(t *testing.T) {
 
 	ws, sl := sliceFor("r", repo, "feat2", wt)
 
-	rep := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true})
+	rep, _ := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true})
 	if rep.Repos[0].WorktreeRemoved {
 		t.Error("dirty worktree should NOT be removed without force")
 	}
@@ -65,12 +69,41 @@ func TestRemoveRefusesDirtyWithoutForce(t *testing.T) {
 		t.Errorf("worktree should still exist, got %v", err)
 	}
 
-	rep2 := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: true})
+	rep2, _ := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, Force: true})
 	if !rep2.Repos[0].WorktreeRemoved {
 		t.Error("force should remove the dirty worktree")
 	}
 	if _, err := os.Stat(wt); !os.IsNotExist(err) {
 		t.Error("worktree dir should be gone after forced removal")
+	}
+}
+
+// TestRemoveRefusesLiveSlice verifies the race-free guard: when the journal
+// records the slice as live, Remove errors and touches nothing — even if a UI
+// thought the slice was idle.
+func TestRemoveRefusesLiveSlice(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat-live", wt)
+
+	journal := filepath.Join(t.TempDir(), "active.json")
+	if err := swap.Save(journal, &swap.Journal{Slice: "s"}); err != nil {
+		t.Fatalf("seed journal: %v", err)
+	}
+
+	ws, sl := sliceFor("r", repo, "feat-live", wt) // slice name "s" matches the journal
+	rep, err := cleanup.Remove(ws, sl, cleanup.Options{DeleteBranches: true, ActiveJournal: journal})
+	if err == nil {
+		t.Fatal("expected Remove to refuse a live slice")
+	}
+	if len(rep.Repos) != 0 {
+		t.Errorf("a refused removal must touch nothing, got %+v", rep.Repos)
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Errorf("worktree must be untouched, stat err = %v", err)
+	}
+	if !git.RefExists(repo, "feat-live") {
+		t.Error("branch must be untouched")
 	}
 }
 
