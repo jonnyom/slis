@@ -1,0 +1,24 @@
+internal/discovery/discovery.go
+  s_f952113662ebc3::t_1a29ac5544a7f5 53-59
+  s_f952113662ebc3::t_fa8b363f59a6a5 8
+internal/swap/journal.go
+  s_f952113662ebc3::t_07aa5f74194332 34-36,45-53
+internal/cli/adopt.go
+  s_f952113662ebc3::t_94292339eafd9e 71-73,84-85,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "078aa494be242468b48d9ba0394adf6bcca55736",
+  "prompts": {},
+  "sessions": {
+    "s_f952113662ebc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc43aca5-0579-456e-a732-035b6d1b1727",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
