@@ -6,6 +6,11 @@ The unit of work is a **slice** — one feature's worktrees across all your repo
 
 The swap is the part that earns its keep, and it's careful with your work: it detaches each primary to the slice's branch tip (it never touches the worktrees), refuses to run over uncommitted changes unless you ask it to stash, and keeps a journal so deactivating puts everything back exactly as it was.
 
+### Disclaimer
+This tool was built for a very specific personal purpose. I work across multiple repositories a lot. This works with LLM agents, but isn't a requirement. Think of it as a worktree / slice manager more than anything.
+
+I will also announce that I have 100% vibe coded this. It's a personal project, I had a specific problem to solve, and the code completeness wasn't very important to me. I'm mostly sharing so other people can use it if they find it useful.
+
 ## Install
 
 ### Homebrew (recommended)
