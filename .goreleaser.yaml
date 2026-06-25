@@ -22,10 +22,33 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-# Homebrew distribution is hand-managed in the jonnyom/homebrew-tap repo via a
-# source-build formula (git clone + go build), so a private repo installs with
-# no tokens/secrets. See that repo's Formula/slis.rb. GoReleaser here only builds
-# downloadable binary archives + GitHub releases.
+# Publish a prebuilt Homebrew cask to jonnyom/homebrew-tap on every tag, so
+# `brew install jonnyom/homebrew-tap/slis` downloads a binary with no build step.
+# (Homebrew now prefers casks over formulae for prebuilt binaries; GoReleaser
+# deprecated the old `brews` block in favour of `homebrew_casks`.) The push needs
+# a PAT with write access to the tap repo, provided as the HOMEBREW_TAP_GITHUB_TOKEN
+# env var (set from a repo secret of the same name in release.yml).
+homebrew_casks:
+  - name: slis
+    binaries: [slis]
+    directory: Casks
+    repository:
+      owner: jonnyom
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/jonnyom/slis"
+    description: "Multi-repo worktree cockpit: a TUI + CLI for working across many git repos at once"
+    commit_author:
+      name: goreleaser-bot
+      email: goreleaser@users.noreply.github.com
+    # The binary is unsigned, so strip the macOS quarantine flag on install to
+    # avoid Gatekeeper blocking it as "damaged".
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/slis"]
+          end
 
 release:
   github:

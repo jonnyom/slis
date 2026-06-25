@@ -94,6 +94,6 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 
 ## Gotchas / environment
 
-- The repo is **private**. Homebrew install is a source-build formula in `jonnyom/homebrew-tap` (`brew install --HEAD jonnyom/homebrew-tap/slis`) — no tokens; it clones via the user's git auth and builds. When the repo goes public, switch the tap formula to prebuilt GoReleaser binaries.
+- Homebrew install is a **prebuilt cask** in `jonnyom/homebrew-tap` (`brew install jonnyom/homebrew-tap/slis`), published by GoReleaser (the `homebrew_casks` block in `.goreleaser.yaml`) on every `vX.Y.Z` tag. The release workflow needs a `HOMEBREW_TAP_GITHUB_TOKEN` repo secret (PAT with write access to the tap) to push the cask. The binary is unsigned, so the cask's `postflight` strips the macOS quarantine flag. (Cut a release by tagging: `git tag vX.Y.Z && git push origin vX.Y.Z`.)
 - `gh` must be authenticated for `forge`/PR features; if a shell's keyring auth is flaky, `export GH_TOKEN="$(gh auth token)"` before running.
 - `slis init [root] --repos a,b,c --strip-prefix jonny/` writes `workspace.yaml`; slices are then auto-discovered.
