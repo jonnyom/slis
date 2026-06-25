@@ -1,0 +1,59 @@
+internal/forge/testdata/pr_reviews.json
+  s_f952113662ebc3::t_1bab38777f788d 1-49
+internal/tui/app_test.go
+  s_f952113662ebc3::t_0c006c72cc6faa 14-17,20,22-26,29,33-34
+internal/tui/cockpit.go
+  s_f952113662ebc3::t_c09c1fe9d02b66 440-441
+  s_f952113662ebc3::t_35cb585a93fbd8 221
+  s_f952113662ebc3::t_f51193c860fa64 338-341
+  s_f952113662ebc3::t_d179bc8a33d72b 227
+  s_f952113662ebc3::t_8eba7a4bb50b7f 717-718
+  s_f952113662ebc3::t_4d67602d7c512f 594-598
+  s_f952113662ebc3::t_988ccea9afb175 494-495,497-499,503-506,508,510-520,526-539,546,548
+internal/forge/testdata/comments_inline.json
+  s_f952113662ebc3::t_937aee33902d6e 1-20
+internal/tui/prview.go
+  s_f952113662ebc3::t_71dbc04d7fa5fd 277-302,304-306
+  s_f952113662ebc3::t_f6f54f3eaf0160 142-148
+  s_f952113662ebc3::t_10704dd4e8468a 307-337,341-342,348-349,359-366,370-372,374-383,385
+internal/forge/forge.go
+  s_f952113662ebc3::t_6e4f5a869b71d5 219-230,233,235-237
+  s_f952113662ebc3::t_14096225e7930d 251,258-271
+  s_f952113662ebc3::t_98a1361c1c2b5a 290
+  s_f952113662ebc3::t_173e14c22c84c2 11
+  s_f952113662ebc3::t_4fb89fd774be2e 40-54,61-65
+  s_f952113662ebc3::t_81e62053b28556 322-373,375-376,378,380-413
+  s_f952113662ebc3::t_fd331e2d6b4b39 111-137,147
+  s_f952113662ebc3::t_5b8e9829fcfaf9 374,377,379
+internal/tui/app.go
+  s_f952113662ebc3::t_8da23f2faff2c4 157
+  s_f952113662ebc3::t_69a3e2615a1790 907
+  s_f952113662ebc3::t_bbf61111e5592b 777-781
+  s_f952113662ebc3::t_efe95c61d7742c 330-362
+internal/commentcache/commentcache.go
+  s_f952113662ebc3::t_44d73d04769078 15-17,19-23
+internal/forge/forge_test.go
+  s_f952113662ebc3::t_86f3c87986b36b 275-368
+internal/tui/prview_test.go
+  s_f952113662ebc3::t_7dbacac467127d 143-144,146-149,151,153-155,159-161,163-164,167-173,175,177-185,189-191,193-201,203-205,207-227,229,231-236,238,240-245
+  s_f952113662ebc3::t_e1c4a3568e2b4e 7,9
+internal/tui/slicelist.go
+  s_f952113662ebc3::t_90b1e67c5806a4 696-699
+  s_f952113662ebc3::t_ef4191b6fd91b6 1040-1042
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "4539d6b6bbfb494f972adc6a7d6e6feea6a01d79",
+  "prompts": {},
+  "sessions": {
+    "s_f952113662ebc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc43aca5-0579-456e-a732-035b6d1b1727",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
