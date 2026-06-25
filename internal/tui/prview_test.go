@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-
+	"github.com/jonnyom/slis/internal/commentcache"
 	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
@@ -140,95 +140,108 @@ func TestPRsPanelLoading(t *testing.T) {
 	}
 }
 
-// TestCommentsOverlayToggle verifies that pressing "c" opens the overlay and
-// pressing "c" again (or esc) closes it.
-func TestCommentsOverlayToggle(t *testing.T) {
+// TestPRsPanelReviewBadge verifies the PRs panel surfaces the review-decision badge.
+func TestPRsPanelReviewBadge(t *testing.T) {
 	m := prTestModel(t)
-
-	if m.showCommentsOverlay {
-		t.Fatal("showCommentsOverlay should start false")
+	pr := &forge.PR{
+		Branch: "feature-s", Number: 9, State: "OPEN",
+		ReviewDecision: "CHANGES_REQUESTED",
+		Checks:         []forge.Check{{Name: "ci", State: forge.CheckFail}},
 	}
+	m.prs = map[string]map[string]*forge.PR{"s": {"web": pr}}
 
-	// Press "c" → open overlay.
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
-	m = next.(Model)
-	if !m.showCommentsOverlay {
-		t.Error("after 'c': showCommentsOverlay should be true")
-	}
-
-	// Press "c" again → close overlay.
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
-	m = next.(Model)
-	if m.showCommentsOverlay {
-		t.Error("after second 'c': showCommentsOverlay should be false")
-	}
-
-	// Open again, then press esc.
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
-	m = next.(Model)
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = next.(Model)
-	if m.showCommentsOverlay {
-		t.Error("after esc: showCommentsOverlay should be false")
+	out := prsPanelContent(m, m.slices[0])
+	if !strings.Contains(out, "changes") {
+		t.Errorf("prsPanelContent: expected review badge 'changes'; got:\n%s", out)
 	}
 }
 
-// TestRenderCommentsOverlay verifies that when a slice has a PR with a comment,
-// the overlay shows the author name and comment body.
-func TestRenderCommentsOverlay(t *testing.T) {
+// TestPrDetailContentComments verifies issue, review, and inline comments all
+// render inline in the PR pane with their kind labels (no separate overlay).
+func TestPrDetailContentComments(t *testing.T) {
 	m := prTestModel(t)
+	m.panel = panelPRs
+	m.viewport.Width = 80
 
 	pr := &forge.PR{
-		Branch:   "feature-s",
-		Number:   3,
-		URL:      "https://github.com/example/web/pull/3",
-		State:    "OPEN",
-		Comments: []forge.Comment{{Author: "alice", Body: "please fix"}},
+		Branch: "feature-s", Number: 3, State: "OPEN",
+		ReviewDecision: "CHANGES_REQUESTED",
+		Comments: []forge.Comment{
+			{Author: "alice", Body: "top-level note", Kind: forge.CommentIssue},
+			{Author: "mahesh", Body: "approving but fix this", Kind: forge.CommentReview, Context: "changes_requested"},
+			{Author: "cubic", Body: "off-by-one here", Kind: forge.CommentInline, Context: "src/foo.go:42"},
+		},
 	}
-	m.prs = map[string]map[string]*forge.PR{
-		"s": {"web": pr},
-	}
-	m.showCommentsOverlay = true
+	m.prs = map[string]map[string]*forge.PR{"s": {"web": pr}}
 
-	output := renderCommentsOverlay(m)
-
-	if !strings.Contains(output, "alice") {
-		t.Errorf("renderCommentsOverlay: expected 'alice' in output; got:\n%s", output)
-	}
-	if !strings.Contains(output, "please fix") {
-		t.Errorf("renderCommentsOverlay: expected 'please fix' in output; got:\n%s", output)
+	out := prDetailContent(m, m.slices[0])
+	for _, want := range []string{
+		"alice", "top-level note",
+		"mahesh", "approving but fix this", "✗ changes",
+		"cubic", "off-by-one here", "📝 src/foo.go:42",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("prDetailContent missing %q; got:\n%s", want, out)
+		}
 	}
 }
 
-// TestCommentsOverlayScrollKeys verifies j/k adjust commentsSel when the overlay is open.
-func TestCommentsOverlayScrollKeys(t *testing.T) {
+// TestPrDetailContentCachedComments verifies that when there's no live PR, cached
+// comments still render — comments survive a cleared slice.
+func TestPrDetailContentCachedComments(t *testing.T) {
 	m := prTestModel(t)
-	m.showCommentsOverlay = true
-	m.commentsSel = 0
-
-	// Enough comments that rendered lines exceed the scroll window (each comment
-	// renders as header + body + blank ≈ 3 lines; window is 22).
-	cs := make([]forge.Comment, 0, 12)
-	for i := 0; i < 12; i++ {
-		cs = append(cs, forge.Comment{Author: "a", Body: "comment body"})
-	}
-	m.prs = map[string]map[string]*forge.PR{
-		"s": {"web": &forge.PR{Number: 1, Comments: cs}},
+	m.panel = panelPRs
+	m.viewport.Width = 80
+	m.prs = map[string]map[string]*forge.PR{"s": {"web": nil}}
+	m.commentCache = commentcache.Store{
+		"s": {"web": commentcache.RepoComments{
+			PR: 7, URL: "u",
+			Comments: []commentcache.Comment{{Author: "ghost", Body: "from the cache"}},
+		}},
 	}
 
-	// commentsSel is a scroll offset now: "j" scrolls down one line.
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	m = next.(Model)
-	if m.commentsSel != 1 {
-		t.Errorf("after j in comments overlay: want commentsSel=1, got %d", m.commentsSel)
+	out := prDetailContent(m, m.slices[0])
+	if !strings.Contains(out, "ghost") || !strings.Contains(out, "from the cache") {
+		t.Errorf("prDetailContent: expected cached comments to render; got:\n%s", out)
 	}
+}
 
-	// "k" scrolls back up; another "k" at the top stays clamped at 0.
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	m = next.(Model)
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	m = next.(Model)
-	if m.commentsSel != 0 {
-		t.Errorf("after k at top: want commentsSel=0, got %d", m.commentsSel)
+// TestReviewBadge covers the decision→badge mapping.
+func TestReviewBadge(t *testing.T) {
+	cases := map[string]string{
+		"APPROVED":          "approved",
+		"CHANGES_REQUESTED": "changes",
+		"REVIEW_REQUIRED":   "review",
+		"":                  "",
+	}
+	for dec, want := range cases {
+		got := reviewBadge(dec)
+		if want == "" {
+			if got != "" {
+				t.Errorf("reviewBadge(%q) = %q, want empty", dec, got)
+			}
+			continue
+		}
+		if !strings.Contains(got, want) {
+			t.Errorf("reviewBadge(%q) = %q, want substring %q", dec, got, want)
+		}
+	}
+}
+
+// TestRepoDiffContentNoFlicker verifies a cached diff keeps rendering while a
+// background refresh is in flight (diffLoading=true), instead of flashing "loading".
+func TestRepoDiffContentNoFlicker(t *testing.T) {
+	m := prTestModel(t)
+	m.diffs = map[string][]diff.RepoDiff{
+		"s": {{Repo: "web", Files: []diff.FileStat{{Path: "a.go", Added: 1}}}},
+	}
+	m.diffLoading = map[string]bool{"s": true} // refresh in flight
+
+	out := repoDiffContent(m, m.slices[0])
+	if strings.Contains(out, "loading diff") {
+		t.Errorf("repoDiffContent should render the cached diff during refresh, not 'loading'; got:\n%s", out)
+	}
+	if !strings.Contains(out, "a.go") {
+		t.Errorf("repoDiffContent: expected cached file 'a.go'; got:\n%s", out)
 	}
 }

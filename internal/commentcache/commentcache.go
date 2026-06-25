@@ -12,11 +12,15 @@ import (
 	"sort"
 )
 
-// Comment is one cached PR comment.
+// Comment is one cached PR comment. Kind/Context mirror forge.Comment so cached
+// comments keep their issue/review/inline labelling; older cache files lacking
+// these fields decode to zero values (issue kind, no context).
 type Comment struct {
-	Author string `json:"author"`
-	Body   string `json:"body"`
-	URL    string `json:"url"`
+	Author  string `json:"author"`
+	Body    string `json:"body"`
+	URL     string `json:"url"`
+	Kind    int    `json:"kind,omitempty"`
+	Context string `json:"context,omitempty"`
 }
 
 // RepoComments holds one repo's PR comments within a slice.

@@ -272,6 +272,100 @@ func TestStackMarkdownNilSkipped(t *testing.T) {
 	}
 }
 
+// TestParsePRReviews verifies that bodied review submissions become comments
+// (tagged CommentReview with the review state as Context) while bare approvals
+// and pending/dismissed reviews are skipped.
+func TestParsePRReviews(t *testing.T) {
+	data, err := os.ReadFile("testdata/pr_reviews.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	pr, err := forge.ParsePR("feature/punch", data)
+	if err != nil {
+		t.Fatalf("ParsePR error: %v", err)
+	}
+	// 1 issue comment + mahesh (approved, bodied) + reviewer (changes_requested).
+	// someone (bare approval) and draft (pending) are skipped.
+	if len(pr.Comments) != 3 {
+		t.Fatalf("len(Comments): got %d, want 3 (%+v)", len(pr.Comments), pr.Comments)
+	}
+
+	var sawMahesh, sawChanges bool
+	for _, c := range pr.Comments {
+		if c.Author == "someone" {
+			t.Errorf("bare approval (no body) should be skipped, but was included: %+v", c)
+		}
+		if c.Author == "mahesh" {
+			sawMahesh = true
+			if c.Kind != forge.CommentReview {
+				t.Errorf("mahesh review Kind: got %v, want CommentReview", c.Kind)
+			}
+			if c.Context != "approved" {
+				t.Errorf("mahesh review Context: got %q, want approved", c.Context)
+			}
+			if !strings.Contains(c.Body, "Approving it") {
+				t.Errorf("mahesh review body: got %q", c.Body)
+			}
+		}
+		if c.Context == "changes_requested" {
+			sawChanges = true
+			if c.Kind != forge.CommentReview {
+				t.Errorf("changes-requested Kind: got %v, want CommentReview", c.Kind)
+			}
+		}
+	}
+	if !sawMahesh {
+		t.Error("expected mahesh's bodied approval as a review comment")
+	}
+	if !sawChanges {
+		t.Error("expected a changes_requested review comment")
+	}
+}
+
+// TestParseInlineComments verifies inline review comments parse into
+// CommentInline entries with a "path:line" Context, falling back to
+// original_line when line is 0.
+func TestParseInlineComments(t *testing.T) {
+	data, err := os.ReadFile("testdata/comments_inline.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	cs, err := forge.ParseInlineComments(data)
+	if err != nil {
+		t.Fatalf("ParseInlineComments error: %v", err)
+	}
+	if len(cs) != 2 {
+		t.Fatalf("len: got %d, want 2", len(cs))
+	}
+	if cs[0].Kind != forge.CommentInline {
+		t.Errorf("Kind: got %v, want CommentInline", cs[0].Kind)
+	}
+	if cs[0].Context != "src/foo.go:42" {
+		t.Errorf("Context[0]: got %q, want src/foo.go:42", cs[0].Context)
+	}
+	if cs[0].Author != "cubic" {
+		t.Errorf("Author[0]: got %q, want cubic", cs[0].Author)
+	}
+	// line == 0 → fall back to original_line (7).
+	if cs[1].Context != "src/bar.go:7" {
+		t.Errorf("Context[1]: got %q, want src/bar.go:7 (original_line fallback)", cs[1].Context)
+	}
+}
+
+// TestParseInlineCommentsEmpty verifies empty/blank input yields no comments,
+// no error.
+func TestParseInlineCommentsEmpty(t *testing.T) {
+	for _, in := range [][]byte{nil, []byte("  "), []byte("[]")} {
+		cs, err := forge.ParseInlineComments(in)
+		if err != nil {
+			t.Errorf("ParseInlineComments(%q) error: %v", in, err)
+		}
+		if len(cs) != 0 {
+			t.Errorf("ParseInlineComments(%q): got %d comments, want 0", in, len(cs))
+		}
+	}
+}
+
 // TestCheckStateJSONRoundtrip ensures CheckState values are numerically stable.
 func TestCheckStateJSONRoundtrip(t *testing.T) {
 	states := []forge.CheckState{forge.CheckPending, forge.CheckPass, forge.CheckFail}

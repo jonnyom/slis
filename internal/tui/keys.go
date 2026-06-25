@@ -60,7 +60,6 @@ var cockpitBindings = []Binding{
 	{[]string{"o"}, "open the selected repo's worktree in your editor"},
 	{[]string{"e"}, "open the whole slice in your editor (all repos, one window)"},
 	{[]string{"y", "Y"}, "yank diff / PR-stack markdown"},
-	{[]string{"c"}, "PR comments overlay"},
 	{[]string{"r"}, "refresh session capture (Session panel)"},
 	{[]string{"O"}, "open the focused PR in your browser"},
 	{[]string{"v"}, "view failed-CI logs in the right pane"},

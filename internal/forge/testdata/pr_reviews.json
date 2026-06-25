@@ -1,0 +1,49 @@
+{
+  "number": 8107,
+  "url": "https://github.com/Noryai/nory/pull/8107",
+  "state": "OPEN",
+  "title": "fix(punch): forward downstream error status",
+  "headRefName": "feature/punch",
+  "reviewDecision": "APPROVED",
+  "statusCheckRollup": [],
+  "comments": [
+    {
+      "id": "IC_1",
+      "author": {"login": "jonnyom"},
+      "authorAssociation": "OWNER",
+      "body": "issue-level comment",
+      "createdAt": "2026-06-24T10:00:00Z",
+      "url": "https://github.com/Noryai/nory/pull/8107#issuecomment-1"
+    }
+  ],
+  "reviews": [
+    {
+      "author": {"login": "mahesh"},
+      "body": "Approving it, but cubic comment on the status code check seems valid.",
+      "state": "APPROVED",
+      "submittedAt": "2026-06-24T11:00:00Z",
+      "url": "https://github.com/Noryai/nory/pull/8107#pullrequestreview-1"
+    },
+    {
+      "author": {"login": "someone"},
+      "body": "",
+      "state": "APPROVED",
+      "submittedAt": "2026-06-24T11:05:00Z",
+      "url": "https://github.com/Noryai/nory/pull/8107#pullrequestreview-2"
+    },
+    {
+      "author": {"login": "reviewer"},
+      "body": "Please address the failing check before merge.",
+      "state": "CHANGES_REQUESTED",
+      "submittedAt": "2026-06-24T11:10:00Z",
+      "url": "https://github.com/Noryai/nory/pull/8107#pullrequestreview-3"
+    },
+    {
+      "author": {"login": "draft"},
+      "body": "work in progress",
+      "state": "PENDING",
+      "submittedAt": "2026-06-24T11:15:00Z",
+      "url": ""
+    }
+  ]
+}

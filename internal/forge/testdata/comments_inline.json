@@ -1,0 +1,20 @@
+[
+  {
+    "user": {"login": "cubic"},
+    "body": "off-by-one on the loop bound",
+    "path": "src/foo.go",
+    "line": 42,
+    "original_line": 40,
+    "html_url": "https://github.com/Noryai/nory/pull/8107#discussion_r1",
+    "created_at": "2026-06-24T12:00:00Z"
+  },
+  {
+    "user": {"login": "cubic"},
+    "body": "possible nil dereference here",
+    "path": "src/bar.go",
+    "line": 0,
+    "original_line": 7,
+    "html_url": "https://github.com/Noryai/nory/pull/8107#discussion_r2",
+    "created_at": "2026-06-24T12:01:00Z"
+  }
+]

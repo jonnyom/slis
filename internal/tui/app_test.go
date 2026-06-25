@@ -11,36 +11,27 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 )
 
-// TestEnterCockpitAutoShowsComments verifies that opening a slice arms a fresh
-// comment check, and the overlay auto-opens once the load lands iff comments exist.
-func TestEnterCockpitAutoShowsComments(t *testing.T) {
+// TestEnterCockpitNoModal verifies that opening a slice enters the cockpit, kicks
+// off loads, and that a landing PR load (even with comments) never routes the view
+// to a separate modal/overlay — comments live inline in the PR pane now.
+func TestEnterCockpitNoModal(t *testing.T) {
 	m := threeSlices(t) // focus=0 → "alpha", browser view
 
-	next, _ := m.Update(keyMsg('l')) // open the cockpit
+	next, cmd := m.Update(keyMsg('l')) // open the cockpit
 	m = next.(Model)
-	if m.awaitCommentsFor != "alpha" {
-		t.Fatalf("awaitCommentsFor = %q, want alpha", m.awaitCommentsFor)
+	if m.view != viewCockpit {
+		t.Fatalf("view = %v, want cockpit", m.view)
+	}
+	if cmd == nil {
+		t.Error("entering a slice should kick off loads")
 	}
 
-	// Fresh load WITH comments → overlay auto-opens, flag clears.
+	// A fresh PR load WITH comments must not change the view away from the cockpit.
 	withComments := map[string]*forge.PR{"web": {Number: 1, Comments: []forge.Comment{{Author: "a", Body: "hi"}}}}
 	next, _ = m.Update(prsLoadedMsg{slice: "alpha", prs: withComments})
 	m = next.(Model)
-	if !m.showCommentsOverlay {
-		t.Error("comments overlay should auto-open on enter when comments exist")
-	}
-	if m.awaitCommentsFor != "" {
-		t.Error("awaitCommentsFor should be cleared after auto-show")
-	}
-
-	// Re-entering a slice with NO comments must not pop the overlay.
-	m.showCommentsOverlay = false
-	m.awaitCommentsFor = "beta"
-	m.view = viewCockpit
-	next, _ = m.Update(prsLoadedMsg{slice: "beta", prs: map[string]*forge.PR{"web": {Number: 2}}})
-	m = next.(Model)
-	if m.showCommentsOverlay {
-		t.Error("overlay should not open when the slice has no comments")
+	if m.view != viewCockpit {
+		t.Error("prsLoadedMsg must not change the view (no auto-opened comments modal)")
 	}
 }
 

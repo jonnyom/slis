@@ -154,16 +154,8 @@ type Model struct {
 	prs       map[string]map[string]*forge.PR
 	prLoading map[string]bool
 
-	// Persisted PR comments (survive slice removal; backs the overlay fallback).
+	// Persisted PR comments (survive slice removal; backs the PR-pane fallback).
 	commentCache commentcache.Store
-
-	// awaitCommentsFor is the slice we just entered and want to auto-show comments
-	// for once its fresh PR load lands ("" = nothing pending).
-	awaitCommentsFor string
-
-	// Comments overlay.
-	showCommentsOverlay bool
-	commentsSel         int
 
 	// Editor picker overlay: shown when no editor is configured and several are
 	// detected. The pending request is run once the user picks (and the choice is
@@ -329,6 +321,39 @@ func (m *Model) maybeLoadProcs() tea.Cmd {
 		return nil
 	}
 	if m.procLoading[sl.Name] {
+		return nil
+	}
+	m.procLoading[sl.Name] = true
+	return loadProcsCmd(sl.Name)
+}
+
+// ── Force loaders ───────────────────────────────────────────────────────────
+// The force variants re-fetch the focused slice ignoring the cache (so entering
+// or re-focusing a slice, and the periodic tick, pull fresh data). They keep the
+// in-flight guard so a key-repeat can't issue duplicate loads; cached content
+// keeps rendering until the new result lands (no "loading…" flicker).
+
+func (m *Model) forceLoadStack() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok || m.stackLoading[sl.Name] {
+		return nil
+	}
+	m.stackLoading[sl.Name] = true
+	return loadStackCmd(sl)
+}
+
+func (m *Model) forceLoadDiff() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok || m.diffLoading[sl.Name] {
+		return nil
+	}
+	m.diffLoading[sl.Name] = true
+	return loadDiffCmd(sl, m.diffVsTrunk)
+}
+
+func (m *Model) forceLoadProcs() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok || m.procLoading[sl.Name] {
 		return nil
 	}
 	m.procLoading[sl.Name] = true
@@ -742,14 +767,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case prsLoadedMsg:
 		m.prs[msg.slice] = msg.prs
 		delete(m.prLoading, msg.slice)
-		// Auto-show comments for a slice we just opened, once, if it has any.
-		if msg.slice == m.awaitCommentsFor {
-			m.awaitCommentsFor = ""
-			if m.view == viewCockpit && sliceHasComments(msg.prs, m.commentCache[msg.slice]) {
-				m.showCommentsOverlay = true
-				m.commentsSel = 0
-			}
-		}
 		m.refreshRight()
 		return m, persistCommentsCmd(msg.slice, msg.prs)
 
@@ -757,9 +774,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.commentCache = msg.store
 
 	case prsTickMsg:
-		// Periodically refresh the focused slice's PRs so its merge state ("Ready")
-		// and comments stay current without a manual reload — in either view.
-		return m, tea.Batch(m.forceLoadPRs(), prsTickCmd())
+		// Periodically refresh the focused slice so it feels live without a manual
+		// reload — PRs/comments (merge state, "Ready"), plus the diff, stack and
+		// processes — in either view. Cached content keeps showing until each
+		// refresh lands, so there's no flicker.
+		return m, tea.Batch(m.forceLoadPRs(), m.forceLoadDiff(), m.forceLoadStack(), m.forceLoadProcs(), prsTickCmd())
 
 	case stackLoadedMsg:
 		m.stacks[msg.slice] = msg.stacks
@@ -885,7 +904,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	// Ignore while an overlay/help is up.
 	if m.showHelp || m.pendingSwap != nil || m.pendingRemove != nil ||
-		m.pendingStack != nil || m.showProcOverlay || m.showCommentsOverlay ||
+		m.pendingStack != nil || m.showProcOverlay ||
 		m.showConflictOverlay || m.showEditorPicker {
 		return m, nil
 	}
@@ -949,9 +968,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.showProcOverlay {
 		return m.updateOverlayKeys(msg)
-	}
-	if m.showCommentsOverlay {
-		return m.updateCommentsOverlayKeys(msg)
 	}
 	if m.showEditorPicker {
 		return m.updateEditorPickerKeys(msg)
@@ -1269,30 +1285,6 @@ func (m Model) updateOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateCommentsOverlayKeys handles key events while the comments overlay is open.
-func (m Model) updateCommentsOverlayKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	total := len(flattenComments(m))
-
-	switch msg.String() {
-	case "j", "down":
-		m.commentsSel = clampCommentScroll(m.commentsSel+1, total)
-	case "k", "up":
-		m.commentsSel = clampCommentScroll(m.commentsSel-1, total)
-	case "ctrl+d", "pgdown", " ":
-		m.commentsSel = clampCommentScroll(m.commentsSel+commentsWindow/2, total)
-	case "ctrl+u", "pgup":
-		m.commentsSel = clampCommentScroll(m.commentsSel-commentsWindow/2, total)
-	case "g":
-		m.commentsSel = 0
-	case "G":
-		m.commentsSel = clampCommentScroll(total, total)
-	case "c", "esc":
-		m.showCommentsOverlay = false
-	}
-
-	return m, nil
-}
-
 // View renders the current model state to a string.
 func (m Model) View() string {
 	if m.loading {
@@ -1318,9 +1310,6 @@ func (m Model) View() string {
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)
-	}
-	if m.showCommentsOverlay {
-		return renderCommentsOverlay(m)
 	}
 	if m.showConflictOverlay {
 		return renderConflictOverlay(m)

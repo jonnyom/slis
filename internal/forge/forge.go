@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/jonnyom/slis/internal/safeterm"
@@ -36,12 +37,32 @@ type Check struct {
 	URL   string
 }
 
+// CommentKind distinguishes where a comment came from on GitHub: a top-level
+// issue/conversation comment, a PR review submission (approval / changes
+// requested / commented, with an optional body), or an inline review comment
+// anchored to a diff line (e.g. Cubic).
+type CommentKind int
+
+const (
+	// CommentIssue is a top-level PR conversation comment.
+	CommentIssue CommentKind = iota
+	// CommentReview is a PR review submission's body.
+	CommentReview
+	// CommentInline is a review comment anchored to a diff line.
+	CommentInline
+)
+
 // Comment represents a single PR comment.
 type Comment struct {
 	Author    string
 	Body      string
 	CreatedAt string
 	URL       string
+	Kind      CommentKind
+	// Context labels the comment: the review state ("approved",
+	// "changes_requested", "commented") for a CommentReview, or the diff anchor
+	// ("path:line") for a CommentInline. Empty for a CommentIssue.
+	Context string
 }
 
 // PR holds the parsed representation of a GitHub pull request.
@@ -87,6 +108,33 @@ type ghComment struct {
 	URL               string   `json:"url"`
 }
 
+// ghReview mirrors one element of the `reviews` field from `gh pr view`.
+type ghReview struct {
+	Author      ghAuthor `json:"author"`
+	Body        string   `json:"body"`
+	State       string   `json:"state"` // APPROVED / CHANGES_REQUESTED / COMMENTED / DISMISSED / PENDING
+	SubmittedAt string   `json:"submittedAt"`
+	URL         string   `json:"url"`
+}
+
+// ghInlineComment mirrors one element of the REST
+// `repos/{owner}/{repo}/pulls/{n}/comments` payload (inline review comments).
+// Field names follow the REST API (snake_case), unlike `gh pr view`'s GraphQL
+// camelCase.
+type ghInlineComment struct {
+	User         ghRESTUser `json:"user"`
+	Body         string     `json:"body"`
+	Path         string     `json:"path"`
+	Line         int        `json:"line"`
+	OriginalLine int        `json:"original_line"`
+	HTMLURL      string     `json:"html_url"`
+	CreatedAt    string     `json:"created_at"`
+}
+
+type ghRESTUser struct {
+	Login string `json:"login"`
+}
+
 type ghPR struct {
 	Number            int            `json:"number"`
 	URL               string         `json:"url"`
@@ -96,6 +144,7 @@ type ghPR struct {
 	ReviewDecision    string         `json:"reviewDecision"`
 	StatusCheckRollup []ghCheckEntry `json:"statusCheckRollup"`
 	Comments          []ghComment    `json:"comments"`
+	Reviews           []ghReview     `json:"reviews"`
 }
 
 // ─── normalisation helpers ────────────────────────────────────────────────────
@@ -167,11 +216,25 @@ func statusContextState(state string) CheckState {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// reviewIsComment reports whether a PR review should surface as a comment line.
+// PENDING/DISMISSED reviews are never shown; otherwise a review is shown only
+// when it carries body text — a bare approval is conveyed by the review-decision
+// badge, not a comment.
+func reviewIsComment(state, body string) bool {
+	switch strings.ToUpper(state) {
+	case "PENDING", "DISMISSED":
+		return false
+	}
+	return strings.TrimSpace(body) != ""
+}
+
 // ParsePR parses the JSON payload produced by
 //
-//	gh pr view <branch> --json number,url,state,title,headRefName,statusCheckRollup,reviewDecision,comments
+//	gh pr view <branch> --json number,url,state,title,headRefName,statusCheckRollup,reviewDecision,comments,reviews
 //
-// and returns a *PR populated with normalised Checks and Comments.
+// and returns a *PR populated with normalised Checks and Comments (issue
+// comments plus bodied review submissions). Inline review comments are fetched
+// separately (see PRForBranch).
 // branch is stored verbatim on the returned PR (gh puts headRefName in the JSON,
 // but the caller may supply a different local branch name).
 func ParsePR(branch string, data []byte) (*PR, error) {
@@ -185,13 +248,27 @@ func ParsePR(branch string, data []byte) (*PR, error) {
 		checks = append(checks, normalizeCheck(e))
 	}
 
-	comments := make([]Comment, 0, len(raw.Comments))
+	comments := make([]Comment, 0, len(raw.Comments)+len(raw.Reviews))
 	for _, c := range raw.Comments {
 		comments = append(comments, Comment{
 			Author:    safeterm.Strip(c.Author.Login),
 			Body:      safeterm.Strip(c.Body),
 			CreatedAt: safeterm.Strip(c.CreatedAt),
 			URL:       safeterm.Strip(c.URL),
+			Kind:      CommentIssue,
+		})
+	}
+	for _, r := range raw.Reviews {
+		if !reviewIsComment(r.State, r.Body) {
+			continue
+		}
+		comments = append(comments, Comment{
+			Author:    safeterm.Strip(r.Author.Login),
+			Body:      safeterm.Strip(r.Body),
+			CreatedAt: safeterm.Strip(r.SubmittedAt),
+			URL:       safeterm.Strip(r.URL),
+			Kind:      CommentReview,
+			Context:   strings.ToLower(safeterm.Strip(r.State)),
 		})
 	}
 
@@ -210,7 +287,7 @@ func ParsePR(branch string, data []byte) (*PR, error) {
 }
 
 // jsonFields is the fixed set of fields we request from gh.
-const jsonFields = "number,url,state,title,headRefName,statusCheckRollup,reviewDecision,comments"
+const jsonFields = "number,url,state,title,headRefName,statusCheckRollup,reviewDecision,comments,reviews"
 
 // PRForBranch runs `gh pr view <branch> --json ...` in repoDir and returns the
 // parsed PR.
@@ -242,7 +319,98 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 		return nil, fmt.Errorf("forge: gh pr view: %w\nstderr: %s", err, stderr.String())
 	}
 
-	return ParsePR(branch, stdout.Bytes())
+	pr, err := ParsePR(branch, stdout.Bytes())
+	if err != nil || pr == nil {
+		return pr, err
+	}
+
+	// Inline review comments (e.g. Cubic) are not exposed by `gh pr view`; fetch
+	// them via the REST API and merge. A failure here is non-fatal — the PR still
+	// renders with issue + review comments — so we return the populated PR
+	// alongside the (wrapped) error; callers tolerate per-repo degradation.
+	inline, ierr := inlineComments(repoDir, pr.URL, pr.Number)
+	pr.Comments = append(pr.Comments, inline...)
+	sortCommentsByTime(pr.Comments)
+	if ierr != nil {
+		return pr, fmt.Errorf("forge: inline comments: %w", ierr)
+	}
+	return pr, nil
+}
+
+// prURLRe extracts owner/repo from a PR URL, e.g.
+// https://github.com/Noryai/nory/pull/8107 → ("Noryai", "nory").
+var prURLRe = regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/\d+`)
+
+// parsePRURL extracts the owner and repo from a GitHub PR URL.
+func parsePRURL(prURL string) (owner, repo string, ok bool) {
+	m := prURLRe.FindStringSubmatch(prURL)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
+// inlineComments fetches a PR's inline review comments via
+// `gh api repos/{owner}/{repo}/pulls/{number}/comments --paginate`, run in
+// repoDir. Returns (nil, nil) when gh is absent or the URL is unparseable.
+func inlineComments(repoDir, prURL string, number int) ([]Comment, error) {
+	if !Available() {
+		return nil, nil
+	}
+	owner, repo, ok := parsePRURL(prURL)
+	if !ok {
+		return nil, nil
+	}
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d/comments", owner, repo, number)
+	cmd := exec.Command("gh", "api", path, "--paginate")
+	cmd.Dir = repoDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("gh api %s: %w\nstderr: %s", path, err, stderr.String())
+	}
+	return ParseInlineComments(stdout.Bytes())
+}
+
+// ParseInlineComments parses the REST `pulls/{n}/comments` JSON array into
+// Comments tagged CommentInline with a "path:line" Context. Pure and testable.
+func ParseInlineComments(data []byte) ([]Comment, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, nil
+	}
+	var raw []ghInlineComment
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("forge: unmarshal inline comments: %w", err)
+	}
+	out := make([]Comment, 0, len(raw))
+	for _, c := range raw {
+		line := c.Line
+		if line == 0 {
+			line = c.OriginalLine
+		}
+		ctx := safeterm.Strip(c.Path)
+		if line > 0 {
+			ctx = fmt.Sprintf("%s:%d", ctx, line)
+		}
+		out = append(out, Comment{
+			Author:    safeterm.Strip(c.User.Login),
+			Body:      safeterm.Strip(c.Body),
+			CreatedAt: safeterm.Strip(c.CreatedAt),
+			URL:       safeterm.Strip(c.HTMLURL),
+			Kind:      CommentInline,
+			Context:   ctx,
+		})
+	}
+	return out, nil
+}
+
+// sortCommentsByTime stably orders comments by their CreatedAt timestamp.
+// GitHub timestamps are RFC3339, which sorts correctly lexically; empty
+// timestamps sort first.
+func sortCommentsByTime(cs []Comment) {
+	sort.SliceStable(cs, func(i, j int) bool { return cs[i].CreatedAt < cs[j].CreatedAt })
 }
 
 // CISummary aggregates the PR's checks and returns an overall state plus counts.

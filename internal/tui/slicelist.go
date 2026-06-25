@@ -693,8 +693,10 @@ func previewContent(m Model, sl model.Slice) string {
 				if strings.EqualFold(pr.State, "MERGED") {
 					sb.WriteString("  " + mergedStyle.Render(fmt.Sprintf("#%d merged", pr.Number)))
 				} else {
-					overall, _, _, _ := pr.CISummary()
-					sb.WriteString(fmt.Sprintf("  #%d %s 💬%d", pr.Number, forge.CIEmoji(overall), len(pr.Comments)))
+					sb.WriteString(fmt.Sprintf("  #%d %s 💬%d", pr.Number, ciBadge(pr), len(pr.Comments)))
+					if b := reviewBadge(pr.ReviewDecision); b != "" {
+						sb.WriteString(" " + b)
+					}
 				}
 			}
 		}
@@ -1035,7 +1037,9 @@ func (m *Model) snapFocusToFilter() {
 // slice so the right-hand preview pane can render it.
 func (m *Model) loadPreview() tea.Cmd {
 	m.previewScroll = 0 // new focus → start the preview at the top
-	return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.maybeLoadPRs(), m.maybeLoadCapture()})...)
+	// Re-fetch on focus so revisiting a slice shows fresh data; loads run off the
+	// UI goroutine and are in-flight-guarded, so fast scrolling can't pile up.
+	return tea.Batch(filterNil([]tea.Cmd{m.forceLoadStack(), m.forceLoadDiff(), m.forceLoadPRs(), m.maybeLoadCapture()})...)
 }
 
 // previewInnerHeight is the number of content lines the hub preview pane shows

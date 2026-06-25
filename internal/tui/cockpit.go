@@ -218,13 +218,13 @@ func cockpitFooter(m Model) string {
 		}
 		hint = "[tab]panel [w]swap [R]stack [a]ttach [o]pen-repo [e]dit-slice [y]ank " + split + " " + base + " [⏶⏷^d/^u]scroll [esc]back"
 	case panelPRs:
-		hint = "[tab]panel [O]open-PR [^r]rerun-CI [v]CI-logs [c]omments [F]ix-ci [esc]back"
+		hint = "[tab]panel [O]open-PR [^r]rerun-CI [v]CI-logs [F]ix-ci [esc]back"
 	case panelProcs:
 		hint = "[tab]panel [j/k]select [x]kill [X]kill-tree [w]swap [a]ttach [esc]back"
 	case panelSession:
 		hint = "[tab]panel [a]ttach [C]laude [r]refresh [w]swap [esc]back"
 	default:
-		hint = "[tab]panel [w]swap [d]clear [s]ummary [c]omments [Y]copy-stack [F]ix-ci [esc]back"
+		hint = "[tab]panel [w]swap [d]clear [s]ummary [Y]copy-stack [F]ix-ci [esc]back"
 	}
 	if m.status != "" {
 		return clip(statusErrStyle.Render(m.status), m.width)
@@ -335,8 +335,10 @@ func prsPanelContent(m Model, sl model.Slice) string {
 			case strings.EqualFold(pr.State, "MERGED"):
 				line += fmt.Sprintf("#%d ", pr.Number) + mergedStyle.Render("merged") + fmt.Sprintf(" 💬%d", len(pr.Comments))
 			default:
-				overall, _, _, _ := pr.CISummary()
-				line += fmt.Sprintf("#%d %s 💬%d", pr.Number, forge.CIEmoji(overall), len(pr.Comments))
+				line += fmt.Sprintf("#%d %s 💬%d", pr.Number, ciBadge(pr), len(pr.Comments))
+				if b := reviewBadge(pr.ReviewDecision); b != "" {
+					line += " " + b
+				}
 			}
 		default:
 			line += cockpitDimStyle.Render("—")
@@ -435,9 +437,8 @@ func repoDiffContent(m Model, sl model.Slice) string {
 		return "no repos\n"
 	}
 	repo := repos[clamp(m.repoSel, 0, len(repos)-1)]
-	if m.diffLoading[sl.Name] {
-		return "loading diff…\n"
-	}
+	// Render cached diff even while a background refresh is in flight; only show
+	// "loading…" before the first load lands.
 	diffs, ok := m.diffs[sl.Name]
 	if !ok {
 		return "loading diff…\n"
@@ -489,34 +490,62 @@ func prDetailContent(m Model, sl model.Slice) string {
 		return "no repos\n"
 	}
 	repo := repos[clamp(m.prSel, 0, len(repos)-1)]
-	if m.prLoading[sl.Name] {
-		return "loading PRs…\n"
-	}
 	slicePRs, ok := m.prs[sl.Name]
+	// Only show "loading" before the first load lands; once cached, keep rendering
+	// the cached data through a background refresh so it never flickers blank.
 	if !ok {
+		if m.prLoading[sl.Name] {
+			return "loading PRs…\n"
+		}
 		return "PRs not loaded — focus this panel to load.\n"
 	}
 	pr := slicePRs[repo]
-	if pr == nil {
-		return repo + ": no PR for this branch\n"
+
+	width := m.viewport.Width
+	if width < 20 {
+		width = 80
 	}
+
 	var sb strings.Builder
+	if pr == nil {
+		// No live PR — fall back to cached comments (the branch may be cleared).
+		blocks := repoCommentBlocks(m, sl.Name, repo, nil, width)
+		if len(blocks) == 0 {
+			return repo + ": no PR for this branch\n"
+		}
+		sb.WriteString(repo + ": no open PR — cached comments:\n\n")
+		sb.WriteString(strings.Join(blocks, "\n"))
+		return sb.String()
+	}
+
 	fmt.Fprintf(&sb, "%s  #%d  %s\n", repo, pr.Number, pr.State)
 	if pr.Title != "" {
 		sb.WriteString(pr.Title + "\n")
 	}
 	sb.WriteString(pr.URL + "\n")
+
+	// Status summary: CI rollup + counts, then the review-decision badge.
+	var parts []string
+	if len(pr.Checks) > 0 {
+		overall, pass, fail, pending := pr.CISummary()
+		parts = append(parts, fmt.Sprintf("CI %s  ✅%d ❌%d ⏳%d", forge.CIEmoji(overall), pass, fail, pending))
+	}
+	if b := reviewBadge(pr.ReviewDecision); b != "" {
+		parts = append(parts, b)
+	}
+	if len(parts) > 0 {
+		sb.WriteString(strings.Join(parts, "   ") + "\n")
+	}
+
 	if len(pr.Checks) > 0 {
 		sb.WriteString("\nCI:\n")
 		for _, c := range pr.Checks {
 			fmt.Fprintf(&sb, "  %s %s\n", forge.CIEmoji(c.State), c.Name)
 		}
 	}
-	if len(pr.Comments) > 0 {
+	if blocks := repoCommentBlocks(m, sl.Name, repo, pr, width); len(blocks) > 0 {
 		sb.WriteString("\nComments:\n")
-		for _, c := range pr.Comments {
-			sb.WriteString("  " + commentSummaryLine(repo, pr, c) + "\n")
-		}
+		sb.WriteString(strings.Join(blocks, "\n"))
 	}
 	return sb.String()
 }
@@ -560,11 +589,13 @@ func sessionDetailContent(m Model, sl model.Slice) string {
 }
 
 func procDetailContent(m Model, sl model.Slice) string {
-	if m.procLoading[sl.Name] {
-		return "sampling processes…\n"
-	}
 	procs, ok := m.procs[sl.Name]
 	if !ok {
+		// Only show "sampling…" before the first sample; afterwards keep the cached
+		// table through background refreshes (no flicker).
+		if m.procLoading[sl.Name] {
+			return "sampling processes…\n"
+		}
 		return "no tmux session for this slice — [a] to start one, or [P] for the global overlay\n"
 	}
 	if len(procs) == 0 {
@@ -683,12 +714,8 @@ func (m *Model) enterCockpit() tea.Cmd {
 	m.repoSel, m.prSel, m.procSel = 0, 0, 0
 	m.status = ""
 	m.resizeViewport()
-	// Opening a slice checks for fresh comments and pops the overlay if any exist
-	// (handled when the forced PR load lands, see prsLoadedMsg).
-	if sl, ok := m.currentSlice(); ok {
-		m.awaitCommentsFor = sl.Name
-	}
-	cmds := []tea.Cmd{m.maybeLoadStack(), m.maybeLoadDiff(), m.forceLoadPRs(), m.maybeLoadProcs()}
+	// Opening a slice always refetches everything so its panels are live.
+	cmds := []tea.Cmd{m.forceLoadStack(), m.forceLoadDiff(), m.forceLoadPRs(), m.forceLoadProcs()}
 	m.refreshRight()
 	return tea.Batch(filterNil(cmds)...)
 }
@@ -897,10 +924,6 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, m.maybeLoadPRs()
-	case "c":
-		m.showCommentsOverlay = true
-		m.commentsSel = 0
-		return m, m.forceLoadPRs() // reload comments on each open
 	case "F":
 		return m, fixCICmd(sl)
 	case "x":

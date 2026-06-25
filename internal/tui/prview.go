@@ -65,19 +65,6 @@ func wrapText(s string, width int) []string {
 	return append(lines, cur)
 }
 
-// commentsWidth is the wrap width for the comments overlay, derived from the
-// terminal width with sensible bounds.
-func commentsWidth(m Model) int {
-	w := m.width - 10
-	if w > 100 {
-		w = 100
-	}
-	if w < 40 {
-		w = 40
-	}
-	return w
-}
-
 // prsLoadedMsg is sent when PR data for a slice has been loaded off the UI goroutine.
 type prsLoadedMsg struct {
 	slice string
@@ -152,29 +139,19 @@ func persistCommentsCmd(slice string, prs map[string]*forge.PR) tea.Cmd {
 			}
 			cs := make([]commentcache.Comment, 0, len(pr.Comments))
 			for _, c := range pr.Comments {
-				cs = append(cs, commentcache.Comment{Author: c.Author, Body: c.Body, URL: c.URL})
+				cs = append(cs, commentcache.Comment{
+					Author:  c.Author,
+					Body:    c.Body,
+					URL:     c.URL,
+					Kind:    int(c.Kind),
+					Context: c.Context,
+				})
 			}
 			store.Put(slice, repo, pr.Number, pr.URL, cs)
 		}
 		_ = store.Save(path)
 		return commentCacheMsg{store: store}
 	}
-}
-
-// sliceHasComments reports whether a slice has any comments, in freshly-loaded
-// PRs or (fallback) the persisted cache.
-func sliceHasComments(prs map[string]*forge.PR, cache map[string]commentcache.RepoComments) bool {
-	for _, pr := range prs {
-		if pr != nil && len(pr.Comments) > 0 {
-			return true
-		}
-	}
-	for _, rc := range cache {
-		if len(rc.Comments) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 // prsTickMsg drives periodic refresh of the focused slice's PRs/comments.
@@ -297,32 +274,79 @@ func ciLogContent(m Model) string {
 	return m.ciLog
 }
 
-// commentLine flattens a single comment from a PR into a clean displayable line.
-// commentSummaryLine renders a comment as one compact line — repo #N author:
-// cleaned body, truncated — for the PR-detail pane's list.
-func commentSummaryLine(repo string, pr *forge.PR, c forge.Comment) string {
-	author := c.Author
-	if author == "" {
-		author = "?"
+var (
+	approvedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("35"))  // approved (green)
+	changesStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203")) // changes requested (red)
+)
+
+// reviewBadge renders a PR's review decision as a compact coloured badge.
+// Returns "" when there is no decision (so callers can append unconditionally).
+func reviewBadge(decision string) string {
+	switch strings.ToUpper(decision) {
+	case "APPROVED":
+		return approvedStyle.Render("✓ approved")
+	case "CHANGES_REQUESTED":
+		return changesStyle.Render("✗ changes")
+	case "REVIEW_REQUIRED":
+		return cockpitDimStyle.Render("· review")
 	}
-	body := cleanCommentBody(c.Body)
-	if body == "" {
-		body = "(no text)"
-	}
-	if r := []rune(body); len(r) > 100 {
-		body = string(r[:99]) + "…"
-	}
-	return fmt.Sprintf("%s #%d %s: %s", repo, pr.Number, author, body)
+	return ""
 }
 
-// commentBlock renders one comment as a header line, its cleaned body wrapped to
-// width, then a trailing blank line as a separator.
+// ciBadge renders a PR's CI rollup as an emoji plus a failing-check count when
+// any check is failing (e.g. "❌2"), for the compact hub rows.
+func ciBadge(pr *forge.PR) string {
+	overall, _, fail, _ := pr.CISummary()
+	s := forge.CIEmoji(overall)
+	if fail > 0 {
+		s += fmt.Sprintf("%d", fail)
+	}
+	return s
+}
+
+var commentHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
+
+// reviewStateLabel renders a PR review's state as a short plain-text label for a
+// comment header (the header is styled as a whole, so this stays unstyled).
+func reviewStateLabel(state string) string {
+	switch strings.ToUpper(state) {
+	case "APPROVED":
+		return "✓ approved"
+	case "CHANGES_REQUESTED":
+		return "✗ changes"
+	case "COMMENTED":
+		return "💬 review"
+	case "DISMISSED":
+		return "dismissed"
+	}
+	return "review"
+}
+
+// commentKindLabel marks a comment's origin: 💬 for an issue comment, the review
+// state for a review submission, and "📝 path:line" for an inline review comment.
+func commentKindLabel(c forge.Comment) string {
+	switch c.Kind {
+	case forge.CommentReview:
+		return reviewStateLabel(c.Context)
+	case forge.CommentInline:
+		if c.Context != "" {
+			return "📝 " + c.Context
+		}
+		return "📝 inline"
+	default:
+		return "💬"
+	}
+}
+
+// commentBlock renders one comment as a header line (kind label · repo #N ·
+// author), its cleaned body wrapped to width, then a trailing blank separator.
 func commentBlock(repo string, pr *forge.PR, c forge.Comment, width int) []string {
 	author := c.Author
 	if author == "" {
 		author = "?"
 	}
-	lines := []string{commentHeaderStyle.Render(fmt.Sprintf("%s #%d — %s", repo, pr.Number, author))}
+	header := fmt.Sprintf("%s  %s #%d — %s", commentKindLabel(c), repo, pr.Number, author)
+	lines := []string{commentHeaderStyle.Render(header)}
 
 	body := cleanCommentBody(c.Body)
 	if body == "" {
@@ -332,110 +356,31 @@ func commentBlock(repo string, pr *forge.PR, c forge.Comment, width int) []strin
 	return append(lines, "")
 }
 
-// flattenComments returns the rendered comment lines for the focused slice's
-// PRs (header + wrapped body + separator per comment). It uses live PR data when
-// present and falls back to the persisted cache otherwise — so comments still
-// show when the PR's branch has been deleted (live fetch finds nothing).
-func flattenComments(m Model) []string {
-	if len(m.slices) == 0 || m.focus < 0 || m.focus >= len(m.slices) {
-		return nil
-	}
-	sl := m.slices[m.focus]
-	width := commentsWidth(m)
-	repos := sl.Repos()
-
-	var lines []string
-	for _, repo := range repos {
-		if pr := m.prs[sl.Name][repo]; pr != nil {
-			for _, c := range pr.Comments {
-				lines = append(lines, commentBlock(repo, pr, c, width)...)
-			}
+// repoCommentBlocks renders the comment blocks for one repo's PR: live comments
+// when the PR is loaded, else the persisted cache (so comments survive the
+// branch/worktree being cleared). Returns nil when there are none.
+func repoCommentBlocks(m Model, slice, repo string, pr *forge.PR, width int) []string {
+	if pr != nil {
+		var lines []string
+		for _, c := range pr.Comments {
+			lines = append(lines, commentBlock(repo, pr, c, width)...)
 		}
-	}
-	if len(lines) > 0 {
 		return lines
 	}
-
-	// Fall back to the persisted cache (branch may be gone but comments survive).
-	cached := m.commentCache[sl.Name]
-	for _, repo := range repos {
-		rc, ok := cached[repo]
-		if !ok {
-			continue
-		}
-		pr := &forge.PR{Number: rc.PR, URL: rc.URL}
-		for _, c := range rc.Comments {
-			lines = append(lines, commentBlock(repo, pr, forge.Comment{Author: c.Author, Body: c.Body, URL: c.URL}, width)...)
-		}
+	rc, ok := m.commentCache[slice][repo]
+	if !ok {
+		return nil
+	}
+	cpr := &forge.PR{Number: rc.PR, URL: rc.URL}
+	var lines []string
+	for _, c := range rc.Comments {
+		lines = append(lines, commentBlock(repo, cpr, forge.Comment{
+			Author:  c.Author,
+			Body:    c.Body,
+			URL:     c.URL,
+			Kind:    forge.CommentKind(c.Kind),
+			Context: c.Context,
+		}, width)...)
 	}
 	return lines
-}
-
-var (
-	commentsOverlayBoxStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				Padding(0, 1).
-				BorderForeground(lipgloss.Color("99"))
-	commentsOverlayNormStyle = lipgloss.NewStyle()
-	commentHeaderStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
-)
-
-// commentsWindow is how many rendered comment lines are shown at once.
-const commentsWindow = 22
-
-// clampCommentScroll bounds the scroll offset so the window never runs past the
-// end of the rendered lines.
-func clampCommentScroll(sel, total int) int {
-	maxStart := total - commentsWindow
-	if maxStart < 0 {
-		maxStart = 0
-	}
-	if sel < 0 {
-		return 0
-	}
-	if sel > maxStart {
-		return maxStart
-	}
-	return sel
-}
-
-// renderCommentsOverlay renders the comments overlay for the focused slice.
-// m.commentsSel is the scroll offset (top visible line), not a selection.
-func renderCommentsOverlay(m Model) string {
-	var sb strings.Builder
-
-	sliceName := ""
-	if len(m.slices) > 0 && m.focus >= 0 && m.focus < len(m.slices) {
-		sliceName = m.slices[m.focus].Name
-	}
-
-	title := fmt.Sprintf("Comments — %s — [j/k] scroll  [c/esc] close", sliceName)
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
-
-	lines := flattenComments(m)
-	if len(lines) == 0 {
-		sb.WriteString("(no comments)\n")
-		return commentsOverlayBoxStyle.Render(sb.String())
-	}
-
-	total := len(lines)
-	start := clampCommentScroll(m.commentsSel, total)
-	end := start + commentsWindow
-	if end > total {
-		end = total
-	}
-
-	if start > 0 {
-		sb.WriteString(cockpitDimStyle.Render("    ↑ more above") + "\n")
-	}
-	for i := start; i < end; i++ {
-		sb.WriteString(commentsOverlayNormStyle.Render(lines[i]))
-		sb.WriteString("\n")
-	}
-	if end < total {
-		sb.WriteString(cockpitDimStyle.Render("    ↓ more below"))
-	}
-
-	return commentsOverlayBoxStyle.Render(sb.String())
 }
