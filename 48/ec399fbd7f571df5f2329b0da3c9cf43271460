@@ -1,0 +1,28 @@
+internal/tui/app.go
+  s_f952113662ebc3::t_757e518f9ac2e7 1153-1162,1166,1168-1186
+  s_f952113662ebc3::t_8f8936e869a20d 20
+  s_f952113662ebc3::t_07fbc97b761eb7 110-114
+  s_f952113662ebc3::t_b2ff30a0d15b2d 836-859
+internal/tui/slicelist.go
+  s_f952113662ebc3::t_b08f0f2e4ec800 799-802
+  s_f952113662ebc3::t_e9a4b435a80c0f 485-487
+  s_f952113662ebc3::t_eb83cef7651ee5 57-59
+internal/tui/app_test.go
+  s_f952113662ebc3::t_abeffa51039ca9 38-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "48ec399fbd7f571df5f2329b0da3c9cf43271460",
+  "prompts": {},
+  "sessions": {
+    "s_f952113662ebc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc43aca5-0579-456e-a732-035b6d1b1727",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
