@@ -1,0 +1,27 @@
+LICENSE
+  s_f952113662ebc3::t_171748cd9ee891 1-21
+.goreleaser.yaml
+  s_f952113662ebc3::t_529894972118d4 33
+  s_f952113662ebc3::t_070c488d4050ab 26,32,35-43
+  s_f952113662ebc3::t_a3163e3dc0745e 25,27-31,34,44-51
+README.md
+  s_f952113662ebc3::t_fba2bdc5e8db71 3,5,7,11,14-15,18-21,23,26-31,33,38,41,44,47,50,52,56,60,62-64,66,70-86,88-99,103-123,127,129,131,133,135
+CLAUDE.md
+  s_f952113662ebc3::t_56d006bc42320f 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "13e559cf84e95086b65b1a124c1b7e69b56e71dc",
+  "prompts": {},
+  "sessions": {
+    "s_f952113662ebc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc43aca5-0579-456e-a732-035b6d1b1727",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
