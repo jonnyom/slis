@@ -5,6 +5,7 @@ package discovery
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
@@ -47,6 +48,13 @@ func Discover(ws config.Workspace) ([]model.Slice, error) {
 			}
 			// Skip detached, bare, or branch-less worktrees.
 			if wt.Detached || wt.Bare || wt.Branch == "" {
+				continue
+			}
+			// A branch name beginning with "-" can't be produced by normal git;
+			// it only arises from a forged ref/HEAD in a cloned repo. Passed to a
+			// git or gh subcommand without a leading "--", it would be parsed as a
+			// flag (argument injection), so refuse to discover it at the source.
+			if strings.HasPrefix(wt.Branch, "-") {
 				continue
 			}
 

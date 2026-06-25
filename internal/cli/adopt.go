@@ -68,7 +68,9 @@ func freePrimaryBranch(primary, branch string) (freed bool, stashRef, msg string
 
 // popStash pops the stash entry whose commit is sha (created by
 // freePrimaryBranch) into the worktree at dir, so the moved work lands there.
-// Falls back to the top stash if the SHA can't be located.
+// It pops ONLY that exact entry — if the SHA can't be located it returns an
+// error and leaves every stash intact, rather than guessing at stash@{0} and
+// risking popping (and dropping) unrelated work.
 func popStash(dir, sha string) error {
 	ref := "" // resolve sha → stash@{n}
 	if out, err := git.Run(dir, "stash", "list", "--format=%H %gd"); err == nil {
@@ -79,11 +81,10 @@ func popStash(dir, sha string) error {
 			}
 		}
 	}
-	args := []string{"stash", "pop"}
-	if ref != "" {
-		args = append(args, ref)
+	if ref == "" {
+		return fmt.Errorf("could not locate the stashed work (stash %s); it was left intact — recover it from `git stash list`", sha)
 	}
-	_, err := git.Run(dir, args...)
+	_, err := git.Run(dir, "stash", "pop", ref)
 	return err
 }
 

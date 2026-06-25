@@ -31,7 +31,9 @@ type Journal struct {
 }
 
 // Save marshals j as indented JSON and writes it to path, creating any
-// missing parent directories as needed.
+// missing parent directories as needed. The write is atomic — it goes to a
+// temp file that is then renamed over path — so a crash or disk-full mid-write
+// can never leave a truncated journal that would block a later deactivate.
 func Save(path string, j *Journal) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -40,7 +42,15 @@ func Save(path string, j *Journal) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // Load reads and unmarshals the journal at path. If the file does not exist
