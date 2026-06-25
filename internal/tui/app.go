@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -106,6 +107,11 @@ type Model struct {
 	// New-slice creation input ("c" in the hub).
 	creating   bool
 	createName string // in-progress new-slice name
+	// creatingSlice is the name of a slice being created in the background
+	// ("" = none). It drives an in-TUI loading spinner so create no longer
+	// suspends the TUI to a subprocess.
+	creatingSlice string
+	spinnerFrame  int
 
 	// tmux pane capture for the focused slice's Session panel (what Claude is doing).
 	captures       map[string]string // slice name → captured pane text
@@ -827,6 +833,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
 
+	case spinnerTickMsg:
+		if m.creatingSlice == "" {
+			return m, nil // creation finished → stop ticking
+		}
+		m.spinnerFrame++
+		return m, spinnerTickCmd()
+
+	case createFinishedMsg:
+		m.creatingSlice = ""
+		if msg.err != nil {
+			detail := strings.TrimSpace(msg.output)
+			if detail == "" {
+				detail = msg.err.Error()
+			}
+			if i := strings.IndexByte(detail, '\n'); i >= 0 {
+				detail = detail[:i] // first line only — fits the status bar
+			}
+			m.status = fmt.Sprintf("create %q failed: %s", msg.name, detail)
+		} else {
+			m.status = fmt.Sprintf("created slice %q", msg.name)
+		}
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+
 	case ciRerunMsg:
 		switch {
 		case msg.err != nil:
@@ -1120,15 +1150,40 @@ func isShellCmd(cmd string) bool {
 	return false
 }
 
-// slisCreateCmd hands the terminal to `slis create <name>` (worktrees across
-// repos + session), then reloads so the new slice appears in the hub.
+// createFinishedMsg is delivered when a background `slis create` run completes.
+type createFinishedMsg struct {
+	name   string
+	output string
+	err    error
+}
+
+// slisCreateCmd runs `slis create <name>` in the BACKGROUND (a plain exec, not
+// tea.ExecProcess) so the TUI stays up and shows a spinner instead of dropping
+// to the terminal. `slis create` is non-interactive, so it never needs stdin.
 func slisCreateCmd(name string) tea.Cmd {
 	self, err := os.Executable()
 	if err != nil {
-		return nil
+		return func() tea.Msg { return createFinishedMsg{name: name, err: err} }
 	}
-	c := exec.Command(self, "create", name) //nolint:gosec
-	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
+	return func() tea.Msg {
+		out, err := exec.Command(self, "create", name).CombinedOutput() //nolint:gosec
+		return createFinishedMsg{name: name, output: string(out), err: err}
+	}
+}
+
+// spinnerTickMsg advances the in-TUI create spinner.
+type spinnerTickMsg struct{}
+
+// spinnerTickCmd schedules the next spinner frame (~8 fps).
+func spinnerTickCmd() tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+}
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinnerGlyph returns the current spinner frame.
+func (m Model) spinnerGlyph() string {
+	return spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 }
 
 // savePrefs persists the remembered UI toggles (best-effort).

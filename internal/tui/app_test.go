@@ -35,6 +35,41 @@ func TestEnterCockpitNoModal(t *testing.T) {
 	}
 }
 
+// TestCreateSpinnerLifecycle verifies the in-TUI create flow: the spinner ticks
+// while a slice is being created, then stops and reports once it finishes.
+func TestCreateSpinnerLifecycle(t *testing.T) {
+	m := threeSlices(t)
+	m.creatingSlice = "newslice"
+
+	// A tick advances the frame and keeps the spinner going.
+	next, cmd := m.Update(spinnerTickMsg{})
+	m = next.(Model)
+	if m.spinnerFrame != 1 {
+		t.Errorf("spinnerFrame = %d, want 1", m.spinnerFrame)
+	}
+	if cmd == nil {
+		t.Error("spinner should keep ticking while a create is in flight")
+	}
+
+	// Completion clears the in-flight state, sets a status, and triggers a reload.
+	next, cmd = m.Update(createFinishedMsg{name: "newslice"})
+	m = next.(Model)
+	if m.creatingSlice != "" {
+		t.Error("creatingSlice should be cleared once create finishes")
+	}
+	if !strings.Contains(m.status, "newslice") {
+		t.Errorf("status = %q, want it to mention the slice", m.status)
+	}
+	if cmd == nil {
+		t.Error("expected a reload cmd after create finishes")
+	}
+
+	// With nothing in flight, further ticks stop rescheduling.
+	if _, cmd := m.Update(spinnerTickMsg{}); cmd != nil {
+		t.Error("spinner should stop ticking once creation has finished")
+	}
+}
+
 // threeSlices returns a model with three named slices already loaded (loading=false).
 func threeSlices(t *testing.T) Model {
 	t.Helper()

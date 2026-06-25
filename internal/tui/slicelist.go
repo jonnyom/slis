@@ -54,6 +54,9 @@ func renderEmptyState(m Model) string {
 	if m.creating {
 		hdr += renderCreatePrompt(m.createName)
 	}
+	if m.creatingSlice != "" {
+		hdr += "  " + cursorBar.Render(m.spinnerGlyph()) + " creating " + createNameStyle.Render(m.creatingSlice) + "…"
+	}
 	header := clip(hdr, m.width)
 	hint := "[c] new slice   [i] adopt branch   [r] refresh   [?] help   [q] quit"
 	if m.status != "" {
@@ -479,6 +482,9 @@ func renderBrowser(m Model) string {
 	if rs := m.restackCount(); rs > 0 {
 		head.WriteString("   " + needsRestackStyle.Render(fmt.Sprintf("⟳ %d need restack", rs)))
 	}
+	if m.creatingSlice != "" {
+		head.WriteString("   " + cursorBar.Render(m.spinnerGlyph()) + " creating " + createNameStyle.Render(m.creatingSlice) + "…")
+	}
 	if m.creating {
 		head.WriteString(renderCreatePrompt(m.createName))
 	} else if m.naming {
@@ -790,7 +796,10 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.creating = false
 			m.createName = ""
 			if name != "" {
-				return m, slisCreateCmd(name)
+				m.creatingSlice = name
+				m.spinnerFrame = 0
+				m.status = ""
+				return m, tea.Batch(slisCreateCmd(name), spinnerTickCmd())
 			}
 		case tea.KeyEsc:
 			m.creating = false
