@@ -1,0 +1,34 @@
+internal/tui/app.go
+  s_6fbe351cd00531::t_42b185c7739205 1409-1411
+  s_6fbe351cd00531::t_e788533ca11d5d 685-694
+  s_6fbe351cd00531::t_8e483a3e064967 786-794
+  s_6fbe351cd00531::t_8413a22a942725 136-142
+  s_6fbe351cd00531::t_5023b555e2a7c2 939
+  s_6fbe351cd00531::t_c7c4bbfd8f3dee 1015-1030
+  s_6fbe351cd00531::t_8b5ef23d618492 1039-1041
+internal/tui/slicelist.go
+  s_6fbe351cd00531::t_3a1de7e7146c2e 1069
+  s_6fbe351cd00531::t_d2e194c25a655a 219-236
+internal/tui/gate.go
+  s_6fbe351cd00531::t_191cf1c46208de 13-18
+internal/tui/bulkprompt_test.go
+  s_6fbe351cd00531::t_26cfa0adaf4372 1-108
+internal/tui/cockpit.go
+  s_6fbe351cd00531::t_15f79400e53269 683-694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "667f957449e47e2ffbb9ca86781940a2b004c871",
+  "prompts": {},
+  "sessions": {
+    "s_6fbe351cd00531": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca1ca823-7407-41b8-85a3-48eb59f8ca11",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
