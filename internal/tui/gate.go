@@ -10,6 +10,12 @@ const bgConcurrency = 4
 
 var bgGate = make(chan struct{}, bgConcurrency)
 
+// bulkLoadThreshold is the slice count above which the TUI stops auto-loading
+// PR/diff data for the whole workspace on a cold start and asks first. The gate
+// already prevents a CPU storm; this avoids minutes of pointless background git
+// and gh work for slices the user may never open.
+const bulkLoadThreshold = 25
+
 // gatedCmd wraps a background tea.Cmd so its body only runs once a gate slot is
 // free, bounding concurrent subprocess fan-out to bgConcurrency.
 func gatedCmd(c tea.Cmd) tea.Cmd {

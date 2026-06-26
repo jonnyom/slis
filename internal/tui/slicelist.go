@@ -216,6 +216,24 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 	})
 }
 
+// maybeLoadCard loads the focused slice's card if it is not already cached or
+// loading. This drives lazy mode (large workspaces where the user declined the
+// whole-workspace load): each row's summary fills in as it is focused.
+func (m *Model) maybeLoadCard() tea.Cmd {
+	sl, ok := m.currentSlice()
+	if !ok {
+		return nil
+	}
+	if _, cached := m.cards[sl.Name]; cached {
+		return nil
+	}
+	if m.cardLoading[sl.Name] {
+		return nil
+	}
+	m.cardLoading[sl.Name] = true
+	return loadCardCmd(sl)
+}
+
 // batchLoadCards loads cards for every slice not yet loaded/loading.
 func (m *Model) batchLoadCards() tea.Cmd {
 	var cmds []tea.Cmd
@@ -1048,7 +1066,7 @@ func (m *Model) loadPreview() tea.Cmd {
 	m.previewScroll = 0 // new focus → start the preview at the top
 	// Re-fetch on focus so revisiting a slice shows fresh data; loads run off the
 	// UI goroutine and are in-flight-guarded, so fast scrolling can't pile up.
-	return tea.Batch(filterNil([]tea.Cmd{m.forceLoadStack(), m.forceLoadDiff(), m.forceLoadPRs(), m.maybeLoadCapture()})...)
+	return tea.Batch(filterNil([]tea.Cmd{m.maybeLoadCard(), m.forceLoadStack(), m.forceLoadDiff(), m.forceLoadPRs(), m.maybeLoadCapture()})...)
 }
 
 // previewInnerHeight is the number of content lines the hub preview pane shows

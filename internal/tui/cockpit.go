@@ -680,6 +680,18 @@ func renderStackOverlay(m Model) string {
 	return helpBoxStyle.Render(sb.String())
 }
 
+// renderBulkPrompt renders the large-workspace load confirmation modal shown on
+// a cold start when the slice count exceeds bulkLoadThreshold.
+func renderBulkPrompt(m Model) string {
+	key := panelTitleFocusStyle.Render
+	var sb strings.Builder
+	sb.WriteString(cockpitHeaderStyle.Render(fmt.Sprintf("%d slices found", len(m.slices))) + "\n\n")
+	sb.WriteString("Loading PR + diff data for every slice runs git and gh per slice and can\n")
+	sb.WriteString("be heavy on a large workspace.\n\n")
+	sb.WriteString(key("[y]") + " load all     " + key("[n]") + " load as you go (recommended)\n")
+	return helpBoxStyle.Render(sb.String())
+}
+
 // renderRemoveOverlay renders the clear-finished-slice confirmation modal.
 func renderRemoveOverlay(m Model) string {
 	if m.pendingRemove == nil {

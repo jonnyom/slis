@@ -133,6 +133,13 @@ type Model struct {
 	cards        map[string]sliceCard // slice → browser summary card
 	cardLoading  map[string]bool
 
+	// Large-workspace guard. Above bulkLoadThreshold slices, the first (cold)
+	// load asks before fanning card/PR subprocesses across the whole workspace
+	// (bulkPrompt). If the user declines, lazyCards keeps the whole-workspace
+	// batch suppressed and loads only the focused slice on demand.
+	bulkPrompt bool
+	lazyCards  bool
+
 	// Cross-slice conflict radar: files changed by more than one slice. Rebuilt
 	// from the loaded cards' retained stats as cards arrive (so View stays pure).
 	conflicts           *radar.Index
@@ -675,6 +682,16 @@ func slisSyncCmd(slice string) tea.Cmd {
 	return tea.ExecProcess(c, func(error) tea.Msg { return swapFinishedMsg{} })
 }
 
+// batchLoadAll fans out the whole-workspace card + PR load. It is suppressed in
+// lazy mode (the user declined the large-workspace prompt), where cards/PRs load
+// per-focus via loadPreview instead.
+func (m *Model) batchLoadAll() tea.Cmd {
+	if m.lazyCards {
+		return nil
+	}
+	return tea.Batch(m.batchLoadCards(), m.batchLoadAllPRs())
+}
+
 // batchLoadAllPRs loads PR/CI data for every not-yet-loaded slice so CI status
 // is visible across the whole browser without visiting each row.
 func (m *Model) batchLoadAllPRs() tea.Cmd {
@@ -766,7 +783,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = len(m.slices) - 1
 		}
 		sp := config.StatePaths()
-		return m, tea.Batch(loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.batchLoadAllPRs(), m.loadPreview())
+		sessions := loadSessionsCmd(m.slices, sp.EventsDir)
+		// First cold load of a large workspace: ask before fanning card/PR
+		// subprocesses across every slice. m.cards is empty only on this initial
+		// load, so the prompt never re-appears once the user has answered.
+		if !m.lazyCards && len(m.cards) == 0 && len(m.slices) > bulkLoadThreshold {
+			m.bulkPrompt = true
+			return m, tea.Batch(sessions, m.loadPreview())
+		}
+		return m, tea.Batch(sessions, m.batchLoadAll(), m.loadPreview())
 
 	case cardLoadedMsg:
 		m.cards[msg.slice] = msg.card
@@ -911,7 +936,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = fmt.Sprintf("restacked %d repo%s", msg.restacked, plural(msg.restacked))
 		}
 		sp := config.StatePaths()
-		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadCards(), m.loadPreview())
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadAll(), m.loadPreview())
 
 	case editorOpenedMsg:
 		if msg.err != nil {
@@ -987,6 +1012,22 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateBulkPromptKeys answers the large-workspace load prompt: [y] loads
+// PR/diff data for the whole workspace (gated to bgConcurrency); [n]/esc keeps
+// loading per-focus only.
+func (m Model) updateBulkPromptKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		m.bulkPrompt = false
+		return m, m.batchLoadAll()
+	case "n", "N", "esc":
+		m.bulkPrompt = false
+		m.lazyCards = true
+		return m, nil
+	}
+	return m, nil
+}
+
 // handleKey routes a key press to overlays, then to the active view.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Transient status: any keypress dismisses the last status line, so messages
@@ -995,6 +1036,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.status = ""
 
 	// Overlays take priority.
+	if m.bulkPrompt {
+		return m.updateBulkPromptKeys(msg)
+	}
 	if m.pendingSwap != nil {
 		return m.updateSwapKeys(msg)
 	}
@@ -1361,6 +1405,9 @@ func (m Model) View() string {
 	}
 	if m.showHelp {
 		return renderHelp(m.view)
+	}
+	if m.bulkPrompt {
+		return renderBulkPrompt(m)
 	}
 	if m.pendingSwap != nil {
 		return renderSwapOverlay(m)
