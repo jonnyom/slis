@@ -75,14 +75,14 @@ type prsLoadedMsg struct {
 // the UI goroutine. Errors are swallowed per-repo — a nil *forge.PR entry
 // means no PR was found (or gh is absent / failed).
 func loadPRsCmd(sl model.Slice) tea.Cmd {
-	return func() tea.Msg {
+	return gatedCmd(func() tea.Msg {
 		prs := make(map[string]*forge.PR, len(sl.Members))
 		for repo, member := range sl.Members {
 			pr, _ := forge.PRForBranch(member.WorktreePath, member.Branch)
 			prs[repo] = pr
 		}
 		return prsLoadedMsg{slice: sl.Name, prs: prs}
-	}
+	})
 }
 
 // maybeLoadPRs returns a loadPRsCmd for the focused slice if its PR data is not

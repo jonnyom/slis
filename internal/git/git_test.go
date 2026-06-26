@@ -1,7 +1,9 @@
 package git_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/testutil"
@@ -51,5 +53,36 @@ func TestRunInDir(t *testing.T) {
 	}
 	if got != "main" {
 		t.Errorf("HEAD branch = %q, want %q", got, "main")
+	}
+}
+
+// TestRunHasDefaultTimeout guards the timeout plumbing: a hung git subprocess
+// must not block a caller (or a TUI background slot) forever.
+func TestRunHasDefaultTimeout(t *testing.T) {
+	if git.DefaultTimeout <= 0 {
+		t.Fatalf("DefaultTimeout = %v, want > 0", git.DefaultTimeout)
+	}
+}
+
+// TestRunCtxCancels confirms RunCtx honours a cancelled context promptly rather
+// than waiting on the subprocess — the property the gate relies on.
+func TestRunCtxCancels(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := git.RunCtx(ctx, repo, "rev-parse", "HEAD")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("RunCtx with a cancelled context should return an error")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunCtx did not return promptly on a cancelled context")
 	}
 }

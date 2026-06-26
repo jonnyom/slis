@@ -8,7 +8,14 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// DefaultTimeout bounds a git invocation made via Run. Every git command slis
+// issues is a fast, local, read-mostly operation, so a generous ceiling still
+// guarantees a hung subprocess (e.g. a credential prompt) can never wedge a
+// caller or hold a background concurrency slot forever.
+const DefaultTimeout = 60 * time.Second
 
 // Cmd builds a git sub-command argv vector incrementally.
 type Cmd struct{ args []string }
@@ -33,9 +40,12 @@ func (c *Cmd) ArgIf(cond bool, a string) *Cmd {
 // always a single literal argument, never interpreted by a shell.
 func (c *Cmd) Argv() []string { return append([]string(nil), c.args...) }
 
-// Run executes `git -C dir <args...>` and returns trimmed stdout.
+// Run executes `git -C dir <args...>` and returns trimmed stdout. It applies
+// DefaultTimeout; callers needing their own deadline use RunCtx.
 func Run(dir string, args ...string) (string, error) {
-	return RunCtx(context.Background(), dir, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancel()
+	return RunCtx(ctx, dir, args...)
 }
 
 // LocalBranches returns the local branch names (refs/heads) in the repo at dir,

@@ -168,7 +168,7 @@ type cardLoadedMsg struct {
 // against each branch's Graphite PARENT (this slice's own changes), matching the
 // cockpit diff, falling back to the repo trunk when not stacked.
 func loadCardCmd(sl model.Slice) tea.Cmd {
-	return func() tea.Msg {
+	return gatedCmd(func() tea.Msg {
 		var card sliceCard
 
 		// One gt.ReadState per member: derive the parent (the stat base) and the
@@ -213,7 +213,7 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 		card.stats = stats // retained for the conflict radar
 
 		return cardLoadedMsg{slice: sl.Name, card: card}
-	}
+	})
 }
 
 // batchLoadCards loads cards for every slice not yet loaded/loading.

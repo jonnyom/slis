@@ -4,15 +4,22 @@ package forge
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jonnyom/slis/internal/safeterm"
 )
+
+// ghTimeout bounds a single gh invocation. gh calls are network-bound (GitHub
+// API), so a stalled connection must not hold a background concurrency slot
+// open indefinitely.
+const ghTimeout = 45 * time.Second
 
 // runIDRe extracts the GitHub Actions run id from a check's detail URL, e.g.
 // https://github.com/o/r/actions/runs/123456/job/789 → 123456.
@@ -302,7 +309,9 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 		return nil, nil
 	}
 
-	cmd := exec.Command("gh", "pr", "view", branch, "--json", jsonFields)
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", jsonFields)
 	cmd.Dir = repoDir
 
 	var stdout, stderr bytes.Buffer
@@ -362,7 +371,9 @@ func inlineComments(repoDir, prURL string, number int) ([]Comment, error) {
 		return nil, nil
 	}
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/comments", owner, repo, number)
-	cmd := exec.Command("gh", "api", path, "--paginate")
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api", path, "--paginate")
 	cmd.Dir = repoDir
 
 	var stdout, stderr bytes.Buffer

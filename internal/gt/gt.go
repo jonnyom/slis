@@ -5,10 +5,17 @@ package gt
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os/exec"
 	"sort"
+	"time"
 )
+
+// stateTimeout bounds a `gt state` read. gt is a Node process and can hang
+// (e.g. on a slow filesystem or a stuck child), so cap it to keep a background
+// concurrency slot from being held indefinitely.
+const stateTimeout = 30 * time.Second
 
 // Parent is a single entry in the parents array returned by `gt state`.
 type Parent struct {
@@ -79,7 +86,9 @@ func ReadState(repoDir string) (State, error) {
 		return State{}, nil
 	}
 
-	cmd := exec.Command("gt", "state", "--no-interactive")
+	ctx, cancel := context.WithTimeout(context.Background(), stateTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gt", "state", "--no-interactive")
 	cmd.Dir = repoDir
 	var out bytes.Buffer
 	cmd.Stdout = &out

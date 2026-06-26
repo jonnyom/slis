@@ -31,14 +31,14 @@ type procKilledMsg struct{}
 // loadProcsCmd returns a Cmd that samples processes for a slice off the UI goroutine.
 // If tmux is unavailable or the session doesn't exist, an empty procsLoadedMsg is returned.
 func loadProcsCmd(slice string) tea.Cmd {
-	return func() tea.Msg {
+	return gatedCmd(func() tea.Msg {
 		pids, err := tmuxctl.PanePIDs(slice)
 		if err != nil {
 			return procsLoadedMsg{slice: slice, procs: nil}
 		}
 		procs, _ := proc.SliceProcs(pids)
 		return procsLoadedMsg{slice: slice, procs: procs}
-	}
+	})
 }
 
 // killCmd returns a Cmd that sends a signal to the requested PID (or subtree).
