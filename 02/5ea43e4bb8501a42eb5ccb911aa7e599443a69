@@ -1,0 +1,44 @@
+internal/tui/slicelist.go
+  s_6fbe351cd00531::t_b4fab3ce6fd288 216
+  s_6fbe351cd00531::t_d9a35750efbb59 171
+internal/tui/prview.go
+  s_6fbe351cd00531::t_43977479bbda74 78,85
+internal/forge/forge.go
+  s_6fbe351cd00531::t_dfa9c2574436dc 374-376
+  s_6fbe351cd00531::t_cd88b3d98ea2a5 7,14,19-22
+  s_6fbe351cd00531::t_fd8cd453ee4391 312-314
+  s_6fbe351cd00531::t_2fdd271c126d81 23
+internal/tui/procpane.go
+  s_6fbe351cd00531::t_74076e1a26ab1d 34,41
+internal/tui/gate_test.go
+  s_6fbe351cd00531::t_b7e480f3eb36c5 1-59
+internal/tui/gate.go
+  s_6fbe351cd00531::t_bfed6d63975174 1-24
+internal/git/git.go
+  s_6fbe351cd00531::t_220142d9a4eb37 11,14-18
+  s_6fbe351cd00531::t_c791ccdb715a4b 43-44,46-48
+  s_6fbe351cd00531::t_722e93697e7a2a 19
+internal/git/git_test.go
+  s_6fbe351cd00531::t_b4f7544c3883e9 4,6
+  s_6fbe351cd00531::t_faa4744faae1b2 58-88
+internal/gt/gt.go
+  s_6fbe351cd00531::t_cc8544fe9d4463 8,12,15-18
+  s_6fbe351cd00531::t_0b9077dc09646c 89-91
+  s_6fbe351cd00531::t_4bff2ff8e54142 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "025ea43e4bb8501a42eb5ccb911aa7e599443a69",
+  "prompts": {},
+  "sessions": {
+    "s_6fbe351cd00531": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca1ca823-7407-41b8-85a3-48eb59f8ca11",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
