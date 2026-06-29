@@ -1,0 +1,33 @@
+internal/cli/summary.go
+  s_dfc293eb3de5a7::t_bfaf04ade56935 4,6,19-24
+  s_dfc293eb3de5a7::t_a173fd741a00e2 61,79-97
+  s_dfc293eb3de5a7::t_c81eaff48f19d8 135
+  s_dfc293eb3de5a7::t_daff0b9ab1c709 25
+  s_dfc293eb3de5a7::t_c9121fcef5bd35 98-99
+internal/cli/status_test.go
+  s_dfc293eb3de5a7::t_0fc6e41a31aefb 1-18,22-104
+  s_dfc293eb3de5a7::t_de0f08e26bbb93 19-21
+internal/cli/prstack.go
+  s_dfc293eb3de5a7::t_a4d814a36e8d2d 69,84,88,90-95,102-108
+  s_dfc293eb3de5a7::t_9455723068cb85 137
+  s_dfc293eb3de5a7::t_34fb544fbd8896 4,17-27
+  s_dfc293eb3de5a7::t_0628a07248d770 28
+internal/cli/status.go
+  s_dfc293eb3de5a7::t_839fb9ab435f02 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9886f9834fac0b80063b1553b2e7153046228e6f",
+  "prompts": {},
+  "sessions": {
+    "s_dfc293eb3de5a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "482da262-b835-4bfb-8242-0c9e3af065ec",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
