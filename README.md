@@ -105,13 +105,14 @@ The cockpit is the single-slice view: four panels down the left — Stack, PRs, 
 
 ## Commands
 
-Every TUI action has a CLI twin, and `ls` / `show` / `pr` take `--json`, so you can script slis or hand it to an agent.
+Every TUI action has a CLI twin, and every read command (`ls` / `show` / `status` / `pr` / `pr-stack` / `summary` / `conflicts` / `comments` / `doctor`) takes `--json`, so you can script slis or hand it to an agent.
 
 | Command | What it does |
 |---------|--------------|
 | `slis init [root]` | Scan `root` for repos and write the workspace config |
 | `slis ls` | List the slices in the workspace |
 | `slis show <slice>` | Slice detail, including each repo's Graphite stack |
+| `slis status [slice]` | Each slice's Claude session status (none/running/waiting-input/done) |
 | `slis create <slice>` | Create a worktree for the slice in every repo |
 | `slis adopt <branch>` | Adopt an existing branch into a managed slice |
 | `slis activate <slice>` | Swap the slice into every repo's primary checkout |
@@ -126,6 +127,15 @@ Every TUI action has a CLI twin, and `ls` / `show` / `pr` take `--json`, so you 
 | `slis init-hooks` | Install the Claude Code hooks for per-slice notifications |
 
 Run `slis <command> --help` for the full flag set.
+
+### Driving slis with agents
+
+slis ships a [Claude skill](skills/slis/SKILL.md) and an agent contract,
+[`docs/AGENT.md`](docs/AGENT.md), covering the JSON output shapes, the
+session-status data flow (`slis status`), the mutate-vs-read map, and how errors
+surface. An agent can poll `slis status --json` for the slice whose Claude is
+`waiting-input`, find failing CI with `slis pr <slice> --json` and hand it to
+`slis fix-ci`, or run a slice from `create` to `merge` — all headless.
 
 ## How the swap works
 

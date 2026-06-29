@@ -38,8 +38,9 @@ gofmt -l .
 # Run the TUI
 go run ./cmd/slis            # or: ./slis
 
-# Exercise the CLI (agent-friendly; --json on ls/show/pr)
+# Exercise the CLI (agent-friendly; --json on all read commands)
 ./slis ls --json
+./slis status --json   # which slice's Claude is waiting-input?
 ```
 
 CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Green CI is the bar.** CI configures a global git identity (tests create throwaway repos) and installs golangci-lint via `go install` for the reason above. Lowering the `go.mod` `go` directive to satisfy a prebuilt linter will break the build (deps require ≥ the current directive) — don't; fix lint by matching the linter's build toolchain instead.
@@ -90,7 +91,7 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 
 **Tests.** TDD. Tests that need external tools (`git` always; `gh`/`gt`/`tmux`/`claude` optionally) must `t.Skip` when the tool is absent. Create repos via `testutil.NewRepo` (it sets *local* git identity so commits — including in linked worktrees — work on machines/CI with no global git config). `CGO_ENABLED=0` must keep building (deps are pure-Go; don't introduce cgo).
 
-**Agent-native.** Every TUI action has a non-interactive CLI twin; `ls`/`show`/`pr` support `--json`. Keep it that way so agents (and the shipped skill) can drive slis headlessly.
+**Agent-native.** Every TUI action has a non-interactive CLI twin; **every read command** (`ls`/`show`/`status`/`pr`/`pr-stack`/`summary`/`conflicts`/`comments`/`doctor`) supports `--json`. Keep that invariant — any new read command ships with `--json`. `slis status [slice] --json` exposes per-slice Claude session state (none/running/waiting-input/done) from the `notify` event store so agents poll "which slice needs input" without reading raw files. The agent contract (JSON shapes, session-status flow, mutation map, error model) lives in `docs/AGENT.md`; the driving skill in `skills/slis/SKILL.md`. Update both when the surface changes.
 
 ## Gotchas / environment
 
