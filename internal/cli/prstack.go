@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,18 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/forge"
 )
+
+// PRStackRowDTO is a JSON-friendly representation of one repo's PR in a slice's
+// stack. Number/URL/State/Title are empty when the branch has no PR.
+type PRStackRowDTO struct {
+	Repo           string `json:"repo"`
+	Branch         string `json:"branch"`
+	Number         int    `json:"number,omitempty"`
+	URL            string `json:"url,omitempty"`
+	State          string `json:"state,omitempty"`
+	Title          string `json:"title,omitempty"`
+	ReviewDecision string `json:"review_decision,omitempty"`
+}
 
 // clipboardArgv returns the clipboard tool name and args for the current OS.
 // Returns (name, args, ok). On darwin: pbcopy. On linux: xclip or wl-copy.
@@ -53,6 +66,7 @@ var prStackCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sliceName := args[0]
 		doCopy, _ := cmd.Flags().GetBool("copy")
+		useJSON, _ := cmd.Flags().GetBool("json")
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
@@ -67,18 +81,31 @@ var prStackCmd = &cobra.Command{
 		// Gather PRs in repo-sorted order.
 		repos := sl.Repos()
 		prs := make([]*forge.PR, 0, len(repos))
+		rows := make([]PRStackRowDTO, 0, len(repos))
 		for _, repo := range repos {
 			m := sl.Members[repo]
-			// Build a labelled PR with repo prefix for clarity.
 			pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
+			row := PRStackRowDTO{Repo: repo, Branch: m.Branch}
 			if pr != nil {
-				// Prefix branch with repo name so each line is clearly scoped.
+				row.Number = pr.Number
+				row.URL = pr.URL
+				row.State = pr.State
+				row.Title = pr.Title
+				row.ReviewDecision = pr.ReviewDecision
+				// Prefix branch with repo name so each markdown line is clearly scoped.
 				labeled := *pr
 				labeled.Branch = repo + ": " + pr.Branch
 				prs = append(prs, &labeled)
 			} else {
 				prs = append(prs, nil)
 			}
+			rows = append(rows, row)
+		}
+
+		if useJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(rows)
 		}
 
 		md := forge.StackMarkdown(sl.Name, prs)
@@ -107,5 +134,6 @@ var prStackCmd = &cobra.Command{
 
 func init() {
 	prStackCmd.Flags().Bool("copy", false, "Copy the markdown to the system clipboard")
+	prStackCmd.Flags().Bool("json", false, "Output the stack as JSON instead of markdown")
 	rootCmd.AddCommand(prStackCmd)
 }

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,6 +15,13 @@ import (
 	"github.com/jonnyom/slis/internal/summary"
 	"github.com/jonnyom/slis/internal/swap"
 )
+
+// RepoCommitsDTO is a JSON-friendly per-repo commit summary for a slice.
+type RepoCommitsDTO struct {
+	Repo    string   `json:"repo"`
+	Branch  string   `json:"branch"`
+	Commits []string `json:"commits"`
+}
 
 // findSlice returns the model.Slice with the given name from the workspace, or
 // an error if it cannot be found.
@@ -49,6 +58,7 @@ var summaryCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sliceName := args[0]
 		useAI, _ := cmd.Flags().GetBool("ai")
+		useJSON, _ := cmd.Flags().GetBool("json")
 		base, _ := cmd.Flags().GetString("base")
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
@@ -64,6 +74,27 @@ var summaryCmd = &cobra.Command{
 		// Respect an explicit --base override; otherwise use the slice's own Base.
 		if !cmd.Flags().Changed("base") && sl.Base != "" {
 			base = sl.Base
+		}
+
+		// --json is the deterministic, parseable twin: emit the same per-repo
+		// commit subjects as the markdown path, never the --ai prose.
+		if useJSON {
+			byRepo, _ := summary.CommitSummary(sl, base)
+			dtos := make([]RepoCommitsDTO, 0, len(sl.Members))
+			for _, repo := range sl.Repos() {
+				commits := byRepo[repo]
+				if commits == nil {
+					commits = []string{}
+				}
+				dtos = append(dtos, RepoCommitsDTO{
+					Repo:    repo,
+					Branch:  sl.Members[repo].Branch,
+					Commits: commits,
+				})
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(dtos)
 		}
 
 		if !useAI {
@@ -101,5 +132,6 @@ var summaryCmd = &cobra.Command{
 
 func init() {
 	summaryCmd.Flags().Bool("ai", false, "Use claude -p to generate an AI prose summary")
+	summaryCmd.Flags().Bool("json", false, "Output the per-repo commit summary as JSON (ignores --ai)")
 	summaryCmd.Flags().String("base", "", "Base branch/ref to diff against (default: auto-detect each repo's trunk)")
 }
