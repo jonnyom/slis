@@ -1,0 +1,38 @@
+internal/notify/events_test.go
+  s_4272199aa528dc::t_6fa316e7b040c4 4
+  s_4272199aa528dc::t_7ab8ffffad467b 54-126
+docs/AGENT.md
+  s_4272199aa528dc::t_ceb6aa0e5775a4 107-137
+  s_4272199aa528dc::t_a9f06a5dda3df4 143-145
+  s_4272199aa528dc::t_abe7166226c5a0 13-15
+  s_4272199aa528dc::t_4175f318344d2a 77-79
+  s_4272199aa528dc::t_36c1a342e6600f 40-41
+  s_4272199aa528dc::t_aa9a5823f91b4c 159-160
+  s_4272199aa528dc::t_d5825bb1cfaae0 68-69
+internal/notify/events.go
+  s_4272199aa528dc::t_5cd36df1c54cf3 120-162
+  s_4272199aa528dc::t_07d015d41d373f 8,11
+internal/cli/watch_test.go
+  s_4272199aa528dc::t_4fa187f8fd9454 1-147
+internal/cli/watch.go
+  s_4272199aa528dc::t_f0c5eb49a600a2 1-9,11-130,132-151,153-154
+  s_4272199aa528dc::t_02340104b43d67 131
+  s_4272199aa528dc::t_cfd96dde1be978 10
+  s_4272199aa528dc::t_39ce7e323dce26 152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "38e169c645fabd8bcc345790b8b416b1598d4270",
+  "prompts": {},
+  "sessions": {
+    "s_4272199aa528dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e6eac38-afb8-4b44-8063-46da3c40d532",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
