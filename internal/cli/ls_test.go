@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/config"
@@ -171,6 +173,50 @@ func TestListSlicesMarksStale(t *testing.T) {
 		if !dto.Stale {
 			t.Error("checkout should be Stale=true (journal TargetSHA differs from branch tip)")
 		}
+	}
+}
+
+func TestListSlicesMarksPartial(t *testing.T) {
+	ws := makeTestWorkspace(t)
+
+	tmp := t.TempDir()
+	ovPath := filepath.Join(tmp, "ov.yaml")
+	jPath := filepath.Join(tmp, "active.json")
+
+	// Journal for "checkout" covering only "web" — the slice also has an "api"
+	// member, so the swap is only partial (crash during activate).
+	if err := swap.Save(jPath, &swap.Journal{
+		Slice: "checkout",
+		Repos: []swap.RepoState{{Repo: "web"}},
+	}); err != nil {
+		t.Fatalf("swap.Save: %v", err)
+	}
+
+	dtos, err := listSlices(ws, ovPath, jPath)
+	if err != nil {
+		t.Fatalf("listSlices: %v", err)
+	}
+	var checkout SliceDTO
+	for _, dto := range dtos {
+		if dto.Name == "checkout" {
+			checkout = dto
+		}
+		if dto.Name == "other" && dto.Partial {
+			t.Error("other must not be Partial (not active)")
+		}
+	}
+	if !checkout.Active {
+		t.Error("checkout should be Active=true")
+	}
+	if !checkout.Partial {
+		t.Error("checkout should be Partial=true (journal covers only 'web' of web+api)")
+	}
+
+	// Human output marks it "● partial".
+	var buf bytes.Buffer
+	renderSlicesTable(&buf, dtos)
+	if !strings.Contains(buf.String(), "● partial") {
+		t.Errorf("table should show '● partial' for a partially-swapped slice, got:\n%s", buf.String())
 	}
 }
 

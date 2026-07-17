@@ -176,6 +176,151 @@ func TestSwapFindingsStaleJournalWithStashIsReportOnly(t *testing.T) {
 	}
 }
 
+// twoRepoWebActivated builds a two-repo workspace (web + api) and activates a
+// slice covering ONLY web, so the journal records web while api is untouched —
+// the seed for the partial-swap cross-check tests.
+func twoRepoWebActivated(t *testing.T) (config.Workspace, string, string, string) {
+	t.Helper()
+	web := testutil.NewRepo(t)
+	api := testutil.NewRepo(t)
+
+	base := t.TempDir()
+	featWT := filepath.Join(base, "feat")
+	testutil.AddWorktree(t, web, "feat", featWT)
+	if err := os.WriteFile(filepath.Join(featWT, "f.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatalf("write f.txt: %v", err)
+	}
+	if _, err := git.Run(featWT, "add", "f.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := git.Run(featWT, "commit", "-q", "-m", "feat work"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+	if _, err := swap.Activate("myslice", []swap.RepoActivation{{Repo: "web", Primary: web, Branch: "feat"}}, journalPath, swap.ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	ws := config.Workspace{Repos: map[string]config.Repo{
+		"web": {Primary: web, DefaultBranch: "main"},
+		"api": {Primary: api, DefaultBranch: "main"},
+	}}
+	return ws, journalPath, web, api
+}
+
+// TestSwapFindingsPartialJournalMissingMember: a slice member (api) is absent
+// from the journal and its primary is still on its own branch — a crash during
+// activate. doctor must warn (report-only, no --fix) and never call it healthy.
+func TestSwapFindingsPartialJournalMissingMember(t *testing.T) {
+	ws, journalPath, _, _ := twoRepoWebActivated(t)
+
+	dtos := []SliceDTO{{Name: "myslice", Members: []MemberDTO{
+		{Repo: "web", Branch: "feat"},
+		{Repo: "api", Branch: "feat"},
+	}}}
+
+	findings := swapFindings(ws, dtos, journalPath)
+	warns, _, fixable := countSwapIssues(findings)
+	if warns == 0 {
+		t.Fatalf("partial swap (api never swapped) should warn, got: %+v", findings)
+	}
+	if fixable != 0 {
+		t.Errorf("partial swap must be report-only (no --fix) while a journal exists, got %d fixable: %+v", fixable, findings)
+	}
+	var found bool
+	for _, f := range findings {
+		if strings.Contains(f.Title, "partial swap") && strings.Contains(f.Title, "api") {
+			found = true
+		}
+		if f.Level == lvlOK {
+			t.Errorf("partial swap must not report the slice as healthy, got: %+v", f)
+		}
+	}
+	if !found {
+		t.Errorf("expected a 'partial swap: api' finding, got: %+v", findings)
+	}
+}
+
+// TestSwapFindingsUnjournaledSwappedRepo: api's primary sits on the slice's
+// slis/live branch with no journal entry (crash between switch and journal
+// write). doctor must warn and offer no --fix while a journal exists.
+func TestSwapFindingsUnjournaledSwappedRepo(t *testing.T) {
+	ws, journalPath, _, api := twoRepoWebActivated(t)
+
+	if _, err := git.Run(api, "switch", "-c", swap.LiveBranchName("myslice")); err != nil {
+		t.Fatalf("create live branch on api: %v", err)
+	}
+
+	// Only web is a recorded member here, isolating the un-journaled check.
+	dtos := []SliceDTO{{Name: "myslice", Members: []MemberDTO{{Repo: "web", Branch: "feat"}}}}
+
+	findings := swapFindings(ws, dtos, journalPath)
+	warns, _, fixable := countSwapIssues(findings)
+	if warns == 0 {
+		t.Fatalf("un-journaled swapped repo should warn, got: %+v", findings)
+	}
+	if fixable != 0 {
+		t.Errorf("no --fix must be offered for an un-journaled swap while a journal exists, got %d fixable: %+v", fixable, findings)
+	}
+	var found bool
+	for _, f := range findings {
+		if strings.Contains(f.Title, "un-journaled") && strings.Contains(f.Title, "api") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected an 'un-journaled: api' finding, got: %+v", findings)
+	}
+}
+
+// TestSwapFindingsFullSwapNoFalsePositive: both repos swapped in and both in the
+// journal — the cross-check must add no warnings (no false positives).
+func TestSwapFindingsFullSwapNoFalsePositive(t *testing.T) {
+	web := testutil.NewRepo(t)
+	api := testutil.NewRepo(t)
+	base := t.TempDir()
+
+	setup := func(primary, name string) {
+		wt := filepath.Join(base, name)
+		testutil.AddWorktree(t, primary, "feat", wt)
+		if err := os.WriteFile(filepath.Join(wt, "f.txt"), []byte("feat\n"), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if _, err := git.Run(wt, "add", "f.txt"); err != nil {
+			t.Fatalf("add: %v", err)
+		}
+		if _, err := git.Run(wt, "commit", "-q", "-m", "feat"); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
+	setup(web, "web")
+	setup(api, "api")
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+	if _, err := swap.Activate("myslice", []swap.RepoActivation{
+		{Repo: "web", Primary: web, Branch: "feat"},
+		{Repo: "api", Primary: api, Branch: "feat"},
+	}, journalPath, swap.ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	ws := config.Workspace{Repos: map[string]config.Repo{
+		"web": {Primary: web, DefaultBranch: "main"},
+		"api": {Primary: api, DefaultBranch: "main"},
+	}}
+	dtos := []SliceDTO{{Name: "myslice", Members: []MemberDTO{
+		{Repo: "web", Branch: "feat"},
+		{Repo: "api", Branch: "feat"},
+	}}}
+
+	findings := swapFindings(ws, dtos, journalPath)
+	warns, fails, _ := countSwapIssues(findings)
+	if warns != 0 || fails != 0 {
+		t.Errorf("full swap should have no warns/fails, got %d warn / %d fail: %+v", warns, fails, findings)
+	}
+}
+
 func TestSwapFindingsPriorBranchGone(t *testing.T) {
 	primary := testutil.NewRepo(t)
 	base := t.TempDir()
@@ -273,6 +418,15 @@ func TestSwapFindingsOrphanedLiveBranch(t *testing.T) {
 	if fixable == 0 {
 		t.Fatalf("contained orphaned slis/live branch should offer a --fix, got: %+v", findings)
 	}
+	var autoMarker bool
+	for _, f := range findings {
+		if strings.Contains(f.Detail, "auto-fixable with --fix") {
+			autoMarker = true
+		}
+	}
+	if !autoMarker {
+		t.Errorf("contained orphan finding should be marked auto-fixable, got: %+v", findings)
+	}
 
 	// Run the fix — primary back on main, temp branch gone.
 	for _, f := range findings {
@@ -339,6 +493,15 @@ func TestSwapFindingsOrphanedLiveBranchNotContainedIsReportOnly(t *testing.T) {
 	}
 	if fixable != 0 {
 		t.Errorf("non-contained orphaned slis/live branch must be report-only (no --fix), got %d fixable: %+v", fixable, findings)
+	}
+	var manualMarker bool
+	for _, f := range findings {
+		if strings.Contains(f.Detail, "needs manual attention: has commits not on the slice branch") {
+			manualMarker = true
+		}
+	}
+	if !manualMarker {
+		t.Errorf("non-contained orphan finding should be marked needs-manual-attention, got: %+v", findings)
 	}
 	// The branch — and its unique commit — must still be present (nothing deleted).
 	if !git.RefExists(primary, "refs/heads/slis/live/myslice") {

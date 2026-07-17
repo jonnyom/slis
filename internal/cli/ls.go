@@ -35,6 +35,7 @@ type SliceDTO struct {
 	Base       string      `json:"base"`
 	Active     bool        `json:"active"`
 	Stale      bool        `json:"stale"`
+	Partial    bool        `json:"partial,omitempty"`
 	Members    []MemberDTO `json:"members"`
 	StackID    string      `json:"stack_id,omitempty"`
 	StackOrder int         `json:"stack_order,omitempty"`
@@ -131,6 +132,9 @@ func listSlicesReport(ws config.Workspace, overridesPath, journalPath string, an
 			if len(swap.StaleRepos(j, tipByRepo(s))) > 0 {
 				dto.Stale = true
 			}
+			if journalPartial(j, s) {
+				dto.Partial = true
+			}
 		}
 		dtos = append(dtos, dto)
 	}
@@ -153,6 +157,22 @@ func listSlicesReport(ws config.Workspace, overridesPath, journalPath string, an
 		result.Missing = append(result.Missing, MissingDTO(mm))
 	}
 	return result, nil
+}
+
+// journalPartial reports whether the active journal covers only a subset of the
+// slice's members — i.e. at least one member repo has no journal entry, so the
+// slice is only partly swapped in (a crash mid-activate left the rest behind).
+func journalPartial(j *swap.Journal, s model.Slice) bool {
+	covered := make(map[string]bool, len(j.Repos))
+	for _, rs := range j.Repos {
+		covered[rs.Repo] = true
+	}
+	for repo := range s.Members {
+		if !covered[repo] {
+			return true
+		}
+	}
+	return false
 }
 
 // tipByRepo maps each member's repo name to its current branch tip SHA, for
@@ -197,7 +217,10 @@ func renderSlicesTable(w io.Writer, dtos []SliceDTO) {
 		active := ""
 		if dto.Active {
 			active = "●"
-			if dto.Stale {
+			switch {
+			case dto.Partial:
+				active = "● partial"
+			case dto.Stale:
 				active = "● stale"
 			}
 		}
