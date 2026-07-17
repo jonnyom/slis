@@ -40,7 +40,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
 | `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent) |
-| `slis ls` | read | **yes** | List all slices + members + active flag |
+| `slis ls` | read | **yes** | List all slices + members + active flag (`--json` is an object: `slices` + `skipped` + `repo_errors`) |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done) |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
@@ -48,7 +48,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
-| `slis doctor` | read | **yes** | Workspace health findings (`--fix` to auto-repair) |
+| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs (`--fix` auto-repairs the safe ones; never prunes) |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
 | `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run) |
 | `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice |

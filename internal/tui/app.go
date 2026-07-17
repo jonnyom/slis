@@ -52,9 +52,13 @@ const (
 )
 
 // slicesLoadedMsg is sent by loadSlicesCmd when slice discovery completes.
+// skipped/repoErrors count the worktrees/repos discovery could not surface, so
+// the browser can hint that some worktrees are hidden.
 type slicesLoadedMsg struct {
-	slices []model.Slice
-	err    error
+	slices     []model.Slice
+	skipped    int
+	repoErrors int
+	err        error
 }
 
 // Model is the root Bubble Tea model for the slis TUI.
@@ -66,6 +70,11 @@ type Model struct {
 	width   int
 	height  int
 	loading bool
+
+	// Counts of worktrees/repos discovery could not surface, shown as a browser
+	// hint ("N hidden worktrees — slis doctor") so slices never vanish silently.
+	skippedWorktrees int
+	skippedRepos     int
 
 	view        viewMode // browser or cockpit
 	panel       panel    // focused left panel within the cockpit
@@ -266,13 +275,10 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 	return func() tea.Msg {
 		sp := config.StatePaths()
 
-		slices, err := discovery.Discover(ws)
-		if err != nil {
-			return slicesLoadedMsg{err: err}
-		}
+		rep := discovery.DiscoverReport(ws)
 
 		ov, _ := discovery.LoadOverrides(sp.Overrides)
-		slices = discovery.Apply(slices, ov)
+		slices := discovery.Apply(rep.Slices, ov)
 
 		j, _ := swap.Load(sp.ActiveJournal)
 		for i, s := range slices {
@@ -281,7 +287,11 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 			}
 		}
 
-		return slicesLoadedMsg{slices: slices}
+		return slicesLoadedMsg{
+			slices:     slices,
+			skipped:    len(rep.Skipped),
+			repoErrors: len(rep.RepoErrors),
+		}
 	}
 }
 
@@ -777,6 +787,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		m.slices = msg.slices
+		m.skippedWorktrees = msg.skipped
+		m.skippedRepos = msg.repoErrors
 		if len(m.slices) == 0 {
 			m.focus = 0
 		} else if m.focus >= len(m.slices) {
