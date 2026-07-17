@@ -23,7 +23,7 @@ func loadStackCmd(sl model.Slice) tea.Cmd {
 				stacks[repo] = gt.State{}
 				continue
 			}
-			state, err := gt.ReadState(member.WorktreePath)
+			state, err := gt.ReadStack(member.WorktreePath)
 			if err != nil {
 				state = gt.State{}
 			}

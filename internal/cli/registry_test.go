@@ -43,7 +43,7 @@ func TestListSlicesReport_CandidateThenImport(t *testing.T) {
 		t.Fatalf("SaveRegistry: %v", err)
 	}
 
-	res, err := listSlicesReport(ws, ovPath, jPath)
+	res, err := listSlicesReport(ws, ovPath, jPath, false)
 	if err != nil {
 		t.Fatalf("listSlicesReport: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestListSlicesReport_CandidateThenImport(t *testing.T) {
 		t.Fatalf("SaveRegistry: %v", err)
 	}
 
-	res2, err := listSlicesReport(ws, ovPath, jPath)
+	res2, err := listSlicesReport(ws, ovPath, jPath, false)
 	if err != nil {
 		t.Fatalf("listSlicesReport: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestListSlicesReport_MissingSurfaced(t *testing.T) {
 		t.Fatalf("SaveRegistry: %v", err)
 	}
 
-	res, err := listSlicesReport(ws, ovPath, jPath)
+	res, err := listSlicesReport(ws, ovPath, jPath, false)
 	if err != nil {
 		t.Fatalf("listSlicesReport: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestListSlicesReport_DefaultIgnore(t *testing.T) {
 		t.Fatalf("SaveRegistry: %v", err)
 	}
 
-	res, err := listSlicesReport(ws, ovPath, jPath)
+	res, err := listSlicesReport(ws, ovPath, jPath, false)
 	if err != nil {
 		t.Fatalf("listSlicesReport: %v", err)
 	}

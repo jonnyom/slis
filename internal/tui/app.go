@@ -311,6 +311,11 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 			}
 		}
 
+		// Annotate Graphite stacks so the browser can cluster stack-sibling
+		// slices. Off the UI goroutine (this is a tea.Cmd), so the per-member
+		// gt reads never touch Update/View.
+		slices = discovery.AnnotateStacks(slices, gt.ReadStack)
+
 		return slicesLoadedMsg{
 			slices:     slices,
 			skipped:    len(rep.Skipped),

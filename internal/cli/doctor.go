@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,6 +14,7 @@ import (
 	slis "github.com/jonnyom/slis"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
+	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/hooks"
 	"github.com/jonnyom/slis/internal/skill"
 )
@@ -182,6 +185,62 @@ func makeSkillFixer(h skill.Harness) func() (string, error) {
 	}
 }
 
+// gtFindings reports Graphite integration health (report-only — no fixers): is
+// gt installed, is each repo Graphite-initialised, and is each slice member's
+// branch tracked in gt metadata? An untracked branch is absent from the stack
+// read by ReadStack, so it silently drops out of stack views; the remedy is a
+// one-off `gt track --parent <trunk>`.
+func gtFindings(ws config.Workspace, dtos []SliceDTO) []doctorFinding {
+	if _, err := exec.LookPath("gt"); err != nil {
+		return []doctorFinding{{
+			Level:  lvlInfo,
+			Title:  "Graphite (gt) not installed",
+			Detail: "install gt for stack-aware slices — slis works without it",
+		}}
+	}
+
+	repoNames := make([]string, 0, len(ws.Repos))
+	for name := range ws.Repos {
+		repoNames = append(repoNames, name)
+	}
+	sort.Strings(repoNames)
+
+	var findings []doctorFinding
+	nativeRepo := make(map[string]bool, len(repoNames))
+	for _, name := range repoNames {
+		if gt.Native(ws.Repos[name].Primary) {
+			nativeRepo[name] = true
+			findings = append(findings, doctorFinding{Level: lvlOK, Title: fmt.Sprintf("Graphite initialised in %s", name)})
+		} else {
+			findings = append(findings, doctorFinding{
+				Level:  lvlWarn,
+				Title:  fmt.Sprintf("Graphite not initialised in %s", name),
+				Detail: "run `gt init` in the repo so slis can read and track its stacks",
+			})
+		}
+	}
+
+	for _, d := range dtos {
+		for _, mem := range d.Members {
+			if mem.WorktreePath == "" || !nativeRepo[mem.Repo] {
+				continue
+			}
+			st, _ := gt.ReadStack(mem.WorktreePath)
+			if len(st) == 0 {
+				continue
+			}
+			if _, tracked := st[mem.Branch]; !tracked {
+				findings = append(findings, doctorFinding{
+					Level:  lvlWarn,
+					Title:  fmt.Sprintf("branch not tracked in Graphite: %s/%s", d.Name, mem.Repo),
+					Detail: fmt.Sprintf("run `gt track --parent <trunk> %s` in %s so it joins the stack", mem.Branch, mem.WorktreePath),
+				})
+			}
+		}
+	}
+	return findings
+}
+
 // runDoctor performs all read-only checks and returns the findings (some with an
 // attached fix closure).
 func runDoctor() []doctorFinding {
@@ -209,7 +268,7 @@ func runDoctor() []doctorFinding {
 	}
 
 	sp := config.StatePaths()
-	rep, err := listSlicesReport(ws, sp.Overrides, sp.ActiveJournal)
+	rep, err := listSlicesReport(ws, sp.Overrides, sp.ActiveJournal, false)
 	if err != nil {
 		return append(findings, doctorFinding{Level: lvlFail, Title: "could not list slices", Detail: err.Error()})
 	}
@@ -259,6 +318,8 @@ func runDoctor() []doctorFinding {
 		}
 	}
 	findings = append(findings, swapFinds...)
+
+	findings = append(findings, gtFindings(ws, dtos)...)
 
 	// Candidates are informational (opt-in), not issues — appended after the
 	// health verdict so they don't count as warns/fails.

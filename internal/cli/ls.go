@@ -12,6 +12,7 @@ import (
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/discovery"
+	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/spf13/cobra"
@@ -25,13 +26,18 @@ type MemberDTO struct {
 	TipSHA       string `json:"tip_sha"`
 }
 
-// SliceDTO is a JSON-friendly representation of a slice.
+// SliceDTO is a JSON-friendly representation of a slice. StackID/StackOrder are
+// the optional Graphite stack annotations (present only when stack data is
+// available and requested): slices sharing a StackID are stack siblings, ordered
+// trunk-first by StackOrder.
 type SliceDTO struct {
-	Name    string      `json:"name"`
-	Base    string      `json:"base"`
-	Active  bool        `json:"active"`
-	Stale   bool        `json:"stale"`
-	Members []MemberDTO `json:"members"`
+	Name       string      `json:"name"`
+	Base       string      `json:"base"`
+	Active     bool        `json:"active"`
+	Stale      bool        `json:"stale"`
+	Members    []MemberDTO `json:"members"`
+	StackID    string      `json:"stack_id,omitempty"`
+	StackOrder int         `json:"stack_order,omitempty"`
 }
 
 // SkippedWorktreeDTO is a JSON-friendly representation of a worktree discovery
@@ -84,7 +90,7 @@ type LsResultDTO struct {
 // active slice from the journal, and returns DTOs sorted by name. Overrides and
 // journal paths that do not exist are silently treated as empty/absent.
 func listSlices(ws config.Workspace, overridesPath, journalPath string) ([]SliceDTO, error) {
-	res, err := listSlicesReport(ws, overridesPath, journalPath)
+	res, err := listSlicesReport(ws, overridesPath, journalPath, false)
 	if err != nil {
 		return nil, err
 	}
@@ -103,11 +109,17 @@ func registryPathFor(overridesPath string) string {
 // unmanaged worktrees (ls, doctor, TUI) can report them. Ingestion is opt-in:
 // only registered (or managed-tree) worktrees become slices; the rest are
 // candidates.
-func listSlicesReport(ws config.Workspace, overridesPath, journalPath string) (LsResultDTO, error) {
+func listSlicesReport(ws config.Workspace, overridesPath, journalPath string, annotateStacks bool) (LsResultDTO, error) {
 	rep := discovery.Report(ws, registryPathFor(overridesPath))
 
 	ov, _ := discovery.LoadOverrides(overridesPath)
 	slices := discovery.Apply(rep.Slices, ov)
+
+	// Graphite stack annotation is opt-in: only ls --json needs it, and it costs
+	// a `gt state` read per member, so polling commands (status) skip it.
+	if annotateStacks {
+		slices = discovery.AnnotateStacks(slices, gt.ReadStack)
+	}
 
 	j, _ := swap.Load(journalPath)
 
@@ -168,10 +180,12 @@ func toSliceDTO(s model.Slice) SliceDTO {
 		})
 	}
 	return SliceDTO{
-		Name:    s.Name,
-		Base:    s.Base,
-		Active:  s.Active,
-		Members: members,
+		Name:       s.Name,
+		Base:       s.Base,
+		Active:     s.Active,
+		Members:    members,
+		StackID:    s.StackID,
+		StackOrder: s.StackOrder,
 	}
 }
 
@@ -208,7 +222,9 @@ var lsCmd = &cobra.Command{
 		}
 
 		sp := config.StatePaths()
-		res, err := listSlicesReport(ws, sp.Overrides, sp.ActiveJournal)
+		// Annotate stacks only for JSON consumers (the table view doesn't show
+		// stack_id) so the human `slis ls` stays free of per-member gt reads.
+		res, err := listSlicesReport(ws, sp.Overrides, sp.ActiveJournal, useJSON)
 		if err != nil {
 			return err
 		}

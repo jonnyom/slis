@@ -154,7 +154,7 @@ func ParentBases(sl model.Slice) map[string]string {
 		if m.WorktreePath == "" {
 			continue
 		}
-		st, err := gt.ReadState(m.WorktreePath)
+		st, err := gt.ReadStack(m.WorktreePath)
 		if err != nil || len(st) == 0 {
 			continue
 		}
