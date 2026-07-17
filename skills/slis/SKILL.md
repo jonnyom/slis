@@ -41,19 +41,19 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
 | `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a tmux session is attached. Clicking a banner runs `slis focus <slice>` to jump your tmux client to that slice (terminal-notifier only; set `notify.activate` to a terminal app bundle id to also foreground it) |
 | `slis init-skill` | mutate | no | Install this skill (+ `references/AGENT.md`) for an agent harness. `--harness claude\|codex\|both` (default both): claude → `~/.claude/skills/slis/`, codex → `~/.agents/skills/slis/`. Idempotent (content-hash version stamp). Also run by `slis init` unless `--no-skill` |
-| `slis ls` | read | **yes** | List all slices + members + active flag (`--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`) |
+| `slis ls` | read | **yes** | List all slices + members + active flag (`--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`; each slice carries optional Graphite `stack_id`/`stack_order` — siblings share a `stack_id`) |
 | `slis candidates` | read | **yes** | List discovered-but-unmanaged worktrees awaiting opt-in import |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done) |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
-| `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard) |
+| `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
-| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs (`--fix` auto-repairs the safe ones; never prunes) |
+| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs + a Graphite section (gt installed? repos initialised? branches tracked?) (`--fix` auto-repairs the safe ones; never prunes) |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
-| `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run) |
-| `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees) |
+| `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run); in a Graphite-native repo also `gt track`s the new branch (best-effort) |
+| `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees); in a Graphite-native repo also `gt track`s it (best-effort) |
 | `slis import [path]` | mutate | no | Register a candidate worktree (or `--all`) as a managed slice — registry only, never git |
 | `slis ignore <path-or-glob>` | mutate | no | Add a path/glob to `grouping.ignore` so matching worktrees are never ingested |
 | `slis forget <slice>` | mutate | no | Drop a slice from the registry (does not touch git — use for a missing slice) |

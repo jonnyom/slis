@@ -81,7 +81,7 @@ func buildDetail(dto SliceDTO) SliceDetailDTO {
 	for _, m := range dto.Members {
 		mdet := MemberDetailDTO{MemberDTO: m}
 		if m.WorktreePath != "" {
-			st, err := gt.ReadState(m.WorktreePath)
+			st, err := gt.ReadStack(m.WorktreePath)
 			if err == nil {
 				ordered := st.Ordered()
 				stack := make([]OrderedBranchDTO, 0, len(ordered))

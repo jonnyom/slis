@@ -38,6 +38,15 @@ type Slice struct {
 	Name, Base string
 	Members    map[string]SliceMember // keyed by repo name
 	Active     bool                   // currently swapped into primary
+
+	// StackID and StackOrder are optional Graphite annotations (set after
+	// discovery by discovery.AnnotateStacks, empty otherwise). Slices sharing a
+	// StackID descend from the same stack root in the same repo — they are
+	// stack siblings. StackOrder is the depth from that root (root = 0), giving
+	// a trunk-first ordering within the stack. They are annotation only: slice
+	// identity and grouping are never changed by them.
+	StackID    string
+	StackOrder int
 }
 
 // Repos returns the member repo names in sorted order.

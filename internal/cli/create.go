@@ -7,10 +7,25 @@ import (
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
+	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 	"github.com/spf13/cobra"
 )
+
+// trackInGraphite best-effort registers a slis-born branch in Graphite so a
+// gt-native repo keeps the new branch in its stack metadata (parent → branch).
+// It is a no-op unless the repo is gt-native and a parent is known; a tracking
+// failure only prints a warning and never blocks or rolls back the worktree
+// that was just created.
+func trackInGraphite(dir, branch, parent string) {
+	if branch == "" || parent == "" || !gt.Native(dir) {
+		return
+	}
+	if _, err := gt.Track(dir, branch, parent); err != nil {
+		fmt.Printf("note: could not track %s in Graphite (parent %s): %v\n", branch, parent, err)
+	}
+}
 
 // validateSliceName rejects slice names that would be unsafe once interpolated
 // into a filesystem path (worktree location), a git branch, or a tmux session.
@@ -176,6 +191,12 @@ var createCmd = &cobra.Command{
 			}
 
 			fmt.Printf("created worktree for %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
+
+			// A fresh -b branch (err == nil) is slis-born; track it off trunk so a
+			// gt-native repo keeps it in the stack. Best-effort: never blocks.
+			if err == nil {
+				trackInGraphite(p.Path, p.Branch, p.StartPoint)
+			}
 		}
 
 		// Start a tmux session for the new slice (best-effort; skip if tmux is absent).

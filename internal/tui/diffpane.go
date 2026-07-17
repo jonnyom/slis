@@ -95,7 +95,7 @@ func scopeFromPrefs(p config.Prefs) diffScope {
 
 // gtParent returns the Graphite parent branch of branch in dir's repo, or "".
 func gtParent(dir, branch string) string {
-	st, err := gt.ReadState(dir)
+	st, err := gt.ReadStack(dir)
 	if err != nil {
 		return ""
 	}

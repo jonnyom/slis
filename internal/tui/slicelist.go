@@ -42,6 +42,7 @@ var (
 	candidateStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Bold(true) // new-worktree hint
 	missingStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true) // missing-slice badge
 	dimRowStyle     = lipgloss.NewStyle().Faint(true)
+	stackHdrStyle   = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("246")) // stack-group header line
 )
 
 // candidateHint returns the one-line "N new worktrees found — press i" hint when
@@ -236,7 +237,7 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 			if member.WorktreePath == "" {
 				continue
 			}
-			st, err := gt.ReadState(member.WorktreePath)
+			st, err := gt.ReadStack(member.WorktreePath)
 			if err != nil || len(st) == 0 {
 				continue
 			}
@@ -666,7 +667,55 @@ func statesContent(m Model) string {
 	return sb.String()
 }
 
+// stackRootOf extracts the stack-root branch name from a slice's StackID
+// (encoded as "<repo>\x00<root>" by discovery.AnnotateStacks), or "" if absent.
+func stackRootOf(stackID string) string {
+	if i := strings.IndexByte(stackID, 0); i >= 0 {
+		return stackID[i+1:]
+	}
+	return ""
+}
+
+// clusterVisByStack reorders vis so slices sharing a StackID sit adjacently,
+// trunk-first by StackOrder, while preserving each group's first-appearance
+// position (so inbox urgency / name order is otherwise untouched). Slices with
+// no stack annotation keep their place. Returns the reordered indices and, for
+// each stack group of MORE than one slice, the vis-index that leads it (so a
+// subtle header can be drawn above the group).
+func clusterVisByStack(m Model, vis []int) (ordered []int, leaders map[int]int) {
+	groups := map[string][]int{}
+	order := []string{}
+	for _, i := range vis {
+		key := m.slices[i].StackID
+		if key == "" {
+			key = fmt.Sprintf("\x00solo-%d", i) // unique: stays in place, no header
+		}
+		if _, ok := groups[key]; !ok {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], i)
+	}
+
+	ordered = make([]int, 0, len(vis))
+	leaders = map[int]int{}
+	for _, key := range order {
+		g := groups[key]
+		if len(g) > 1 {
+			sort.SliceStable(g, func(a, b int) bool {
+				return m.slices[g[a]].StackOrder < m.slices[g[b]].StackOrder
+			})
+			if m.slices[g[0]].StackID != "" {
+				leaders[g[0]] = len(g)
+			}
+		}
+		ordered = append(ordered, g...)
+	}
+	return ordered, leaders
+}
+
 // slicesContent renders the (filtered) slice list, windowed around the selection.
+// Stack-sibling slices are clustered together under a subtle header; when no
+// slice carries stack data the list stays flat.
 func slicesContent(m Model, vis []int, rows int) string {
 	if len(vis) == 0 {
 		return overviewStyle.Render("(none)")
@@ -674,6 +723,8 @@ func slicesContent(m Model, vis []int, rows int) string {
 	if rows < 1 {
 		rows = 1
 	}
+	vis, leaders := clusterVisByStack(m, vis)
+	prefix := m.ws.Grouping.StripPrefix
 	pos := 0
 	for p, i := range vis {
 		if i == m.focus {
@@ -686,6 +737,10 @@ func slicesContent(m Model, vis []int, rows int) string {
 
 	var sb strings.Builder
 	for _, i := range vis[start:end] {
+		if n, ok := leaders[i]; ok {
+			root := shortBranch(stackRootOf(m.slices[i].StackID), prefix)
+			sb.WriteString(stackHdrStyle.Render(fmt.Sprintf("  stack: %s → … (%d slices)", root, n)) + "\n")
+		}
 		s := m.slices[i]
 		marker := "  "
 		switch {

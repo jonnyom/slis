@@ -240,3 +240,42 @@ func (s State) Lineage(branch string) []OrderedBranch {
 	}
 	return out
 }
+
+// StackRoot identifies the stack a branch belongs to: it walks first-parent
+// links up from branch until it reaches the branch whose parent is the trunk
+// (or a branch with no recorded parent). That branch — the deepest non-trunk
+// ancestor — is the stack root, and every branch stacked above it shares it.
+// depth is the number of hops from the root down to branch (root itself = 0),
+// giving a trunk-first ordering within the stack.
+//
+// It returns ok=false when branch is absent from the state or is itself a trunk
+// (a trunk is not part of any feature stack). The visited guard tolerates
+// malformed cycles.
+func (s State) StackRoot(branch string) (root string, depth int, ok bool) {
+	b, present := s[branch]
+	if !present || b.Trunk {
+		return "", 0, false
+	}
+
+	// Collect the chain of non-trunk ancestors, branch-first.
+	chain := []string{}
+	seen := map[string]bool{}
+	for cur := branch; ; {
+		cb, exists := s[cur]
+		if !exists || cb.Trunk || seen[cur] {
+			break
+		}
+		seen[cur] = true
+		chain = append(chain, cur)
+		if len(cb.Parents) == 0 {
+			break
+		}
+		cur = cb.Parents[0].Ref
+	}
+
+	if len(chain) == 0 {
+		return "", 0, false
+	}
+	// The last entry is the deepest non-trunk ancestor — the stack root.
+	return chain[len(chain)-1], len(chain) - 1, true
+}

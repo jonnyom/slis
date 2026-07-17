@@ -30,6 +30,7 @@ when empty.
 ### `slis ls --json` → object
 ```jsonc
 { "slices": [{ "name": "checkout", "base": "", "active": false,
+     "stack_id": "webjonny/pay-103", "stack_order": 1,
      "members": [{ "repo": "web", "branch": "jonny/checkout",
                    "worktree_path": "/abs/path", "tip_sha": "f67b8a9..." }] }],
   "skipped": [{ "repo": "web", "path": "/abs/path", "branch": "",
@@ -40,6 +41,13 @@ when empty.
   "missing": [{ "slice": "old", "repo": "web", "path": "/gone",
                 "branch": "jonny/old" }] }
 ```
+`stack_id`/`stack_order` are optional Graphite annotations (present only when
+`gt` is available and the branch is tracked; omitted otherwise). Slices sharing a
+`stack_id` are stack siblings — they descend from the same stack root in the same
+repo — and `stack_order` is the branch's depth from that root (root = 0), so
+siblings sort trunk-first. They are annotation only: slice identity and grouping
+are unchanged. `stack_id` is opaque (`<repo>` + NUL byte + `<root-branch>`) —
+compare ids for equality, don't parse them.
 `slices` is the same member shape as before (previously the top-level array).
 `skipped`/`repo_errors`/`candidates`/`missing` are omitted when empty. A worktree
 is never dropped silently: `skipped[].reason` ∈ `detached | branchless | bare |
@@ -93,10 +101,13 @@ per-check counts. `number` is omitted when the branch has no PR.
 ```jsonc
 [{ "repo": "web", "branch": "jonny/checkout", "number": 8107,
    "url": "https://github.com/...", "state": "OPEN", "title": "Checkout revamp",
-   "review_decision": "APPROVED" }]
+   "review_decision": "APPROVED", "stack_order": 1 }]
 ```
 `review_decision` ∈ `APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | ""`. All
 PR fields are omitted for a branch with no PR (only `repo`/`branch` remain).
+`stack_order` is the branch's trunk-relative Graphite depth (1 = directly off
+trunk), omitted when the repo has no stack data. Rows are ordered trunk-first by
+depth when any repo has Graphite data, otherwise alphabetically by repo.
 
 ### `slis conflicts --json` → object
 ```jsonc
@@ -126,8 +137,11 @@ per-reason remedy), **repo read failures**, **orphaned directories** under
 `<root>/.slis/worktrees/**` (empty litter dirs and checkouts whose `.git` points
 at a rebound admin slot), **missing slices** (registered worktree gone — remedy:
 recreate or `slis forget`), and an **info** finding listing unmanaged
-**candidates** (import/ignore). These are report-only: doctor never prunes or
-deletes.
+**candidates** (import/ignore). It also reports a **Graphite** section
+(report-only): whether `gt` is installed, whether each repo is Graphite-
+initialised, and whether each slice member's branch is tracked in gt metadata
+(an untracked branch drops out of stack views — remedy: `gt track --parent
+<trunk> <branch>`). These are report-only: doctor never prunes or deletes.
 
 ### `slis comments [slice] --json` → object
 Cached PR comments, keyed `slice → repo`. Persists after `slis rm` so feedback
@@ -176,7 +190,7 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 | Class | Commands | Notes for agents |
 |---|---|---|
 | **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes; `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes; `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). |
 | **remote / destructive** | `submit merge sync fix-ci` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before

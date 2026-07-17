@@ -180,6 +180,12 @@ func adoptBranch(ws config.Workspace, raw string, noSession, move, createMissing
 		return fmt.Errorf("nothing adopted: no repo had branch %q free to check out", branch)
 	}
 
+	// Track each adopted member in Graphite (parent = its repo's detected trunk)
+	// so a gt-native repo keeps the branch in its stack metadata. Best-effort.
+	for _, mem := range members {
+		trackInGraphite(mem.WorktreePath, branch, git.DetectBase(mem.WorktreePath))
+	}
+
 	if !noSession {
 		if !tmuxctl.Available() {
 			fmt.Println("note: tmux not found — skipping session creation")
