@@ -1,0 +1,42 @@
+internal/notify/icon.go
+  s_e7cc16202efb78::t_f607a581eee5a0 1-31
+internal/notify/notify.go
+  s_e7cc16202efb78::t_f9306cf866143d 74,78-81,86
+  s_e7cc16202efb78::t_c35e2598bf7546 53,99-102,109-114
+  s_e7cc16202efb78::t_1c466b7ccf2e54 4-5
+  s_e7cc16202efb78::t_9a41997325f371 42-43,51-52
+docs/AGENT.md
+  s_e7cc16202efb78::t_a270affef14ff9 137-139
+internal/notify/notify_test.go
+  s_e7cc16202efb78::t_37fb5d8d712418 20,52
+internal/notify/backend_internal_test.go
+  s_e7cc16202efb78::t_d65e9aa09ca334 38,53
+  s_e7cc16202efb78::t_948fac47cda93e 69,76
+  s_e7cc16202efb78::t_c2e4c170f0d97d 86,94,98,103-127
+assets/icon/slis.svg
+  s_604740914b95ab::t_8dcdaa3a672089 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d8a40b7992f384acae249b77152aab7cd67c0bb4",
+  "prompts": {},
+  "sessions": {
+    "s_604740914b95ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae52ec0f4ba8c908a",
+        "model": "unknown"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
