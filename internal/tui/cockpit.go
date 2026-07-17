@@ -563,7 +563,7 @@ func sessionDetailContent(m Model, sl model.Slice) string {
 		return sb.String()
 	}
 	if m.ws.Root != "" && m.ws.Sessions.Layout != "repos" {
-		fmt.Fprintf(&sb, "\nattach opens at root:  %s\n", m.ws.Root)
+		sb.WriteString("\nattach opens in the slice worktrees (not the workspace primaries)\n")
 	}
 	sb.WriteString("\nrepos:\n")
 	for _, repo := range sl.Repos() {
