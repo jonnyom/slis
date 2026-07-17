@@ -38,6 +38,7 @@ type Slice struct {
 	Name, Base string
 	Members    map[string]SliceMember // keyed by repo name
 	Active     bool                   // currently swapped into primary
+	Stale      bool                   // active, but a branch tip has advanced past the swapped primary (run `slis refresh`)
 }
 
 // Repos returns the member repo names in sorted order.

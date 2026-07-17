@@ -159,6 +159,12 @@ func renderCockpit(m Model) string {
 	leftW, rightW, bodyH := m.cockpitDims()
 
 	headerLeft := cockpitHeaderStyle.Render("slis ▸ " + sl.Name)
+	if sl.Active {
+		headerLeft += "   " + liveStyle.Render("● LIVE — primaries swapped to this slice · [w] swap back")
+		if sl.Stale {
+			headerLeft += "  " + staleStyle.Render("⚠ primary behind tip — run slis refresh")
+		}
+	}
 	if m.sliceMergeState(sl) == mergeReady {
 		headerLeft += "   " + readyStyle.Render("♻ merged — ready to clear · [d]")
 	}

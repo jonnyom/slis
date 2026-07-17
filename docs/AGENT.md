@@ -29,7 +29,7 @@ when empty.
 
 ### `slis ls --json` → object
 ```jsonc
-{ "slices": [{ "name": "checkout", "base": "", "active": false,
+{ "slices": [{ "name": "checkout", "base": "", "active": false, "stale": false,
      "members": [{ "repo": "web", "branch": "jonny/checkout",
                    "worktree_path": "/abs/path", "tip_sha": "f67b8a9..." }] }],
   "skipped": [{ "repo": "web", "path": "/abs/path", "branch": "",
@@ -41,7 +41,10 @@ when empty.
                 "branch": "jonny/old" }] }
 ```
 `slices` is the same member shape as before (previously the top-level array).
-`skipped`/`repo_errors`/`candidates`/`missing` are omitted when empty. A worktree
+`active` is the currently-swapped-in slice (at most one); `stale` is `true` when
+that active slice's branch tip has advanced past the swapped-in primaries — the
+primaries are behind, run `slis refresh` to fast-forward them (only meaningful
+when `active`). `skipped`/`repo_errors`/`candidates`/`missing` are omitted when empty. A worktree
 is never dropped silently: `skipped[].reason` ∈ `detached | branchless | bare |
 prunable | invalid-branch-name | rev-parse-failed | grouping-collision |
 ignored`. `repo_errors` lists repos whose worktree listing failed entirely (the
@@ -126,8 +129,15 @@ per-reason remedy), **repo read failures**, **orphaned directories** under
 `<root>/.slis/worktrees/**` (empty litter dirs and checkouts whose `.git` points
 at a rebound admin slot), **missing slices** (registered worktree gone — remedy:
 recreate or `slis forget`), and an **info** finding listing unmanaged
-**candidates** (import/ignore). These are report-only: doctor never prunes or
-deletes.
+**candidates** (import/ignore). It also reports **swap-journal health**: a
+**stale journal** (a swap is recorded but no primary is still detached at its
+slice tip — the swap looks already undone; `--fix` deletes the journal, but only
+when *every* primary is on a branch, i.e. provably not swapped), a journal repo
+whose **prior branch was deleted** (so `slis deactivate` can't restore it —
+remedy names the exact `git branch` recreate command), and an **orphaned detach**
+(a primary left detached with no journal — remedy: `git switch <branch>`). These
+are report-only except the provably-safe stale-journal deletion under `--fix`;
+doctor never prunes or deletes worktrees.
 
 ### `slis comments [slice] --json` → object
 Cached PR comments, keyed `slice → repo`. Persists after `slis rm` so feedback
@@ -176,7 +186,7 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 | Class | Commands | Notes for agents |
 |---|---|---|
 | **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes; `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and detaches each primary at the slice tip (worktrees untouched); `deactivate` refuses any primary that drifted off its recorded slice tip (you committed on the detached HEAD, switched branches, or the journal is stale) with zero state change, and `deactivate --force` restores anyway — rescuing any commits made on the detached HEAD to a `slis/rescue/<slice>-<repo>` branch first so nothing is orphaned; `refresh` refuses a dirty primary; `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. |
 | **remote / destructive** | `submit merge sync fix-ci` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before

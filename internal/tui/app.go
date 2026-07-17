@@ -303,6 +303,11 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 		for i, s := range slices {
 			if j != nil && j.Slice == s.Name {
 				slices[i].Active = true
+				tips := make(map[string]string, len(s.Members))
+				for repo, mem := range s.Members {
+					tips[repo] = mem.TipSHA
+				}
+				slices[i].Stale = len(swap.StaleRepos(j, tips)) > 0
 			}
 		}
 

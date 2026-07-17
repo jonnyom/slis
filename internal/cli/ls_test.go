@@ -141,6 +141,39 @@ func TestListSlicesMarksActive(t *testing.T) {
 	}
 }
 
+func TestListSlicesMarksStale(t *testing.T) {
+	ws := makeTestWorkspace(t)
+
+	tmp := t.TempDir()
+	ovPath := filepath.Join(tmp, "ov.yaml")
+	jPath := filepath.Join(tmp, "active.json")
+
+	// Journal for "checkout" whose recorded TargetSHA does not match the current
+	// branch tip → the primary is behind, so the slice must be flagged stale.
+	if err := swap.Save(jPath, &swap.Journal{
+		Slice: "checkout",
+		Repos: []swap.RepoState{{Repo: "web", TargetSHA: "0000000000000000000000000000000000000000"}},
+	}); err != nil {
+		t.Fatalf("swap.Save: %v", err)
+	}
+
+	dtos, err := listSlices(ws, ovPath, jPath)
+	if err != nil {
+		t.Fatalf("listSlices: %v", err)
+	}
+	for _, dto := range dtos {
+		if dto.Name != "checkout" {
+			continue
+		}
+		if !dto.Active {
+			t.Error("checkout should be Active=true")
+		}
+		if !dto.Stale {
+			t.Error("checkout should be Stale=true (journal TargetSHA differs from branch tip)")
+		}
+	}
+}
+
 func TestListSlicesJSON(t *testing.T) {
 	ws := makeTestWorkspace(t)
 

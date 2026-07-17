@@ -137,6 +137,7 @@ var activateCmd = &cobra.Command{
 			for _, rs := range j.Repos {
 				fmt.Printf("  %s: detached at %s (branch: %s)\n", rs.Repo, rs.TargetSHA[:min(7, len(rs.TargetSHA))], rs.Branch)
 			}
+			fmt.Println("primaries are now detached at the slice tips — run `slis deactivate` to restore them to their prior branches.")
 		}
 
 		if err != nil {
