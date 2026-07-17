@@ -83,7 +83,19 @@ func swapFindings(ws config.Workspace, dtos []SliceDTO, journalPath string) []do
 			Detail: "the swap looks already undone. Run `slis deactivate --force` to reconcile, " +
 				"or `slis doctor --fix` to delete the journal (only when every primary is on a branch).",
 		}
-		if allOnBranch {
+		// S2: the journal is the only pointer to any pinned auto-stash. If any repo
+		// still holds one, deleting the journal would orphan the user's stashed work,
+		// so the finding is report-only — never offer the --fix deletion. Only when
+		// no StashRef exists (and every primary is on a branch) is the deletion safe.
+		stashRefs := pinnedStashRefs(j)
+		switch {
+		case len(stashRefs) > 0:
+			f.Detail = fmt.Sprintf("the swap looks already undone, but the journal still pins auto-stash(es): %s. "+
+				"Deleting the journal would orphan them, so no automatic fix is offered. Recover your work first with "+
+				"`git -C <primary> stash list | grep slis:auto`, then `git -C <primary> stash apply <ref>`; once it is safe, "+
+				"run `slis deactivate --force` (or delete the journal manually).",
+				strings.Join(stashRefs, ", "))
+		case allOnBranch:
 			f.fixDesc = "delete the stale swap journal"
 			f.fix = func() (string, error) {
 				if err := swap.Clear(journalPath); err != nil {
@@ -102,6 +114,23 @@ func swapFindings(ws config.Workspace, dtos []SliceDTO, journalPath string) []do
 		})
 	}
 	return findings
+}
+
+// pinnedStashRefs returns a human-facing list ("<short-sha> (<repo>)") of every
+// journal repo that still pins an auto-stash. The journal is the only pointer to
+// these stashes, so their presence blocks the stale-journal --fix deletion.
+func pinnedStashRefs(j *swap.Journal) []string {
+	var refs []string
+	for _, rs := range j.Repos {
+		if rs.StashRef != "" {
+			label := shortSHA(rs.StashRef)
+			if rs.Repo != "" {
+				label += " (" + rs.Repo + ")"
+			}
+			refs = append(refs, label)
+		}
+	}
+	return refs
 }
 
 // repoSwappedIn reports whether a journal repo is still swapped in. For the

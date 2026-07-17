@@ -1304,3 +1304,133 @@ func TestRefreshRefusesDivergedBranch(t *testing.T) {
 		t.Errorf("primary advanced despite refusal: want %q, got %q", oldTip, head)
 	}
 }
+
+// TestRefreshIncrementalJournalOnPartialFailure verifies W1: in a multi-repo
+// refresh where an earlier repo fast-forwards but a later repo has diverged,
+// Refresh errors — but the earlier repo's advance is already persisted to the
+// on-disk journal (incremental save), so a subsequent deactivate of that repo
+// takes the clean path rather than misreading it as "committed on the temp
+// branch" and stranding its commits on a spurious rescue branch.
+func TestRefreshIncrementalJournalOnPartialFailure(t *testing.T) {
+	rA, wtA := setupRepoWithWorktree(t)
+	rB, wtB := setupRepoWithWorktree(t)
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+	repos := []RepoActivation{
+		{Repo: "a", Primary: rA, Branch: "feat"},
+		{Repo: "b", Primary: rB, Branch: "feat"},
+	}
+	if _, err := Activate("s", repos, journalPath, ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	// Repo A: fast-forwardable — a new commit on feat.
+	if err := os.WriteFile(filepath.Join(wtA, "adv.txt"), []byte("adv\n"), 0o644); err != nil {
+		t.Fatalf("write A adv: %v", err)
+	}
+	if _, err := git.Run(wtA, "add", "adv.txt"); err != nil {
+		t.Fatalf("add A: %v", err)
+	}
+	if _, err := git.Run(wtA, "commit", "-q", "-m", "advance A"); err != nil {
+		t.Fatalf("commit A: %v", err)
+	}
+	newTipA, err := git.RevParse(wtA, "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse A new tip: %v", err)
+	}
+
+	// Repo B: diverged — rewrite feat history so a fast-forward is impossible.
+	if _, err := git.Run(wtB, "reset", "--hard", "HEAD~1"); err != nil {
+		t.Fatalf("reset B: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtB, "div.txt"), []byte("div\n"), 0o644); err != nil {
+		t.Fatalf("write B div: %v", err)
+	}
+	if _, err := git.Run(wtB, "add", "div.txt"); err != nil {
+		t.Fatalf("add B: %v", err)
+	}
+	if _, err := git.Run(wtB, "commit", "-q", "-m", "divergent B"); err != nil {
+		t.Fatalf("commit B: %v", err)
+	}
+
+	// Refresh must fail (repo B diverged)...
+	if _, err := Refresh(journalPath); err == nil {
+		t.Fatal("Refresh: expected error for diverged repo B, got nil")
+	}
+
+	// ...but repo A's advance must already be on disk (incremental journaling).
+	loaded, err := Load(journalPath)
+	if err != nil || loaded == nil {
+		t.Fatalf("Load after failed Refresh: %v (loaded=%v)", err, loaded)
+	}
+	var stateA RepoState
+	foundA := false
+	for _, rs := range loaded.Repos {
+		if rs.Repo == "a" {
+			stateA = rs
+			foundA = true
+		}
+	}
+	if !foundA {
+		t.Fatalf("repo a missing from journal: %+v", loaded.Repos)
+	}
+	if stateA.TargetSHA != newTipA {
+		t.Fatalf("repo a on-disk TargetSHA not advanced: want %q, got %q — a stale journal makes deactivate strand commits", newTipA, stateA.TargetSHA)
+	}
+
+	// A subsequent deactivate of repo A must take the clean path: no rescue branch,
+	// primary restored to its prior branch.
+	if err := deactivateRepo("s", stateA, false); err != nil {
+		t.Fatalf("deactivateRepo(A): want clean restore, got %v", err)
+	}
+	if rescue := rescueBranchName("s", stateA); git.RefExists(rA, "refs/heads/"+rescue) {
+		t.Errorf("clean deactivate created a spurious rescue branch %q", rescue)
+	}
+	if cur, _ := git.CurrentBranch(rA); cur != "main" {
+		t.Errorf("repo A after deactivate: want on main, got %q", cur)
+	}
+}
+
+// TestActivateStashPoppedBackOnSwitchFailure verifies W2: when a dirty primary is
+// auto-stashed but the subsequent `git switch -c` fails, the pinned stash is
+// popped back so the user's uncommitted work is restored rather than silently
+// orphaned in a stash that nothing ever pops.
+func TestActivateStashPoppedBackOnSwitchFailure(t *testing.T) {
+	r, _ := setupRepoWithWorktree(t)
+
+	// Pre-create a branch "slis/live" so creating the temp branch "slis/live/s"
+	// hits a git D/F ref conflict (refs/heads/slis/live exists as a file, so
+	// refs/heads/slis/live/s cannot be created). This survives the
+	// pre-existing-temp-branch guard, which checks refs/heads/slis/live/s exactly.
+	if _, err := git.Run(r, "branch", "slis/live"); err != nil {
+		t.Fatalf("create colliding branch: %v", err)
+	}
+
+	// Make the primary dirty with an untracked file that will be auto-stashed.
+	dirtyPath := filepath.Join(r, "dirty.txt")
+	if err := os.WriteFile(dirtyPath, []byte("work in progress\n"), 0o644); err != nil {
+		t.Fatalf("write dirty.txt: %v", err)
+	}
+
+	_, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s", Stash: true})
+	if err == nil {
+		t.Fatal("activateRepo: expected switch failure, got nil")
+	}
+
+	// The pinned stash must have been popped back: the dirty file is restored...
+	if _, statErr := os.Stat(dirtyPath); statErr != nil {
+		t.Errorf("dirty file not restored after failed switch (work orphaned): %v", statErr)
+	}
+	// ...and no slis:auto stash is left dangling.
+	out, listErr := git.Run(r, "stash", "list")
+	if listErr != nil {
+		t.Fatalf("stash list: %v", listErr)
+	}
+	if strings.Contains(out, "slis:auto") {
+		t.Errorf("orphaned slis:auto stash left behind after pop-back: %q", out)
+	}
+	// The primary must remain on its prior branch (the switch never took effect).
+	if cur, _ := git.CurrentBranch(r); cur != "main" {
+		t.Errorf("primary should still be on main after failed switch, got %q", cur)
+	}
+}
