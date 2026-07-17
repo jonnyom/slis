@@ -1,0 +1,60 @@
+internal/tui/diffpane_test.go
+  s_e7cc16202efb78::t_6c67843415ccde 101-170,172-176
+  s_e7cc16202efb78::t_8222df906f96f9 171
+  s_e7cc16202efb78::t_afba6c5ea36e35 9
+internal/diff/diff.go
+  s_e7cc16202efb78::t_b24cf4d066b3d5 216-261
+internal/tui/keys.go
+  s_e7cc16202efb78::t_86cbd0256cb7ee 52
+internal/git/status.go
+  s_e7cc16202efb78::t_e007ed7617e85d 22-36
+internal/tui/diffpane.go
+  s_e7cc16202efb78::t_e04271d4b6e1d1 25-95
+  s_e7cc16202efb78::t_419f237dfd3a72 109-128,136
+  s_e7cc16202efb78::t_0160f716b92eec 12
+internal/config/prefs.go
+  s_e7cc16202efb78::t_450a220a68521e 13-18
+internal/diff/diff_test.go
+  s_e7cc16202efb78::t_8989d78d716c98 263-364
+internal/tui/app.go
+  s_e7cc16202efb78::t_468709e991e36c 215
+  s_e7cc16202efb78::t_316aa6e4f968a8 70-72
+  s_e7cc16202efb78::t_2a96d350c6a0ca 805-807
+  s_e7cc16202efb78::t_15843fafed6eef 170-175
+  s_e7cc16202efb78::t_3366ce71195540 229
+  s_e7cc16202efb78::t_73330398ca0b64 818-820
+  s_e7cc16202efb78::t_20e84c25e7ec67 73-74
+  s_e7cc16202efb78::t_8bca9e1fb43690 1249-1250
+  s_e7cc16202efb78::t_f897ce5162b412 332,371
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_e348254c6e3939 186-188
+  s_e7cc16202efb78::t_a6e816af3bed46 108-127,129-131,134-145,151-152
+  s_e7cc16202efb78::t_817dedb3cf7a3f 13
+  s_e7cc16202efb78::t_8dc14259772503 240
+internal/git/status_test.go
+  s_e7cc16202efb78::t_4a52b078a4d047 107-110,112-113
+  s_e7cc16202efb78::t_3dfbe09ccc4e20 77-106,111,114-120
+internal/tui/prview.go
+  s_e7cc16202efb78::t_81818f03679f92 70-72,77-79,87
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_52cb8cb7d90283 219-220
+  s_e7cc16202efb78::t_cdbe9026615340 161-164,166
+  s_e7cc16202efb78::t_d179b6293002aa 880-883
+  s_e7cc16202efb78::t_e974423c0525c6 461,464-470,473
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cce0b373509fadcb260f6df78938f360a1b2b3a6",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
