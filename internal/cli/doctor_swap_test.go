@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/config"
@@ -134,6 +135,47 @@ func TestSwapFindingsStaleJournalNoFixWhenStillSwappedIn(t *testing.T) {
 	}
 }
 
+// TestSwapFindingsStaleJournalWithStashIsReportOnly verifies S2: a stale journal
+// that still pins an auto-stash is report-only — deleting it would orphan the
+// user's stashed work (the journal is the only pointer), so no --fix is offered
+// and the detail names the stash for recovery.
+func TestSwapFindingsStaleJournalWithStashIsReportOnly(t *testing.T) {
+	ws, journalPath, primary := swapDoctorFixture(t)
+
+	// Put the primary back on a branch (stale journal) and pin an auto-stash ref
+	// into the journal so deleting it would orphan the user's stashed work.
+	if _, err := git.Run(primary, "switch", "main"); err != nil {
+		t.Fatalf("switch main: %v", err)
+	}
+	j, err := swap.Load(journalPath)
+	if err != nil || j == nil {
+		t.Fatalf("Load: %v (j=%v)", err, j)
+	}
+	j.Repos[0].StashRef = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	j.Repos[0].StashMsg = "slis:auto:web:feat:123"
+	if err := swap.Save(journalPath, j); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	findings := swapFindings(ws, nil, journalPath)
+	warns, _, fixable := countSwapIssues(findings)
+	if warns == 0 {
+		t.Fatalf("stale journal with a pinned stash should still warn, got: %+v", findings)
+	}
+	if fixable != 0 {
+		t.Errorf("no --fix must be offered while a pinned auto-stash exists (deletion would orphan it), got %d fixable: %+v", fixable, findings)
+	}
+	var mentionsStash bool
+	for _, f := range findings {
+		if strings.Contains(f.Detail, "stash") {
+			mentionsStash = true
+		}
+	}
+	if !mentionsStash {
+		t.Errorf("report-only finding must name the stash and how to recover it, got: %+v", findings)
+	}
+}
+
 func TestSwapFindingsPriorBranchGone(t *testing.T) {
 	primary := testutil.NewRepo(t)
 	base := t.TempDir()
@@ -245,5 +287,61 @@ func TestSwapFindingsOrphanedLiveBranch(t *testing.T) {
 	}
 	if git.RefExists(primary, "refs/heads/slis/live/myslice") {
 		t.Error("after fix: orphaned temp branch was not deleted")
+	}
+}
+
+// TestSwapFindingsOrphanedLiveBranchNotContainedIsReportOnly is the safety gate on
+// doctor's branch -D: an orphaned slis/live branch carrying commits NOT contained
+// in the slice branch must be report-only — no --fix is offered, so the branch and
+// its unique commits are never deleted.
+func TestSwapFindingsOrphanedLiveBranchNotContainedIsReportOnly(t *testing.T) {
+	primary := testutil.NewRepo(t)
+	base := t.TempDir()
+	featWT := filepath.Join(base, "feat")
+	testutil.AddWorktree(t, primary, "feat", featWT)
+	if err := os.WriteFile(filepath.Join(featWT, "f.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := git.Run(featWT, "add", "f.txt"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := git.Run(featWT, "commit", "-q", "-m", "feat"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	featTip, err := git.RevParse(primary, "feat")
+	if err != nil {
+		t.Fatalf("rev-parse feat: %v", err)
+	}
+	// Orphaned live branch that carries a commit NOT on feat — so it is not
+	// contained and deleting it would lose that commit.
+	if _, err := git.Run(primary, "switch", "-c", "slis/live/myslice", featTip); err != nil {
+		t.Fatalf("create live branch: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(primary, "extra.txt"), []byte("extra\n"), 0o644); err != nil {
+		t.Fatalf("write extra: %v", err)
+	}
+	if _, err := git.Run(primary, "add", "extra.txt"); err != nil {
+		t.Fatalf("add extra: %v", err)
+	}
+	if _, err := git.Run(primary, "commit", "-q", "-m", "extra commit only on live branch"); err != nil {
+		t.Fatalf("commit extra: %v", err)
+	}
+
+	ws := config.Workspace{Repos: map[string]config.Repo{"web": {Primary: primary, DefaultBranch: "main"}}}
+	dtos := []SliceDTO{{Name: "myslice", Members: []MemberDTO{{Repo: "web", Branch: "feat", WorktreePath: featWT}}}}
+	missingJournal := filepath.Join(t.TempDir(), "none.json")
+
+	findings := swapFindings(ws, dtos, missingJournal)
+	warns, _, fixable := countSwapIssues(findings)
+	if warns == 0 {
+		t.Fatalf("orphaned non-contained slis/live branch should warn, got: %+v", findings)
+	}
+	if fixable != 0 {
+		t.Errorf("non-contained orphaned slis/live branch must be report-only (no --fix), got %d fixable: %+v", fixable, findings)
+	}
+	// The branch — and its unique commit — must still be present (nothing deleted).
+	if !git.RefExists(primary, "refs/heads/slis/live/myslice") {
+		t.Error("non-contained orphaned temp branch must not be deleted")
 	}
 }

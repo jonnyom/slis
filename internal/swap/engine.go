@@ -239,7 +239,6 @@ func Refresh(journalPath string) (*Journal, error) {
 		}
 	}
 
-	changed := false
 	for i := range j.Repos {
 		rs := &j.Repos[i]
 		if newTargets[i] == rs.TargetSHA {
@@ -251,7 +250,14 @@ func Refresh(journalPath string) (*Journal, error) {
 				return nil, fmt.Errorf("refresh switch --detach %q in %q: %w", newTargets[i], rs.Primary, err)
 			}
 			rs.TargetSHA = newTargets[i]
-			changed = true
+			// Fix W1: persist this repo's advance immediately, mirroring Activate's
+			// incremental journaling. A later repo's failure must NOT leave the disk
+			// journal stale for an already-advanced repo — a stale TargetSHA would
+			// make the next deactivate misread the advanced primary as "committed on
+			// the temp branch" and strand its commits on a spurious rescue branch.
+			if err := saveRefreshedRepo(journalPath, j, rs.Repo); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		// Temp-branch model: the primary must still be on its temp branch, and the
@@ -270,16 +276,24 @@ func Refresh(journalPath string) (*Journal, error) {
 				rs.TempBranch, shortSHA(newTargets[i]), rs.Primary, err)
 		}
 		rs.TargetSHA = newTargets[i]
-		changed = true
-	}
-
-	if changed {
-		if err := Save(journalPath, j); err != nil {
+		// Fix W1: persist this repo's advance immediately (see the legacy path above).
+		if err := saveRefreshedRepo(journalPath, j, rs.Repo); err != nil {
 			return nil, err
 		}
 	}
 
 	return j, nil
+}
+
+// saveRefreshedRepo persists the journal after a single repo's TargetSHA has been
+// advanced during Refresh, so the on-disk record never lags the real primary. A
+// save failure is fatal to Refresh (a stale journal is the very hazard the
+// incremental save exists to prevent).
+func saveRefreshedRepo(journalPath string, j *Journal, repo string) error {
+	if err := Save(journalPath, j); err != nil {
+		return fmt.Errorf("refresh: save journal after advancing %q: %w", repo, err)
+	}
+	return nil
 }
 
 // ErrStashConflict is returned by deactivateRepo when popping the stash
@@ -407,7 +421,21 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 	//    -c is create-only (fails if the branch exists) — never -C/-B. The temp
 	//    branch name is not the worktree's branch, so this cannot contend.
 	if _, err := git.Run(plan.Primary, "switch", "-c", plan.TempBranch, target); err != nil {
-		return RepoState{}, fmt.Errorf("switch -c %q %q in %q: %w", plan.TempBranch, target, plan.Primary, err)
+		switchErr := fmt.Errorf("switch -c %q %q in %q: %w", plan.TempBranch, target, plan.Primary, err)
+		// Fix W2: if we auto-stashed the user's dirty work above, the failed switch
+		// means it is about to be orphaned — this RepoState is discarded, so the
+		// stash is never journaled and neither rollback nor deactivate will pop it.
+		// Pop the pinned stash back to restore the dirty working tree before
+		// returning. If the pop itself fails, surface the pinned stash ref so the
+		// work is recoverable rather than silently lost.
+		if stashRef != "" {
+			popBack := RepoState{Primary: plan.Primary, StashRef: stashRef, StashMsg: stashMsg}
+			if popErr := popPinnedStash(popBack); popErr != nil {
+				return RepoState{}, fmt.Errorf("%w; then restoring your auto-stash failed: %v — your uncommitted work is preserved in stash %s (recover with `git -C %s stash apply %s`)",
+					switchErr, popErr, shortSHA(stashRef), plan.Primary, stashRef)
+			}
+		}
+		return RepoState{}, switchErr
 	}
 
 	return RepoState{
