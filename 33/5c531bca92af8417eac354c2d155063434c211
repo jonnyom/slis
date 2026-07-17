@@ -1,0 +1,45 @@
+internal/cli/focus.go
+  s_e7cc16202efb78::t_50a371113b9220 1-103
+docs/AGENT.md
+  s_e7cc16202efb78::t_c4109b13721fc4 138-145
+  s_e7cc16202efb78::t_8c5ae8abd707b0 152
+internal/tmuxctl/clients_internal_test.go
+  s_e7cc16202efb78::t_839b34456c6db1 1-73
+internal/tmuxctl/tmux.go
+  s_e7cc16202efb78::t_6626d30e9a44f6 272-343
+internal/hooks/handler.go
+  s_e7cc16202efb78::t_f57e9331f5d7ab 150-162,164-174,177-179,200-201
+  s_e7cc16202efb78::t_6abace3dfc2ecd 163
+internal/notify/backend_internal_test.go
+  s_e7cc16202efb78::t_55efe324b49822 128-162
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_6ebb86a7b4d1bf 42
+  s_e7cc16202efb78::t_6d6293e492ad00 67
+internal/notify/notify.go
+  s_e7cc16202efb78::t_534fa44db65f08 62-67
+  s_e7cc16202efb78::t_6c8b5536de55bc 88
+  s_e7cc16202efb78::t_f1ad5519cf846b 17-24
+internal/config/config.go
+  s_e7cc16202efb78::t_e06ed9325fca65 87-90
+internal/hooks/notify_internal_test.go
+  s_e7cc16202efb78::t_e48cd38696c564 125-163
+internal/cli/focus_test.go
+  s_e7cc16202efb78::t_bc8ba8a44b845f 1-63,70-86,89-90
+  s_e7cc16202efb78::t_98975710880322 64-69,87-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "335c531bca92af8417eac354c2d155063434c211",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
