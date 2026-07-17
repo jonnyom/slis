@@ -1,0 +1,75 @@
+CLAUDE.md
+  s_e7cc16202efb78::t_32339a5c47189d 74-75,78
+  s_e7cc16202efb78::t_01f147c241618b 11
+internal/cli/activate.go
+  s_e7cc16202efb78::t_ea1bafb8966c1d 34
+  s_e7cc16202efb78::t_6c507ca38df4f3 138,140-141
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_a51a55daa9006b 311-314
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_06495fd6ef998e 66
+  s_e7cc16202efb78::t_277db09d266e2f 15-30
+  s_e7cc16202efb78::t_632779a90c34fb 164
+  s_e7cc16202efb78::t_6aa39969dccfee 73-75
+internal/swap/journal.go
+  s_e7cc16202efb78::t_ae35c976ccc6f5 22
+docs/AGENT.md
+  s_e7cc16202efb78::t_3e0c9f20641627 144-151
+  s_e7cc16202efb78::t_c1a29c523d16b3 205
+internal/swap/engine_test.go
+  s_e7cc16202efb78::t_d5f631c48e4c22 1127,1132-1133
+  s_e7cc16202efb78::t_cde934ae594721 106,145,193,244,912,974,1007,1095
+  s_e7cc16202efb78::t_f8ef95f7d7fc21 357,363-364
+  s_e7cc16202efb78::t_28630fa892c455 34-37,40,45,50-54
+  s_e7cc16202efb78::t_a6ebcb73b68201 426-430
+  s_e7cc16202efb78::t_0243984e61ec7a 842,847-848
+  s_e7cc16202efb78::t_6ef7cc8d9a4a33 879,881-882,884-885,887,890,900-904,917-918,932-934,940,947-950,956
+  s_e7cc16202efb78::t_ae5983741eaf3b 1134-1140,1147-1304
+  s_e7cc16202efb78::t_af2a37a326e9bb 1141-1146
+  s_e7cc16202efb78::t_6fd98f2ea78baf 969-970
+  s_e7cc16202efb78::t_03b4dc63eec8c8 760
+  s_e7cc16202efb78::t_aec77c6fb4c862 1015,1025
+  s_e7cc16202efb78::t_ef36ba4438db5a 1085
+internal/swap/engine.go
+  s_e7cc16202efb78::t_95e99c3f4703e7 314-320,322-324,327
+  s_e7cc16202efb78::t_c9d3a819c11a30 406-410,422
+  s_e7cc16202efb78::t_2cfe6ed9ad9c0a 126-130
+  s_e7cc16202efb78::t_6046fcb38b0641 145-153
+  s_e7cc16202efb78::t_65e978ed8a5ea3 321,325-326
+  s_e7cc16202efb78::t_12f4c72fa41a46 194-201
+  s_e7cc16202efb78::t_572ec31425d916 44
+  s_e7cc16202efb78::t_5cacdc15832b63 47-51
+  s_e7cc16202efb78::t_657313a7c87f86 292-293
+  s_e7cc16202efb78::t_494750f036a00b 432-436,438-439
+  s_e7cc16202efb78::t_38712295c06408 330-334,339-344,364-372
+  s_e7cc16202efb78::t_7f72445834ebc8 457-471,473-474,476-480,486-553,557-558,576-580,582-585,590-591,593-600,609-624,626-644,646-651,686-688
+  s_e7cc16202efb78::t_bc990643b12daf 248-270
+internal/cli/deactivate.go
+  s_e7cc16202efb78::t_9f63224abeb66e 15,17-22,24-26
+internal/cli/doctor_swap_test.go
+  s_e7cc16202efb78::t_73232c8feafcf2 64,80,127,165,186
+  s_e7cc16202efb78::t_e12694bd2a875d 16-17
+  s_e7cc16202efb78::t_283e28cfad66fb 111,114-116,123,128-131,133
+  s_e7cc16202efb78::t_8b5e68ebea567f 192-222,224-249
+  s_e7cc16202efb78::t_727487551e870b 223
+internal/cli/doctor_swap.go
+  s_e7cc16202efb78::t_67ad32864c18a2 6,23-25,28,30-32,42-44,48,62-63,66-67,79,82,107-126,133,140-151,156-223
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_bb9d32a7179b48 651-652
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "731665364052c1bcaf2e12a02edc654314d25fc4",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
