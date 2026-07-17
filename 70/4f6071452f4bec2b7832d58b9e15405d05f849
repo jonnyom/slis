@@ -1,0 +1,62 @@
+internal/tui/agentctx.go
+  s_e7cc16202efb78::t_bdc96e1a792387 59-60,67-97
+internal/tui/app.go
+  s_e7cc16202efb78::t_bdc96e1a792387 439,443,1189-1193,1201-1212,1234-1237
+assets.go
+  s_e7cc16202efb78::t_bdc96e1a792387 1-19
+internal/cli/summary.go
+  s_e7cc16202efb78::t_bdc96e1a792387 116
+internal/skill/skill_test.go
+  s_e7cc16202efb78::t_bdc96e1a792387 1-166
+internal/summary/summary_internal_test.go
+  s_e7cc16202efb78::t_bdc96e1a792387 1-43
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_bdc96e1a792387 12,16,131-184,189
+internal/config/config_test.go
+  s_e7cc16202efb78::t_bdc96e1a792387 86-158
+assets_test.go
+  s_e7cc16202efb78::t_bdc96e1a792387 1-42
+internal/tui/agentctx_test.go
+  s_e7cc16202efb78::t_bdc96e1a792387 59-136
+internal/summary/summary.go
+  s_e7cc16202efb78::t_bdc96e1a792387 8,107-155
+  s_e7cc16202efb78::t_721dfa420fabd0 156
+docs/AGENT.md
+  s_e7cc16202efb78::t_bdc96e1a792387 180,195-239
+  s_e7cc16202efb78::t_c392940034e29f 179
+  s_e7cc16202efb78::t_bd123696b94653 240
+internal/cli/initcmd.go
+  s_e7cc16202efb78::t_bdc96e1a792387 11,53-62,100
+internal/cli/fixci.go
+  s_e7cc16202efb78::t_bdc96e1a792387 61-77,124-126,146-147,151,155,163
+internal/config/config.go
+  s_e7cc16202efb78::t_bdc96e1a792387 48-52,54-55,57-61,74-93,185-189
+  s_e7cc16202efb78::t_ffbc67c798bb9f 190
+internal/cli/fixci_test.go
+  s_e7cc16202efb78::t_bdc96e1a792387 54-78
+internal/skill/skill.go
+  s_e7cc16202efb78::t_bdc96e1a792387 1-220
+internal/cli/initskill.go
+  s_e7cc16202efb78::t_bdc96e1a792387 1-60
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_bdc96e1a792387 864
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_b80fe31c27ee36 43
+  s_e7cc16202efb78::t_bdc96e1a792387 67,87-121,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "704f6071452f4bec2b7832d58b9e15405d05f849",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
