@@ -10,8 +10,12 @@ import (
 // separate from workspace.yaml so toggling the diff view doesn't rewrite the
 // user's hand-edited workspace config.
 type Prefs struct {
-	SplitDiff   bool `json:"split_diff"`    // cockpit: side-by-side diff
-	DiffVsTrunk bool `json:"diff_vs_trunk"` // cockpit: diff against trunk (else parent)
+	SplitDiff bool   `json:"split_diff"`           // cockpit: side-by-side diff
+	DiffScope string `json:"diff_scope,omitempty"` // cockpit: "dirty" | "parent" | "trunk"
+	// DiffVsTrunk is the legacy pre-scope toggle, kept only so an old prefs file
+	// migrates cleanly: true → trunk scope, false → parent scope, absent (nil) →
+	// dirty (the new default). It is no longer written.
+	DiffVsTrunk *bool `json:"diff_vs_trunk,omitempty"`
 }
 
 // LoadPrefs reads prefs from path. A missing or unreadable file yields zero-value

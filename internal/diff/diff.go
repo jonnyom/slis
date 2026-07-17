@@ -213,6 +213,52 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 	return results, nil
 }
 
+// SliceDirtyDiff returns one RepoDiff per member of sl showing only the
+// worktree's UNCOMMITTED changes — staged + unstaged edits (`git diff HEAD`)
+// plus untracked (never-`git add`-ed) files. It diffs against no base, so a
+// clean worktree yields an empty Files slice. This is the cockpit's default
+// diff scope: "what have I changed but not yet committed", not the full
+// committed branch diff. Per-repo errors are captured in RepoDiff.Err.
+func SliceDirtyDiff(sl model.Slice) ([]RepoDiff, error) {
+	return sliceDirty(sl, true)
+}
+
+// SliceDirtyStat is SliceDirtyDiff without the full patch (numstat only) — the
+// lightweight variant for the browser cards.
+func SliceDirtyStat(sl model.Slice) ([]RepoDiff, error) {
+	return sliceDirty(sl, false)
+}
+
+// sliceDirty is the shared implementation of SliceDirtyDiff / SliceDirtyStat.
+func sliceDirty(sl model.Slice, withPatch bool) ([]RepoDiff, error) {
+	if sl.Members == nil {
+		return nil, fmt.Errorf("diff: slice has nil Members map")
+	}
+	repos := sl.Repos()
+	results := make([]RepoDiff, 0, len(repos))
+	for _, repo := range repos {
+		m := sl.Members[repo]
+		rd := RepoDiff{Repo: repo, Base: "HEAD"}
+
+		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "HEAD")
+		if err != nil {
+			rd.Err = err.Error()
+			results = append(results, rd)
+			continue
+		}
+		rd.Files = parseNumstat(numstat)
+		if withPatch {
+			patch, _ := git.Run(m.WorktreePath, "diff", "HEAD")
+			// Patch contains repo file contents (and filenames) which can embed
+			// terminal escapes; strip them before this string is rendered.
+			rd.Patch = safeterm.Strip(patch)
+		}
+		addUntracked(&rd, m.WorktreePath, withPatch)
+		results = append(results, rd)
+	}
+	return results, nil
+}
+
 // SliceStat is a lightweight variant of SliceDiff that fills only Files (the
 // numstat) and omits the full patch. It is used for the slice browser's summary
 // cards, where loading every repo's full diff would be wasteful. base follows

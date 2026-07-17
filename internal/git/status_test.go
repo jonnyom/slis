@@ -74,3 +74,47 @@ func TestCurrentBranch(t *testing.T) {
 		t.Errorf("CurrentBranch in detached HEAD = %q, want %q", branch, "")
 	}
 }
+
+func TestIsMergedInto(t *testing.T) {
+	repo := testutil.NewRepo(t)
+
+	// A branch pointing at the same commit as main is trivially an ancestor.
+	if _, err := git.Run(repo, "branch", "even", "main"); err != nil {
+		t.Fatalf("branch even: %v", err)
+	}
+	if !git.IsMergedInto(repo, "even", "main") {
+		t.Error("IsMergedInto(even, main) = false, want true (no divergence)")
+	}
+
+	// An unmerged branch that adds a commit is NOT an ancestor of main.
+	wt := filepath.Join(t.TempDir(), "wt")
+	if out, err := git.Run(repo, "worktree", "add", "-b", "feat", wt); err != nil {
+		t.Fatalf("worktree add: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(wt, "f.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "add", "f.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "commit", "-m", "feat work"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if git.IsMergedInto(repo, "feat", "main") {
+		t.Error("IsMergedInto(feat, main) = true, want false (unmerged commit)")
+	}
+
+	// A (non-checked-out) trunk branch that has feat as an ancestor counts feat
+	// as merged into it.
+	if _, err := git.Run(repo, "branch", "trunk2", "feat"); err != nil {
+		t.Fatalf("branch trunk2: %v", err)
+	}
+	if !git.IsMergedInto(repo, "feat", "trunk2") {
+		t.Error("IsMergedInto(feat, trunk2) = false after merge, want true")
+	}
+
+	// Empty refs are never merged.
+	if git.IsMergedInto(repo, "", "main") || git.IsMergedInto(repo, "feat", "") {
+		t.Error("IsMergedInto with empty ref should be false")
+	}
+}

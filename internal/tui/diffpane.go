@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
@@ -19,6 +20,77 @@ import (
 type diffLoadedMsg struct {
 	slice string
 	diffs []diff.RepoDiff
+}
+
+// diffScope selects what the cockpit diff pane shows, cycled by [b]:
+// working-tree (uncommitted only, the default) → vs the Graphite parent → vs
+// the repo trunk.
+type diffScope int
+
+const (
+	scopeDirty  diffScope = iota // staged+unstaged+untracked vs HEAD (default)
+	scopeParent                  // committed branch diff vs the Graphite parent
+	scopeTrunk                   // committed branch diff vs the repo trunk
+	diffScopeCount
+)
+
+// next returns the scope [b] cycles to (dirty → parent → trunk → dirty).
+func (s diffScope) next() diffScope { return (s + 1) % diffScopeCount }
+
+// pref is the persisted string form of a scope (stored in prefs.DiffScope).
+func (s diffScope) pref() string {
+	switch s {
+	case scopeParent:
+		return "parent"
+	case scopeTrunk:
+		return "trunk"
+	default:
+		return "dirty"
+	}
+}
+
+// label is the human-readable scope name shown in the diff header.
+func (s diffScope) label() string {
+	switch s {
+	case scopeParent:
+		return "vs parent"
+	case scopeTrunk:
+		return "vs trunk"
+	default:
+		return "working tree"
+	}
+}
+
+// emptyMessage is the "nothing to show" line for an empty diff in this scope.
+func (s diffScope) emptyMessage() string {
+	switch s {
+	case scopeParent:
+		return "no changes vs parent"
+	case scopeTrunk:
+		return "no changes vs trunk"
+	default:
+		return "no uncommitted changes in this worktree"
+	}
+}
+
+// scopeFromPrefs derives the starting diff scope from stored prefs, migrating an
+// old boolean DiffVsTrunk: true → trunk, false → parent, absent → dirty.
+func scopeFromPrefs(p config.Prefs) diffScope {
+	switch p.DiffScope {
+	case "dirty":
+		return scopeDirty
+	case "parent":
+		return scopeParent
+	case "trunk":
+		return scopeTrunk
+	}
+	if p.DiffVsTrunk != nil {
+		if *p.DiffVsTrunk {
+			return scopeTrunk
+		}
+		return scopeParent
+	}
+	return scopeDirty
 }
 
 // gtParent returns the Graphite parent branch of branch in dir's repo, or "".
@@ -34,12 +106,26 @@ func gtParent(dir, branch string) string {
 	return strings.TrimSpace(bs.Parents[0].Ref)
 }
 
-// loadDiffCmd computes each member's diff off the UI goroutine. By default it
-// diffs against the branch's Graphite PARENT (so a stacked branch shows only its
-// own changes, not the whole downstack), falling back to the repo's trunk when
-// the branch isn't stacked. vsTrunk forces diffing against the trunk (the
-// cumulative feature change). An explicit sl.Base override wins over both.
-func loadDiffCmd(sl model.Slice, vsTrunk bool) tea.Cmd {
+// loadDiffCmd computes each member's diff off the UI goroutine, according to the
+// selected scope:
+//
+//   - scopeDirty  — the worktree's uncommitted changes only (staged + unstaged +
+//     untracked), no base. This is the default.
+//   - scopeParent — the committed branch diff vs the branch's Graphite PARENT
+//     (so a stacked branch shows only its own changes), falling back to the
+//     repo's trunk when the branch isn't stacked.
+//   - scopeTrunk  — the committed branch diff vs the repo trunk (the cumulative
+//     feature change).
+//
+// An explicit sl.Base override wins over parent/trunk base detection; it does
+// not apply to the working-tree scope (which has no base).
+func loadDiffCmd(sl model.Slice, scope diffScope) tea.Cmd {
+	if scope == scopeDirty {
+		return func() tea.Msg {
+			diffs, _ := diff.SliceDirtyDiff(sl)
+			return diffLoadedMsg{slice: sl.Name, diffs: diffs}
+		}
+	}
 	override := sl.Base
 	return func() tea.Msg {
 		bases := make(map[string]string, len(sl.Members))
@@ -47,7 +133,7 @@ func loadDiffCmd(sl model.Slice, vsTrunk bool) tea.Cmd {
 			switch {
 			case override != "":
 				bases[repo] = override
-			case !vsTrunk:
+			case scope == scopeParent:
 				if p := gtParent(mem.WorktreePath, mem.Branch); p != "" {
 					bases[repo] = p
 				} else {

@@ -50,7 +50,7 @@ var cockpitBindings = []Binding{
 	{[]string{"⏶⏷", "^d/^u"}, "scroll right pane"},
 	{[]string{"g", "G"}, "top / bottom of right pane"},
 	{[]string{"t"}, "toggle split / unified diff (Stack panel)"},
-	{[]string{"b"}, "toggle diff base: this branch (vs parent) ↔ whole feature (vs trunk)"},
+	{[]string{"b"}, "cycle diff scope: working tree (uncommitted) → vs parent → vs trunk"},
 	{[]string{"enter"}, "zoom right pane (toggle)"},
 	{[]string{"w"}, "set as live (swap into primaries) / deactivate"},
 	{[]string{"d"}, "clear this finished slice (worktrees/branches/session)"},

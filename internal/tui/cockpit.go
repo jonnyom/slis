@@ -158,8 +158,12 @@ func renderCockpit(m Model) string {
 	}
 	leftW, rightW, bodyH := m.cockpitDims()
 
+	headerLeft := cockpitHeaderStyle.Render("slis ▸ " + sl.Name)
+	if m.sliceMergeState(sl) == mergeReady {
+		headerLeft += "   " + readyStyle.Render("♻ merged — ready to clear · [d]")
+	}
 	header := clip(justify(
-		cockpitHeaderStyle.Render("slis ▸ "+sl.Name),
+		headerLeft,
 		cockpitDimStyle.Render("[esc] back  ? help"),
 		m.width,
 	), m.width)
@@ -212,11 +216,8 @@ func cockpitFooter(m Model) string {
 		if m.splitDiff {
 			split = "[t]unified"
 		}
-		base := "[b]vs-trunk"
-		if m.diffVsTrunk {
-			base = "[b]vs-parent"
-		}
-		hint = "[tab]panel [w]swap [R]stack [a]ttach [o]pen-repo [e]dit-slice [y]ank " + split + " " + base + " [⏶⏷^d/^u]scroll [esc]back"
+		scope := "[b]scope:" + m.diffScope.pref()
+		hint = "[tab]panel [w]swap [d]clear [R]stack [a]ttach [o]pen-repo [e]dit-slice [y]ank " + split + " " + scope + " [⏶⏷^d/^u]scroll [esc]back"
 	case panelPRs:
 		hint = "[tab]panel [O]open-PR [^r]rerun-CI [v]CI-logs [F]ix-ci [esc]back"
 	case panelProcs:
@@ -457,15 +458,19 @@ func repoDiffContent(m Model, sl model.Slice) string {
 		return "error: " + rd.Err + "\n"
 	}
 	if len(rd.Files) == 0 {
-		return "no changes vs trunk\n"
+		return m.diffScope.emptyMessage() + "\n"
 	}
 	var sb strings.Builder
-	base := shortBranch(rd.Base, m.ws.Grouping.StripPrefix)
-	if base == "" {
-		base = "trunk"
+	scopeLabel := m.diffScope.label()
+	if m.diffScope != scopeDirty {
+		base := shortBranch(rd.Base, m.ws.Grouping.StripPrefix)
+		if base == "" {
+			base = "trunk"
+		}
+		scopeLabel = "vs " + base
 	}
 	fmt.Fprintf(&sb, "%d files  +%d −%d   %s\n\n", len(rd.Files), rd.TotalAdded(), rd.TotalDeleted(),
-		cockpitDimStyle.Render("vs "+base))
+		cockpitDimStyle.Render(scopeLabel))
 	for _, f := range rd.Files {
 		if f.Added == -1 {
 			fmt.Fprintf(&sb, "  %s  (binary)\n", f.Path)
@@ -872,9 +877,10 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.refreshRight()
 		return m, nil
 	case "b":
-		// Toggle the diff base: this branch's changes (vs Graphite parent) ↔ the
-		// whole feature (vs trunk). Reload the diff with the new base.
-		m.diffVsTrunk = !m.diffVsTrunk
+		// Cycle the diff scope: working-tree (uncommitted only) → vs the Graphite
+		// parent (this branch's committed changes) → vs trunk (the whole feature).
+		// Reload the diff for the new scope.
+		m.diffScope = m.diffScope.next()
 		m.savePrefs()
 		if sl, ok := m.currentSlice(); ok {
 			delete(m.diffs, sl.Name)

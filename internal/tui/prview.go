@@ -67,13 +67,16 @@ func wrapText(s string, width int) []string {
 
 // prsLoadedMsg is sent when PR data for a slice has been loaded off the UI goroutine.
 type prsLoadedMsg struct {
-	slice string
-	prs   map[string]*forge.PR // repo name → PR (nil means checked, no PR found)
+	slice  string
+	prs    map[string]*forge.PR // repo name → PR (nil means checked, no PR found)
+	merged map[string]bool      // repo name → branch already merged into trunk (local check)
 }
 
 // loadPRsCmd returns a Cmd that loads PR data for all members of a slice off
 // the UI goroutine. Errors are swallowed per-repo — a nil *forge.PR entry
-// means no PR was found (or gh is absent / failed).
+// means no PR was found (or gh is absent / failed). Alongside the PR lookup it
+// runs a cheap local `git merge-base --is-ancestor` per member so a branch that
+// was merged with no PR (or before gh loads) can still be flagged ready.
 func loadPRsCmd(sl model.Slice) tea.Cmd {
 	return gatedCmd(func() tea.Msg {
 		prs := make(map[string]*forge.PR, len(sl.Members))
@@ -81,7 +84,7 @@ func loadPRsCmd(sl model.Slice) tea.Cmd {
 			pr, _ := forge.PRForBranch(member.WorktreePath, member.Branch)
 			prs[repo] = pr
 		}
-		return prsLoadedMsg{slice: sl.Name, prs: prs}
+		return prsLoadedMsg{slice: sl.Name, prs: prs, merged: sliceGitMerged(sl)}
 	})
 }
 
