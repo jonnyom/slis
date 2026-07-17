@@ -1,0 +1,26 @@
+internal/discovery/registry_scan_test.go
+  s_e7cc16202efb78::t_9487ecced39423 128-130,138-139,143-146,153-220
+  s_e7cc16202efb78::t_1a43064c583a11 221
+internal/cli/registry_test.go
+  s_e7cc16202efb78::t_cdf212a22e2802 129-130,148-152
+  s_e7cc16202efb78::t_def27cc756bc99 153
+internal/discovery/registry_scan.go
+  s_e7cc16202efb78::t_7a4e7e7c4e8881 43-51,57,63-64,66-68,70-72
+  s_e7cc16202efb78::t_674355480dae23 101-111,113-114,116,120-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "7fa30b52e751fbc49c2264deebf40d80e8dd9ea0",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
