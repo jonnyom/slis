@@ -5,14 +5,24 @@ package hooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 )
+
+// notifier delivers a desktop banner for a status change. It is a package var so
+// tests can substitute a recorder; production uses notify.Notify.
+var notifier = notify.Notify
+
+// errOut receives non-fatal notification-delivery diagnostics. Overridable in
+// tests; Claude Code surfaces a hook's stderr to the user.
+var errOut io.Writer = os.Stderr
 
 // hookInput is the subset of the Claude hook JSON payload we care about.
 type hookInput struct {
@@ -95,9 +105,14 @@ func SliceForCwd(slices []model.Slice, cwd string) string {
 // the call is a no-op (returns nil). Decode errors are silently swallowed so a
 // misconfigured or empty hook payload never crashes the parent process.
 //
+// When the status *changes* to waiting-input or done, HandleHook fires a desktop
+// notification directly (deduped: an unchanged status never re-fires). Firing is
+// best-effort — a delivery failure is reported to stderr but never fails the
+// hook. Persisting the status (WriteStatus) stays fatal.
+//
 // event is the hook event name supplied on the CLI; it takes precedence over
 // the hook_event_name field in the JSON payload.
-func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir string, timeNS int64) error {
+func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir string, cfg config.Notify, timeNS int64) error {
 	var hi hookInput
 	if err := json.NewDecoder(r).Decode(&hi); err != nil {
 		// Tolerate empty or unparseable payloads — fail quiet.
@@ -120,6 +135,42 @@ func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir strin
 		return nil
 	}
 
+	previous := notify.ReadStatus(eventsDir, sliceName)
 	status := StatusForEvent(eName)
-	return notify.WriteStatus(eventsDir, sliceName, status, timeNS)
+	if err := notify.WriteStatus(eventsDir, sliceName, status, timeNS); err != nil {
+		return err
+	}
+
+	if status != previous {
+		fireNotification(sliceName, status, cfg)
+	}
+	return nil
+}
+
+// fireNotification best-effort delivers a desktop banner for a slice that just
+// entered an alertable status (waiting-input or done). Other statuses are
+// silent. Delivery errors are reported to stderr, never propagated.
+func fireNotification(slice string, status model.SessionStatus, cfg config.Notify) {
+	var n notify.Notification
+	switch status {
+	case model.SessWaitingInput:
+		n = notify.Notification{
+			Title:    "slis",
+			Subtitle: slice,
+			Message:  slice + " needs your input",
+			Sound:    cfg.NeedsInput.Sound,
+		}
+	case model.SessDone:
+		n = notify.Notification{
+			Title:    "slis",
+			Subtitle: slice,
+			Message:  slice + " finished — your move",
+			Sound:    cfg.Done.Sound,
+		}
+	default:
+		return
+	}
+	if err := notifier(n); err != nil {
+		fmt.Fprintf(errOut, "slis hook: notification delivery failed: %v\n", err)
+	}
 }

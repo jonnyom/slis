@@ -39,7 +39,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 |---|---|---|---|
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
-| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent) |
+| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a tmux session is attached |
 | `slis ls` | read | **yes** | List all slices + members + active flag (`--json` is an object: `slices` + `skipped` + `repo_errors`) |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done) |

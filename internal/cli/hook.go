@@ -32,7 +32,7 @@ var hookCmd = &cobra.Command{
 		ov, _ := discovery.LoadOverrides(sp.Overrides)
 		slices = discovery.Apply(slices, ov)
 
-		return hooks.HandleHook(args[0], os.Stdin, slices, sp.EventsDir, time.Now().UnixNano())
+		return hooks.HandleHook(args[0], os.Stdin, slices, sp.EventsDir, ws.Notify, time.Now().UnixNano())
 	},
 }
 

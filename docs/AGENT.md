@@ -127,6 +127,15 @@ The headline automation signal: *which slice's Claude is waiting for input.*
   `slis init-hooks`) maps the hook's `cwd` to a slice and writes the status:
   `Notification → waiting-input`, `Stop`/`SubagentStop → done`, else `running`.
   No hooks installed → every slice reads `none`.
+- **Desktop notifications:** the `slis hook` process itself fires the banner when
+  a slice's status *changes* to `waiting-input` or `done` (deduped — an unchanged
+  status never re-fires; `→ running` is silent). This is independent of the TUI:
+  notifications arrive even with no TUI running, and even while a tmux session is
+  attached (the TUI's event loop is suspended then, so it cannot deliver them).
+  Backend: `terminal-notifier` if on `PATH`, else `osascript` (macOS) /
+  `notify-send` (Linux); sound honours `notify.needs_input.sound` /
+  `notify.done.sound` from `workspace.yaml`. Delivery is best-effort and never
+  fails the hook.
 
 ## Mutation classification
 
