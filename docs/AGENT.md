@@ -141,12 +141,14 @@ per-reason remedy), **repo read failures**, **orphaned directories** under
 at a rebound admin slot), **missing slices** (registered worktree gone — remedy:
 recreate or `slis forget`), and an **info** finding listing unmanaged
 **candidates** (import/ignore). It also reports **swap-journal health**: a
-**stale journal** (a swap is recorded but no primary is still detached at its
-slice tip — the swap looks already undone; `--fix` deletes the journal, but only
-when *every* primary is on a branch, i.e. provably not swapped), a journal repo
-whose **prior branch was deleted** (so `slis deactivate` can't restore it —
-remedy names the exact `git branch` recreate command), and an **orphaned detach**
-(a primary left detached with no journal — remedy: `git switch <branch>`). And a
+**stale journal** (a swap is recorded but no primary is still on its
+`slis/live/<slice>` branch — the swap looks already undone; `--fix` deletes the
+journal, but only when *every* primary is on a branch, i.e. provably not
+swapped), a journal repo whose **prior branch was deleted** (so `slis deactivate`
+can't restore it — remedy names the exact `git branch` recreate command), and an
+**orphaned `slis/live` branch / detach** (a primary left swapped-in with no
+journal — `--fix` switches it back to trunk and deletes the temp branch only when
+that branch's commits are fully contained in the slice branch). And a
 **Graphite** section (report-only): whether `gt` is installed, whether each repo
 is Graphite-initialised, and whether each slice member's branch is tracked in gt
 metadata (an untracked branch drops out of stack views — remedy: `gt track
@@ -200,7 +202,7 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 | Class | Commands | Notes for agents |
 |---|---|---|
 | **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and detaches each primary at the slice tip (worktrees untouched); `deactivate` refuses any primary that drifted off its recorded slice tip (you committed on the detached HEAD, switched branches, or the journal is stale) with zero state change, and `deactivate --force` restores anyway — rescuing any commits made on the detached HEAD to a `slis/rescue/<slice>-<repo>` branch first so nothing is orphaned; `refresh` refuses a dirty primary; `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). |
 | **remote / destructive** | `submit merge sync fix-ci` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before

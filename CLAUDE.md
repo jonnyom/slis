@@ -8,7 +8,7 @@ Guidance for Claude agents working in this repo. Read this first.
 
 Core capabilities:
 - **Discover** slices (worktrees grouped by branch name across the configured repos).
-- **Swap** a slice into the repos' *primary* checkouts so running dev servers rebuild that feature — by detaching each primary's HEAD to the slice branch's tip commit (reversible; worktrees never touched).
+- **Swap** a slice into the repos' *primary* checkouts so running dev servers rebuild that feature — by putting each primary on a `slis/live/<slice>` branch at the slice branch's tip commit (reversible; worktrees never touched).
 - **Review** the whole-slice diff, read the **Graphite** stack (read-only), and generate commit / `claude -p` summaries.
 - **tmux sessions** per slice (attach/detach), **process** view + kill (find CPU hogs), and **"Claude needs input"** notifications via Claude Code hooks.
 - **GitHub PRs** over the stack: per-branch PR link, CI status, comment counts, shareable markdown, and `fix-ci` (points Claude at failing CI).
@@ -71,11 +71,11 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 ## Non-negotiable conventions
 
 **Swap engine (`internal/swap`) — data safety.** This manipulates real repos with uncommitted user work. Invariants, enforced by tests:
-- NEVER `--force`/`-f`/`-B`; never `git stash drop`/`clear`; never run git against a *worktree* dir — only the *primary*.
-- Activate = `git switch --detach <commit-sha>` (the slice branch's tip), so the worktree's branch checkout is never contended and the worktree is untouched.
+- NEVER a force git switch, `-B`/`-C`, or `git stash drop`/`clear`; never run git against a *worktree* dir — only the *primary*. `git branch -D` is used in exactly one place: deleting the temp branch, and only after re-verifying its tip still equals the journal's `TargetSHA` immediately before the delete (provably nothing to lose).
+- Activate = `git switch -c slis/live/<slice> <commit-sha>` (create-only `-c`) — a real, named temp branch at the slice branch's tip, so Graphite stays usable in the primary, an accidental commit is never orphaned, and the worktree's branch checkout is never contended. A pre-existing `slis/live/<slice>` → refuse with zero state change (doctor cleans it). Deactivate deletes the temp branch (clean) or, under `--force` after commits, *renames* it to `slis/rescue/<slice>-<repo>` (never deletes). Refresh fast-forwards the temp branch (`merge --ff-only`, never reset). Legacy detached-HEAD journals (no temp branch) still restore via the detached path.
 - Dirty primary + no `--stash` → error with zero state change.
 - Stash is pinned by commit SHA (and message) and popped by that exact entry; pop conflict → `ErrStashConflict`, stash left intact.
-- Journal is written incrementally; multi-repo activate is atomic (rollback on partial failure); deactivate only clears the journal when every repo restored cleanly. If you change this engine, keep the heavy tests green and prefer adding adversarial tests.
+- Journal is written incrementally; multi-repo activate is atomic (rollback on partial failure deletes each just-created temp branch and restores the prior branch); deactivate only clears the journal when every repo restored cleanly. If you change this engine, keep the heavy tests green and prefer adding adversarial tests.
 
 **TUI (`internal/tui`).**
 - MUST NOT import `internal/cli` (cli imports tui to launch it — importing back is a cycle).

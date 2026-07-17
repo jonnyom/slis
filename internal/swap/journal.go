@@ -19,6 +19,7 @@ type RepoState struct {
 	StashRef    string `json:"stash_ref"`    // pinned stash commit sha, "" if nothing stashed
 	StashMsg    string `json:"stash_msg"`    // unique stash message used during activation, "" if nothing stashed
 	TargetSHA   string `json:"target_sha"`   // the slice branch tip we checked out
+	TempBranch  string `json:"temp_branch"`  // the slis/live/<slice> branch created on the primary; "" for legacy detached-HEAD journals
 	Reconciled  bool   `json:"reconciled"`   // whether a dep install ran during activate
 }
 
