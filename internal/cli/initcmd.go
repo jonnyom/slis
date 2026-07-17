@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jonnyom/slis/internal/hooks"
+	"github.com/jonnyom/slis/internal/skill"
 )
 
 var initCmd = &cobra.Command{
@@ -49,6 +50,16 @@ workspace.yaml. If --repos is provided the interactive picker is skipped.`,
 				fmt.Fprintf(os.Stderr, "note: could not install Claude hooks (run `slis init-hooks` later): %v\n", err)
 			}
 		}
+
+		// Install the agent skill for both harnesses so `slis` is immediately
+		// driveable by Claude Code and Codex. Opt out with --no-skill (or run
+		// `slis init-skill` later).
+		noSkill, _ := cmd.Flags().GetBool("no-skill")
+		if !noSkill {
+			if err := installSkill(skill.AllHarnesses); err != nil {
+				fmt.Fprintf(os.Stderr, "note: could not install slis skill (run `slis init-skill` later): %v\n", err)
+			}
+		}
 		return nil
 	},
 }
@@ -86,4 +97,5 @@ func init() {
 	initCmd.Flags().StringSlice("repos", nil, "Comma-separated list of repo names to include (non-interactive)")
 	initCmd.Flags().String("strip-prefix", "", "Branch-name prefix to strip when naming slices, e.g. 'jonny/'")
 	initCmd.Flags().Bool("no-hooks", false, "Skip installing Claude Code session hooks (run `slis init-hooks` separately)")
+	initCmd.Flags().Bool("no-skill", false, "Skip installing the slis agent skill (run `slis init-skill` separately)")
 }

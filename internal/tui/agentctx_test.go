@@ -56,3 +56,81 @@ func TestWithSlisContext(t *testing.T) {
 		t.Errorf("agent command must be single-line, got newline: %q", got)
 	}
 }
+
+func TestSlisEnvPrefix(t *testing.T) {
+	sl := model.Slice{
+		Name: "wfm-1",
+		Members: map[string]model.SliceMember{
+			"web": {Repo: "web", Branch: "jonny/wfm-1", WorktreePath: "/wt/web"},
+			"api": {Repo: "api", Branch: "jonny/wfm-1", WorktreePath: "/wt/api"},
+		},
+		Active: true,
+	}
+
+	got := slisEnvPrefix(sl, "/root", "codex")
+
+	for _, want := range []string{
+		"SLIS_SLICE='wfm-1'",
+		"SLIS_ROOT='/root'",
+		"SLIS_ACTIVE='1'",
+		"SLIS_HARNESS='codex'",
+		// Worktrees are sorted by repo and joined repo=path,repo=path.
+		"SLIS_WORKTREES='api=/wt/api,web=/wt/web'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("env prefix missing %q in: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "\n") {
+		t.Errorf("env prefix must be single-line: %q", got)
+	}
+
+	// Inactive slice → SLIS_ACTIVE='0'.
+	sl.Active = false
+	if !strings.Contains(slisEnvPrefix(sl, "/root", "claude"), "SLIS_ACTIVE='0'") {
+		t.Error("inactive slice should set SLIS_ACTIVE='0'")
+	}
+}
+
+func TestSlisEnvPrefixQuotesDangerousValues(t *testing.T) {
+	sl := model.Slice{
+		Name:    "it's a slice",
+		Members: map[string]model.SliceMember{},
+	}
+	got := slisEnvPrefix(sl, "/root", "claude")
+	// The single quote in the slice name must be escaped, not left bare.
+	if !strings.Contains(got, `SLIS_SLICE='it'\''s a slice'`) {
+		t.Errorf("single quote not escaped in env prefix: %s", got)
+	}
+}
+
+func TestAgentLaunchLine(t *testing.T) {
+	sl := model.Slice{
+		Name:    "wfm-1",
+		Members: map[string]model.SliceMember{"web": {Repo: "web", Branch: "jonny/wfm-1", WorktreePath: "/wt/web"}},
+	}
+
+	// claude → env prefix + claude with the append-system-prompt flag.
+	claudeLine := agentLaunchLine("claude", sl, "/root", "claude")
+	if !strings.Contains(claudeLine, "SLIS_HARNESS='claude'") {
+		t.Errorf("claude launch line missing env prefix: %s", claudeLine)
+	}
+	if !strings.Contains(claudeLine, "claude --append-system-prompt ") {
+		t.Errorf("claude launch line missing append flag: %s", claudeLine)
+	}
+
+	// codex → env prefix + bare codex (no positional prompt, no append flag).
+	codexLine := agentLaunchLine("codex", sl, "/root", "codex")
+	if !strings.Contains(codexLine, "SLIS_HARNESS='codex'") {
+		t.Errorf("codex launch line missing env prefix: %s", codexLine)
+	}
+	if strings.Contains(codexLine, "--append-system-prompt") {
+		t.Errorf("codex launch line must not carry the claude append flag: %s", codexLine)
+	}
+	if !strings.HasSuffix(codexLine, " codex") {
+		t.Errorf("codex launch line should end with the bare codex command: %s", codexLine)
+	}
+	if strings.Contains(codexLine, "\n") {
+		t.Errorf("launch line must be single-line: %q", codexLine)
+	}
+}

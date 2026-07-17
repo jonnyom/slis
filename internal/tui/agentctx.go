@@ -56,10 +56,42 @@ func shellSingleQuote(s string) string {
 }
 
 // withSlisContext appends a --append-system-prompt flag carrying the slice
-// context to a Claude agent command. Non-claude agents are returned unchanged.
+// context to a Claude agent command. Non-claude agents (e.g. codex, which has no
+// such flag) are returned unchanged.
 func withSlisContext(agent string, sl model.Slice) string {
 	if !isClaudeAgent(agent) {
 		return agent
 	}
 	return agent + " --append-system-prompt " + shellSingleQuote(slisAgentContext(sl))
+}
+
+// slisEnvPrefix builds the inline env-var prefix prepended to the agent launch
+// command, so an agent running inside a slis tmux session can trust these
+// values. Each value is single-quoted; the whole thing stays on one line (the
+// send-keys constraint). SLIS_WORKTREES is a comma-separated repo=path list.
+func slisEnvPrefix(sl model.Slice, wsRoot, harness string) string {
+	active := "0"
+	if sl.Active {
+		active = "1"
+	}
+	repos := sl.Repos() // sorted
+	pairs := make([]string, 0, len(repos))
+	for _, r := range repos {
+		pairs = append(pairs, r+"="+sl.Members[r].WorktreePath)
+	}
+	vars := []string{
+		"SLIS_SLICE=" + shellSingleQuote(sl.Name),
+		"SLIS_ROOT=" + shellSingleQuote(wsRoot),
+		"SLIS_ACTIVE=" + shellSingleQuote(active),
+		"SLIS_HARNESS=" + shellSingleQuote(harness),
+		"SLIS_WORKTREES=" + shellSingleQuote(strings.Join(pairs, ",")),
+	}
+	return strings.Join(vars, " ")
+}
+
+// agentLaunchLine builds the full one-line send-keys command: the SLIS_* env
+// prefix followed by the agent command (with claude's --append-system-prompt
+// flag appended for a claude command; nothing extra for codex).
+func agentLaunchLine(agent string, sl model.Slice, wsRoot, harness string) string {
+	return slisEnvPrefix(sl, wsRoot, harness) + " " + withSlisContext(agent, sl)
 }

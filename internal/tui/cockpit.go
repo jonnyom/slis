@@ -861,7 +861,7 @@ func (m Model) updateCockpitKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.summaryLoading[sl.Name] = true
 		delete(m.summaries, sl.Name)
 		m.refreshRight()
-		return m, aiSummaryFromSliceCmd(sl)
+		return m, aiSummaryFromSliceCmd(sl, m.ws.Sessions.HarnessName())
 	case "w":
 		m.requestSwap()
 		return m, nil

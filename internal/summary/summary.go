@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -101,6 +102,56 @@ func RenderCommitSummary(byRepo map[string][]string) string {
 func AISummary(combinedDiff string, runner func(instruction, stdin string) (string, error)) (string, error) {
 	instruction := "Summarise the following multi-repo diff for a teammate reviewing this feature. Be concise: what changed and why, grouped by area. Output markdown."
 	return runner(instruction, combinedDiff)
+}
+
+// RunnerForHarness returns the AI-summary runner for the given harness:
+// DefaultClaudeRunner for "claude" (default) and CodexRunner for "codex".
+func RunnerForHarness(harness string) func(instruction, content string) (string, error) {
+	if harness == "codex" {
+		return CodexRunner
+	}
+	return DefaultClaudeRunner
+}
+
+// codexExecArgs builds the `codex exec` argv for an AI summary. codex's stdin
+// contract is unverified, so the diff is passed by file path and the prompt
+// tells codex to read diffPath rather than piping the diff on stdin.
+func codexExecArgs(instruction, diffPath string) []string {
+	prompt := instruction + " The full multi-repo diff is in this file — read it before summarising: " + diffPath
+	return []string{"exec", prompt}
+}
+
+// CodexRunner writes content (the combined diff) to a temp file and runs
+// `codex exec` with a prompt referencing that file. The temp file is removed
+// afterwards. The call is bounded by aiSummaryTimeout.
+func CodexRunner(instruction, content string) (string, error) {
+	codexPath, err := exec.LookPath("codex")
+	if err != nil {
+		return "", errors.New("codex CLI not found: install codex and ensure it is on your PATH")
+	}
+	f, err := os.CreateTemp("", "slis-diff-*.diff")
+	if err != nil {
+		return "", fmt.Errorf("codex exec: create temp diff file: %w", err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		return "", fmt.Errorf("codex exec: write temp diff file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("codex exec: close temp diff file: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), aiSummaryTimeout)
+	defer cancel()
+	c := exec.CommandContext(ctx, codexPath, codexExecArgs(instruction, f.Name())...) //nolint:gosec
+	out, err := c.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("codex exec timed out after %s", aiSummaryTimeout)
+	}
+	if err != nil {
+		return "", fmt.Errorf("codex exec: %w", err)
+	}
+	return string(out), nil
 }
 
 // DefaultClaudeRunner runs `claude -p <instruction>` with stdin=content. Returns

@@ -436,11 +436,11 @@ func loadSummaryCmd(sl model.Slice, base string) tea.Cmd {
 
 // aiSummaryFromSliceCmd builds a combined diff and calls the AI summariser in a
 // single off-loop command (avoids a two-step diff-then-summary race).
-func aiSummaryFromSliceCmd(sl model.Slice) tea.Cmd {
+func aiSummaryFromSliceCmd(sl model.Slice, harness string) tea.Cmd {
 	return func() tea.Msg {
 		diffs, _ := diff.SliceDiff(sl, sliceBase(sl))
 		combined := combinedPatch(diffs)
-		out, err := summary.AISummary(combined, summary.DefaultClaudeRunner)
+		out, err := summary.AISummary(combined, summary.RunnerForHarness(harness))
 		if err != nil {
 			return summaryLoadedMsg{slice: sl.Name, text: "AI summary unavailable: " + err.Error()}
 		}
@@ -1186,11 +1186,28 @@ func (m *Model) attachCmd() tea.Cmd {
 		return nil
 	}
 	m.status = ""
+	// Autostart: launch the harness in the freshly-ensured session the same way
+	// [C] does, when configured.
+	if m.ws.Sessions.Autostart {
+		m.sendAgentLaunch(sl)
+	}
 	name, args := tmuxctl.AttachArgv(sl.Name, isInsideTmux())
 	c := exec.Command(name, args...)
 	return tea.ExecProcess(c, func(error) tea.Msg {
 		return sessionsRefreshMsg{}
 	})
+}
+
+// sendAgentLaunch types the harness launch command — the SLIS_* env prefix plus
+// the agent command with slice context — into the session's active pane, but
+// only when it is at a shell prompt (never into an already-running agent).
+func (m *Model) sendAgentLaunch(sl model.Slice) {
+	if !isShellCmd(tmuxctl.ActivePaneCommand(sl.Name)) {
+		return
+	}
+	harness := m.ws.Sessions.HarnessName()
+	agent := m.ws.Sessions.AgentCommand()
+	_ = tmuxctl.SendKeys(sl.Name, agentLaunchLine(agent, sl, m.ws.Root, harness))
 }
 
 // sessionOpts builds the tmux session layout options from the workspace config.
@@ -1214,18 +1231,10 @@ func (m *Model) launchAgentCmd() tea.Cmd {
 		m.status = "session error: " + err.Error()
 		return nil
 	}
-	agent := m.ws.Sessions.Agent
-	if agent == "" {
-		agent = "claude"
-	}
-	// Tell Claude it's running inside a slis slice (which repos/branches it spans,
-	// whether it's live). No-op for a non-claude agent.
-	agent = withSlisContext(agent, sl)
-	// Only type the launch command at a shell prompt — avoids typing into an
-	// already-running agent (then [C] just re-attaches to it).
-	if isShellCmd(tmuxctl.ActivePaneCommand(sl.Name)) {
-		_ = tmuxctl.SendKeys(sl.Name, agent)
-	}
+	// Launch the harness with the SLIS_* env prefix + slice context. Only types
+	// at a shell prompt — avoids typing into an already-running agent (then [C]
+	// just re-attaches to it).
+	m.sendAgentLaunch(sl)
 	m.status = ""
 	name, args := tmuxctl.AttachArgv(sl.Name, isInsideTmux())
 	c := exec.Command(name, args...)
