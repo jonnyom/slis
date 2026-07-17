@@ -38,6 +38,11 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/jonnyom/slis"
     description: "Multi-repo worktree cockpit: a TUI + CLI for working across many git repos at once"
+    # slis prefers terminal-notifier for the "Claude needs input" desktop banners
+    # when it is on PATH (internal/notify), so pull it in on install. It is a
+    # Homebrew formula, not a cask — declare it with `formula:`, not `cask:`.
+    dependencies:
+      - formula: terminal-notifier
     commit_author:
       name: goreleaser-bot
       email: goreleaser@users.noreply.github.com
