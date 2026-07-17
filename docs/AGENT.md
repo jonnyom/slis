@@ -135,15 +135,21 @@ The headline automation signal: *which slice's Claude is waiting for input.*
   Backend: `terminal-notifier` if on `PATH`, else `osascript` (macOS) /
   `notify-send` (Linux); sound honours `notify.needs_input.sound` /
   `notify.done.sound` from `workspace.yaml`. The `terminal-notifier` backend also
-  carries the slis bacon-rasher icon (extracted to `<state>/slis.png`). Delivery
-  is best-effort and never fails the hook.
+  carries the slis bacon-rasher icon (extracted to `<state>/slis.png`) and wires a
+  click action: clicking the banner runs `slis focus <slice>`, switching your
+  active tmux client to that slice's session (see `focus` below). Set
+  `notify.activate` in `workspace.yaml` to a macOS app bundle id (e.g.
+  `com.mitchellh.ghostty`, `com.googlecode.iterm2`, `com.apple.Terminal`) to also
+  foreground that terminal app on click. Click actions are `terminal-notifier`
+  only; `osascript`/`notify-send` ignore them. Delivery is best-effort and never
+  fails the hook.
 
 ## Mutation classification
 
 | Class | Commands | Notes for agents |
 |---|---|---|
 | **read-only** | `ls show status pr pr-stack summary conflicts comments doctor edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
-| **local mutate** | `create adopt activate deactivate refresh restack rm group ungroup init init-hooks editor` | Touches local worktrees/branches/config/uncommitted work. `activate --stash` moves uncommitted changes; `rm --force` removes dirty worktrees. |
+| **local mutate** | `create adopt activate deactivate refresh restack rm group ungroup init init-hooks editor focus` | Touches local worktrees/branches/config/uncommitted work. `activate --stash` moves uncommitted changes; `rm --force` removes dirty worktrees. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. |
 | **remote / destructive** | `submit merge sync fix-ci` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs `claude -p` and commits. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before

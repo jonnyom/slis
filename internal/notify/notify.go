@@ -14,6 +14,14 @@ type Notification struct {
 	Subtitle string
 	Message  string
 	Sound    string // backend-specific sound name; empty = silent
+	// ExecuteOnClick is a shell command terminal-notifier runs when the banner is
+	// clicked (its -execute flag). Only the terminal-notifier backend honours it;
+	// osascript and notify-send have no click action and ignore it. Empty = none.
+	ExecuteOnClick string
+	// Activate is a macOS application bundle id (e.g. "com.apple.Terminal")
+	// terminal-notifier foregrounds when the banner is clicked (its -activate
+	// flag). Only the terminal-notifier backend honours it. Empty = none.
+	Activate string
 }
 
 // escapeAppleScript turns s into the body of an AppleScript double-quoted string
@@ -51,6 +59,12 @@ func terminalNotifierArgs(n Notification, icon string) []string {
 	if icon != "" {
 		args = append(args, "-appIcon", icon, "-contentImage", icon)
 	}
+	if n.ExecuteOnClick != "" {
+		args = append(args, "-execute", n.ExecuteOnClick)
+	}
+	if n.Activate != "" {
+		args = append(args, "-activate", n.Activate)
+	}
 	return args
 }
 
@@ -71,7 +85,7 @@ func appleScript(n Notification) string {
 // argvFor is the pure backend selector: given a target OS and a PATH probe it
 // picks a notification backend and builds its argv, without running anything.
 //
-//   - darwin + terminal-notifier on PATH → terminal-notifier -title/-subtitle/-message[-sound][-appIcon/-contentImage]
+//   - darwin + terminal-notifier on PATH → terminal-notifier -title/-subtitle/-message[-sound][-appIcon/-contentImage][-execute][-activate]
 //   - darwin otherwise                   → osascript -e '<AppleScript>'
 //   - linux                              → notify-send <title> <message>
 //   - anything else                      → ok=false

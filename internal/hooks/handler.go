@@ -147,9 +147,36 @@ func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir strin
 	return nil
 }
 
+// selfExecutable resolves the running slis binary's path so a clicked banner can
+// re-invoke it. It is a package var so tests can pin a deterministic value;
+// production uses os.Executable, falling back to "slis" on PATH when the path
+// cannot be determined.
+var selfExecutable = func() string {
+	if p, err := os.Executable(); err == nil && p != "" {
+		return p
+	}
+	return "slis"
+}
+
+// shellSingleQuote wraps s in single quotes for safe interpolation into a
+// /bin/sh command line (terminal-notifier's -execute runs its argument through
+// the shell). A literal single quote is emitted as the standard '\” sequence.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// focusCommand builds the shell command a clicked banner runs: the running slis
+// binary invoked as `<self> focus <slice>`, with both the binary path and the
+// slice name shell-quoted so spaces or quotes cannot break the command.
+func focusCommand(slice string) string {
+	return shellSingleQuote(selfExecutable()) + " focus " + shellSingleQuote(slice)
+}
+
 // fireNotification best-effort delivers a desktop banner for a slice that just
 // entered an alertable status (waiting-input or done). Other statuses are
-// silent. Delivery errors are reported to stderr, never propagated.
+// silent. Clicking the banner runs `slis focus <slice>` (terminal-notifier
+// only) to switch the user's tmux client to that slice's session. Delivery
+// errors are reported to stderr, never propagated.
 func fireNotification(slice string, status model.SessionStatus, cfg config.Notify) {
 	var n notify.Notification
 	switch status {
@@ -170,6 +197,8 @@ func fireNotification(slice string, status model.SessionStatus, cfg config.Notif
 	default:
 		return
 	}
+	n.ExecuteOnClick = focusCommand(slice)
+	n.Activate = cfg.Activate
 	if err := notifier(n); err != nil {
 		fmt.Fprintf(errOut, "slis hook: notification delivery failed: %v\n", err)
 	}

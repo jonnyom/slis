@@ -125,6 +125,41 @@ func TestArgvForBackendSelection(t *testing.T) {
 			t.Errorf("osascript args %v should not reference the icon", args)
 		}
 	})
+
+	t.Run("terminal-notifier sets -execute and -activate when present", func(t *testing.T) {
+		click := n
+		click.ExecuteOnClick = "slis focus alpha"
+		click.Activate = "com.apple.Terminal"
+		_, args, _ := argvFor("darwin", found, click, "")
+		if !contains(args, "-execute") || !contains(args, "slis focus alpha") {
+			t.Errorf("terminal-notifier args %v missing -execute command", args)
+		}
+		if !contains(args, "-activate") || !contains(args, "com.apple.Terminal") {
+			t.Errorf("terminal-notifier args %v missing -activate bundle id", args)
+		}
+	})
+
+	t.Run("terminal-notifier omits -execute and -activate when empty", func(t *testing.T) {
+		_, args, _ := argvFor("darwin", found, n, "")
+		for _, unwanted := range []string{"-execute", "-activate"} {
+			if contains(args, unwanted) {
+				t.Errorf("terminal-notifier args %v should not include %q when empty", args, unwanted)
+			}
+		}
+	})
+
+	t.Run("osascript ignores execute/activate", func(t *testing.T) {
+		click := n
+		click.ExecuteOnClick = "slis focus alpha"
+		click.Activate = "com.apple.Terminal"
+		_, args, _ := argvFor("darwin", onlyOsascript, click, "")
+		if contains(args, "-execute") || contains(args, "-activate") {
+			t.Errorf("osascript args %v should not reference execute/activate flags", args)
+		}
+		if containsSub(args[1], "slis focus alpha") || containsSub(args[1], "com.apple.Terminal") {
+			t.Errorf("osascript script %q should not embed the click command/bundle", args[1])
+		}
+	})
 }
 
 func containsSub(s, sub string) bool {
