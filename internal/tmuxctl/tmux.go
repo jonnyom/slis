@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,38 @@ type SessionOpts struct {
 // window is one tmux window: a name and a starting directory.
 type window struct{ name, cwd string }
 
+// perRepoWindows builds one window per member, each cd'd into its worktree.
+func perRepoWindows(sorted []model.SliceMember) []window {
+	wins := make([]window, 0, len(sorted))
+	for _, m := range sorted {
+		wins = append(wins, window{name: m.Repo, cwd: m.WorktreePath})
+	}
+	return wins
+}
+
+// rootWindowCwd returns the directory a "root" window should cd into so agents
+// launched there operate on the slice worktrees, not the repos' primary
+// checkouts. For a single member that is the member's worktree; for several it
+// is their shared immediate parent (the created-slice layout,
+// ws.Root/.slis/worktrees/<slice>/). ok is false when the members do not share
+// one immediate parent (adopted/discovered slices with arbitrary paths), in
+// which case a single root window cannot serve them all.
+func rootWindowCwd(sorted []model.SliceMember) (string, bool) {
+	if len(sorted) == 0 {
+		return "", false
+	}
+	if len(sorted) == 1 {
+		return sorted[0].WorktreePath, true
+	}
+	parent := filepath.Dir(sorted[0].WorktreePath)
+	for _, m := range sorted[1:] {
+		if filepath.Dir(m.WorktreePath) != parent {
+			return "", false
+		}
+	}
+	return parent, true
+}
+
 // sessionWindows builds the ordered window list for the given members + opts.
 func sessionWindows(members []model.SliceMember, opts SessionOpts) []window {
 	sorted := make([]model.SliceMember, len(members))
@@ -64,19 +97,21 @@ func sessionWindows(members []model.SliceMember, opts SessionOpts) []window {
 
 	var wins []window
 	if (layout == "root" || layout == "both") && opts.Root != "" {
-		wins = append(wins, window{name: "root", cwd: opts.Root})
+		cwd, ok := rootWindowCwd(sorted)
+		if !ok {
+			// Members don't share a common parent: a single root window can't
+			// serve them all, so fall back to per-repo windows for this session.
+			return perRepoWindows(sorted)
+		}
+		wins = append(wins, window{name: "root", cwd: cwd})
 	}
 	if layout == "repos" || layout == "both" {
-		for _, m := range sorted {
-			wins = append(wins, window{name: m.Repo, cwd: m.WorktreePath})
-		}
+		wins = append(wins, perRepoWindows(sorted)...)
 	}
 	// Fallback: if the chosen layout produced nothing (e.g. "root" with no Root),
 	// fall back to per-repo windows so the session is still useful.
 	if len(wins) == 0 {
-		for _, m := range sorted {
-			wins = append(wins, window{name: m.Repo, cwd: m.WorktreePath})
-		}
+		return perRepoWindows(sorted)
 	}
 	return wins
 }
