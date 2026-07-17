@@ -1,0 +1,81 @@
+docs/AGENT.md
+  s_e7cc16202efb78::t_7a39084a0fe1ca 33,44-50
+  s_e7cc16202efb78::t_492ee9a5283efc 107,111-113
+  s_e7cc16202efb78::t_9ac7f80f19cedd 203
+  s_e7cc16202efb78::t_20c4736da47456 149-154
+internal/cli/ls.go
+  s_e7cc16202efb78::t_7f2d30c50fa486 37
+  s_e7cc16202efb78::t_a6657112473a41 93
+  s_e7cc16202efb78::t_9e5f0d742efbf3 123
+  s_e7cc16202efb78::t_95ea6f4fd72d30 112,118-122
+  s_e7cc16202efb78::t_4218bb5ea8d562 183-188
+  s_e7cc16202efb78::t_2ea4f119e88371 15
+  s_e7cc16202efb78::t_e6066aaeeeb025 29-32,34-36,38-40
+  s_e7cc16202efb78::t_d9d013e59722d3 225-227
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_132629e22176b5 323
+  s_e7cc16202efb78::t_a6c668ea98ded7 188-243
+  s_e7cc16202efb78::t_e92b3281ef5618 271
+  s_e7cc16202efb78::t_991a9994437d79 7,9,17
+  s_e7cc16202efb78::t_05bb1650dda25f 322
+internal/cli/adopt.go
+  s_e7cc16202efb78::t_ad2a54b90e4dda 183-188
+internal/cli/create.go
+  s_e7cc16202efb78::t_5507545b6e7bdf 10,16-29,194-199
+internal/cli/doctor_gt_test.go
+  s_e7cc16202efb78::t_73dd3cc4907e83 1-44
+internal/cli/prstack.go
+  s_e7cc16202efb78::t_fb886f00230cf0 9,16-17,21-23,32-75,130-133,139
+internal/cli/prstack_test.go
+  s_e7cc16202efb78::t_b54d06cb019fea 1-46
+internal/cli/registry_test.go
+  s_e7cc16202efb78::t_0476384f093407 46,64,94,154
+internal/cli/show.go
+  s_e7cc16202efb78::t_7722250e0071c1 84
+internal/discovery/stacks.go
+  s_e7cc16202efb78::t_1f75b53d3251c9 1-46
+internal/discovery/stacks_test.go
+  s_e7cc16202efb78::t_f2a5f9f6ad84d6 1-96
+internal/gt/gt.go
+  s_e7cc16202efb78::t_508ee23f94a083 243-281
+internal/gt/native.go
+  s_e7cc16202efb78::t_f87935d48fcca1 1-26
+internal/gt/native_test.go
+  s_e7cc16202efb78::t_09889d6ffc77c8 1-33
+internal/gt/stackroot_test.go
+  s_e7cc16202efb78::t_f0f8501abe8d76 1-63
+internal/gt/track.go
+  s_e7cc16202efb78::t_646b6f69c7e9f8 1-25
+internal/gt/track_test.go
+  s_e7cc16202efb78::t_1cad79a054d7af 1-56
+internal/model/model.go
+  s_e7cc16202efb78::t_b3027bd48e5042 42-50
+internal/radar/radar.go
+  s_e7cc16202efb78::t_bfdf1277f550f5 157
+internal/tui/app.go
+  s_e7cc16202efb78::t_a587000bf27c3c 314-318
+internal/tui/detail.go
+  s_e7cc16202efb78::t_772fbcfa9d1bde 26
+internal/tui/diffpane.go
+  s_e7cc16202efb78::t_166111b50acf68 98
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_482b4807949f54 46,241,671-716,718-719,727-728,741-744
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_172f12bbe27fbd 53,59,62,64-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "54a5d79c91fe18944720df31a88f8b9f5ba72976",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}
