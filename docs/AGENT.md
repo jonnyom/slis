@@ -19,12 +19,22 @@ mutate-vs-read classification, and how errors surface. The
 All shapes are emitted indented to stdout. Fields tagged `omitempty` are absent
 when empty.
 
-### `slis ls --json` → array
+### `slis ls --json` → object
 ```jsonc
-[{ "name": "checkout", "base": "", "active": false,
-   "members": [{ "repo": "web", "branch": "jonny/checkout",
-                 "worktree_path": "/abs/path", "tip_sha": "f67b8a9..." }] }]
+{ "slices": [{ "name": "checkout", "base": "", "active": false,
+     "members": [{ "repo": "web", "branch": "jonny/checkout",
+                   "worktree_path": "/abs/path", "tip_sha": "f67b8a9..." }] }],
+  "skipped": [{ "repo": "web", "path": "/abs/path", "branch": "",
+                "reason": "detached" }],
+  "repo_errors": [{ "repo": "ops", "error": "..." }] }
 ```
+`slices` is the same member shape as before (previously the top-level array).
+`skipped`/`repo_errors` are omitted when empty. A worktree is never dropped
+silently: `skipped[].reason` ∈ `detached | branchless | bare | prunable |
+invalid-branch-name | rev-parse-failed | grouping-collision`. `repo_errors`
+lists repos whose worktree listing failed entirely (the rest still discover).
+The human `slis ls` appends `⚠ N worktrees hidden (…) — run slis doctor` on
+stderr when either is non-empty; run `slis doctor` for the detail + remedy.
 
 ### `slis show <slice> --json` → object
 `ls`'s member shape plus a per-repo Graphite stack:
@@ -86,6 +96,11 @@ slice/repo diffs that couldn't be computed (blind spots).
 [{ "level": "warn", "title": "strip_prefix has trailing slash", "detail": "..." }]
 ```
 `level` ∈ `ok | warn | fail | info`. `slis doctor --fix` applies safe repairs.
+Beyond hooks/strip_prefix/doubled-prefix, doctor also reports **hidden
+worktrees** (detached/prunable/etc. — the same skips `ls` surfaces, with a
+per-reason remedy), **repo read failures**, and **orphaned directories** under
+`<root>/.slis/worktrees/**` (empty litter dirs and checkouts whose `.git` points
+at a rebound admin slot). These are report-only: doctor never prunes or deletes.
 
 ### `slis comments [slice] --json` → object
 Cached PR comments, keyed `slice → repo`. Persists after `slis rm` so feedback

@@ -57,6 +57,9 @@ func renderEmptyState(m Model) string {
 	if m.creatingSlice != "" {
 		hdr += "  " + cursorBar.Render(m.spinnerGlyph()) + " creating " + createNameStyle.Render(m.creatingSlice) + "…"
 	}
+	if h := hiddenWorktreeHint(m); h != "" {
+		hdr += "   " + needsRestackStyle.Render(h)
+	}
 	header := clip(hdr, m.width)
 	hint := "[c] new slice   [i] adopt branch   [r] refresh   [?] help   [q] quit"
 	if m.status != "" {
@@ -461,6 +464,23 @@ func (m Model) previewSlice(vis []int) (model.Slice, bool) {
 
 // renderBrowser renders the dashboard hub: a pulse bar, a state-filter rail +
 // slice list on the left, and a live preview of the selected slice on the right.
+// hiddenWorktreeHint returns a one-line browser hint when discovery could not
+// surface some worktrees or repos, pointing the user at `slis doctor`. It
+// returns "" when everything was healthy.
+func hiddenWorktreeHint(m Model) string {
+	switch {
+	case m.skippedWorktrees > 0 && m.skippedRepos > 0:
+		return fmt.Sprintf("⚠ %d hidden worktree%s, %d repo error%s — slis doctor",
+			m.skippedWorktrees, plural(m.skippedWorktrees), m.skippedRepos, plural(m.skippedRepos))
+	case m.skippedWorktrees > 0:
+		return fmt.Sprintf("⚠ %d hidden worktree%s — slis doctor", m.skippedWorktrees, plural(m.skippedWorktrees))
+	case m.skippedRepos > 0:
+		return fmt.Sprintf("⚠ %d repo error%s — slis doctor", m.skippedRepos, plural(m.skippedRepos))
+	default:
+		return ""
+	}
+}
+
 func renderBrowser(m Model) string {
 	// No slices: a proper empty state (NOT "run init" — inside the TUI a
 	// workspace is always loaded, so 0 slices means "all clear", not "unset").
@@ -472,7 +492,11 @@ func renderBrowser(m Model) string {
 	// visible slices, so the first frame and tests render sensibly.
 	if m.width <= 0 || m.height <= 0 {
 		var sb strings.Builder
-		sb.WriteString(titleStyle.Render("slis") + headerStyle.Render(fmt.Sprintf("  ·  %d slices", len(m.slices))) + "\n\n")
+		sb.WriteString(titleStyle.Render("slis") + headerStyle.Render(fmt.Sprintf("  ·  %d slices", len(m.slices))))
+		if h := hiddenWorktreeHint(m); h != "" {
+			sb.WriteString(headerStyle.Render("  ·  ") + needsRestackStyle.Render(h))
+		}
+		sb.WriteString("\n\n")
 		for _, i := range m.hubVisible() {
 			s := m.slices[i]
 			marker := "  "
@@ -502,6 +526,9 @@ func renderBrowser(m Model) string {
 	}
 	if m.creatingSlice != "" {
 		head.WriteString("   " + cursorBar.Render(m.spinnerGlyph()) + " creating " + createNameStyle.Render(m.creatingSlice) + "…")
+	}
+	if hint := hiddenWorktreeHint(m); hint != "" {
+		head.WriteString("   " + needsRestackStyle.Render(hint))
 	}
 	if m.creating {
 		head.WriteString(renderCreatePrompt(m.createName))

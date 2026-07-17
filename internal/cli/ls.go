@@ -32,17 +32,50 @@ type SliceDTO struct {
 	Members []MemberDTO `json:"members"`
 }
 
+// SkippedWorktreeDTO is a JSON-friendly representation of a worktree discovery
+// could not turn into a slice member, and why.
+type SkippedWorktreeDTO struct {
+	Repo   string `json:"repo"`
+	Path   string `json:"path"`
+	Branch string `json:"branch,omitempty"`
+	Reason string `json:"reason"`
+}
+
+// RepoErrorDTO is a JSON-friendly representation of a repo whose worktree
+// listing failed entirely.
+type RepoErrorDTO struct {
+	Repo string `json:"repo"`
+	Err  string `json:"error"`
+}
+
+// LsResultDTO is the top-level `slis ls --json` payload: the slices plus the
+// worktrees that were skipped and the repos that failed to list, so no worktree
+// disappears without explanation.
+type LsResultDTO struct {
+	Slices     []SliceDTO           `json:"slices"`
+	Skipped    []SkippedWorktreeDTO `json:"skipped,omitempty"`
+	RepoErrors []RepoErrorDTO       `json:"repo_errors,omitempty"`
+}
+
 // listSlices loads all slices from the workspace, applies overrides, marks the
 // active slice from the journal, and returns DTOs sorted by name. Overrides and
 // journal paths that do not exist are silently treated as empty/absent.
 func listSlices(ws config.Workspace, overridesPath, journalPath string) ([]SliceDTO, error) {
-	slices, err := discovery.Discover(ws)
+	res, err := listSlicesReport(ws, overridesPath, journalPath)
 	if err != nil {
-		return nil, fmt.Errorf("discover: %w", err)
+		return nil, err
 	}
+	return res.Slices, nil
+}
+
+// listSlicesReport is listSlices plus the skipped-worktree / repo-error report
+// from discovery, so callers that surface hidden worktrees (ls, doctor, TUI)
+// can report them.
+func listSlicesReport(ws config.Workspace, overridesPath, journalPath string) (LsResultDTO, error) {
+	rep := discovery.DiscoverReport(ws)
 
 	ov, _ := discovery.LoadOverrides(overridesPath)
-	slices = discovery.Apply(slices, ov)
+	slices := discovery.Apply(rep.Slices, ov)
 
 	j, _ := swap.Load(journalPath)
 
@@ -59,7 +92,14 @@ func listSlices(ws config.Workspace, overridesPath, journalPath string) ([]Slice
 		return dtos[i].Name < dtos[k].Name
 	})
 
-	return dtos, nil
+	result := LsResultDTO{Slices: dtos}
+	for _, s := range rep.Skipped {
+		result.Skipped = append(result.Skipped, SkippedWorktreeDTO(s))
+	}
+	for _, e := range rep.RepoErrors {
+		result.RepoErrors = append(result.RepoErrors, RepoErrorDTO(e))
+	}
+	return result, nil
 }
 
 // toSliceDTO converts a model.Slice to a SliceDTO. Members are sorted by Repo
@@ -114,7 +154,7 @@ var lsCmd = &cobra.Command{
 		}
 
 		sp := config.StatePaths()
-		dtos, err := listSlices(ws, sp.Overrides, sp.ActiveJournal)
+		res, err := listSlicesReport(ws, sp.Overrides, sp.ActiveJournal)
 		if err != nil {
 			return err
 		}
@@ -122,12 +162,35 @@ var lsCmd = &cobra.Command{
 		if useJSON {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			return enc.Encode(dtos)
+			return enc.Encode(res)
 		}
 
-		renderSlicesTable(os.Stdout, dtos)
+		renderSlicesTable(os.Stdout, res.Slices)
+		renderSkippedNotice(os.Stderr, res)
 		return nil
 	},
+}
+
+// renderSkippedNotice prints a short warning to w (stderr) when discovery hid
+// worktrees or a repo failed to list, pointing the user at `slis doctor`. It
+// prints nothing when everything was healthy.
+func renderSkippedNotice(w io.Writer, res LsResultDTO) {
+	if len(res.Skipped) > 0 {
+		reasons := make([]string, 0, len(res.Skipped))
+		seen := map[string]bool{}
+		for _, s := range res.Skipped {
+			if !seen[s.Reason] {
+				seen[s.Reason] = true
+				reasons = append(reasons, s.Reason)
+			}
+		}
+		sort.Strings(reasons)
+		fmt.Fprintf(w, "⚠ %d worktree%s hidden (%s) — run slis doctor\n",
+			len(res.Skipped), plural(len(res.Skipped)), strings.Join(reasons, "/"))
+	}
+	for _, e := range res.RepoErrors {
+		fmt.Fprintf(w, "⚠ repo %q could not be read: %s — run slis doctor\n", e.Repo, e.Err)
+	}
 }
 
 func init() {

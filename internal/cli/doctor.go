@@ -152,13 +152,11 @@ func runDoctor() []doctorFinding {
 	}
 
 	sp := config.StatePaths()
-	dtos, err := listSlices(ws, sp.Overrides, sp.ActiveJournal)
+	rep, err := listSlicesReport(ws, sp.Overrides, sp.ActiveJournal)
 	if err != nil {
 		return append(findings, doctorFinding{Level: lvlFail, Title: "could not list slices", Detail: err.Error()})
 	}
-	if len(dtos) == 0 {
-		return append(findings, doctorFinding{Level: lvlInfo, Title: "no slices discovered"})
-	}
+	dtos := rep.Slices
 
 	prefix := ws.Grouping.StripPrefix
 	sliceIssues := 0
@@ -188,7 +186,15 @@ func runDoctor() []doctorFinding {
 			fix:     makeSliceWorktreeFixer(members),
 		})
 	}
-	if sliceIssues == 0 {
+	worktreeIssues := repoErrorFindings(rep.RepoErrors)
+	worktreeIssues = append(worktreeIssues, skippedWorktreeFindings(rep.Skipped)...)
+	worktreeIssues = append(worktreeIssues, orphanWorktreeFindings(ws)...)
+	findings = append(findings, worktreeIssues...)
+
+	switch {
+	case len(dtos) == 0 && sliceIssues == 0 && len(worktreeIssues) == 0:
+		findings = append(findings, doctorFinding{Level: lvlInfo, Title: "no slices discovered"})
+	case sliceIssues == 0 && len(worktreeIssues) == 0:
 		findings = append(findings, doctorFinding{Level: lvlOK,
 			Title: fmt.Sprintf("%d slice(s) look healthy", len(dtos))})
 	}
