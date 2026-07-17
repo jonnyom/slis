@@ -1,0 +1,87 @@
+internal/discovery/stacks_test.go
+  s_e7cc16202efb78::t_b3e4641a80d630 1-96
+internal/tui/diffpane.go
+  s_e7cc16202efb78::t_9a5f8668ec4a18 98
+internal/gt/native_test.go
+  s_e7cc16202efb78::t_ab9db2f3c32192 1-33
+docs/AGENT.md
+  s_e7cc16202efb78::t_7a39084a0fe1ca 33,44-50
+  s_e7cc16202efb78::t_467a55ae67a72b 140-144
+  s_e7cc16202efb78::t_2e7d23ca6266a8 193
+  s_e7cc16202efb78::t_492ee9a5283efc 104,108-110
+internal/tui/detail.go
+  s_e7cc16202efb78::t_84c3ca6b88ec53 26
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_991a9994437d79 7,9,17
+  s_e7cc16202efb78::t_05bb1650dda25f 310
+  s_e7cc16202efb78::t_a6c668ea98ded7 188-243
+  s_e7cc16202efb78::t_e92b3281ef5618 271
+internal/tui/app.go
+  s_e7cc16202efb78::t_a26928e08dd74b 309-313
+internal/discovery/stacks.go
+  s_e7cc16202efb78::t_50ff6e0b898fc8 1-46
+internal/cli/prstack_test.go
+  s_e7cc16202efb78::t_c4120168c947db 1-46
+internal/cli/doctor_gt_test.go
+  s_e7cc16202efb78::t_45a8b1ef004328 1-44
+internal/cli/ls.go
+  s_e7cc16202efb78::t_d9d013e59722d3 208-210
+  s_e7cc16202efb78::t_95ea6f4fd72d30 111,117-121
+  s_e7cc16202efb78::t_2ea4f119e88371 15
+  s_e7cc16202efb78::t_e6066aaeeeb025 29-32,34-39
+  s_e7cc16202efb78::t_a6657112473a41 92
+  s_e7cc16202efb78::t_4218bb5ea8d562 169-174
+  s_e7cc16202efb78::t_9e5f0d742efbf3 122
+internal/gt/stackroot_test.go
+  s_e7cc16202efb78::t_8a7f53d76a1942 1-63
+internal/cli/adopt.go
+  s_e7cc16202efb78::t_bf0ee1a589c1e6 183-188
+internal/model/model.go
+  s_e7cc16202efb78::t_cbe8c83526cd87 41-49
+internal/cli/prstack.go
+  s_e7cc16202efb78::t_267b3caf4faa90 130-133,139
+  s_e7cc16202efb78::t_937ef3fa996064 9,16-17,21-23,32-75
+internal/gt/native.go
+  s_e7cc16202efb78::t_2b3e6c18539e99 1-26
+internal/gt/track_test.go
+  s_e7cc16202efb78::t_495ffdb5fb1e58 1-56
+internal/cli/show.go
+  s_e7cc16202efb78::t_d01b7bbd88fee7 84
+internal/gt/gt.go
+  s_e7cc16202efb78::t_24d933bdf36d49 243-281
+internal/cli/create.go
+  s_e7cc16202efb78::t_9b02c3bcb7b2c7 194-199
+  s_e7cc16202efb78::t_900596b4b6b82d 10,16-28
+  s_e7cc16202efb78::t_9cfeb02c1675b4 29
+internal/cli/registry_test.go
+  s_e7cc16202efb78::t_c519a5d1010336 46,64,94,154
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_b4abea30a461b6 240
+  s_e7cc16202efb78::t_c64d4601d837e0 670-715,717-718,726-727,740-743
+  s_e7cc16202efb78::t_0bfd2167b3fdb4 45
+internal/gt/track.go
+  s_e7cc16202efb78::t_b3516652b32ee7 1-25
+internal/radar/radar.go
+  s_e7cc16202efb78::t_7b928ef664bec4 157
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_24f468ed99c5b6 50
+  s_e7cc16202efb78::t_670591b557c3c0 44
+  s_e7cc16202efb78::t_1738e109725a90 53
+  s_e7cc16202efb78::t_01882bcb6bdc8d 55-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "db8e90acd1690b48dc2b2ffbd38f319efc91a720",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
