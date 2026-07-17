@@ -126,8 +126,8 @@ func TestRegistryForget(t *testing.T) {
 	}
 }
 
-// The built-in .claude/worktrees ignore must hide agent sandboxes even through
-// the ls report, on a fresh (grandfathering) registry.
+// The built-in .claude/worktrees ignore must hide a NEW (unregistered) agent
+// sandbox through the ls report — once the registry exists (post-grandfather).
 func TestListSlicesReport_DefaultIgnore(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	root := t.TempDir()
@@ -144,6 +144,12 @@ func TestListSlicesReport_DefaultIgnore(t *testing.T) {
 	}
 	ovPath := filepath.Join(t.TempDir(), "overrides.yaml")
 	jPath := filepath.Join(t.TempDir(), "none.json")
+
+	// Registry exists (empty) → not first run, so grandfathering does not sweep
+	// the new sandbox in and the ignore glob applies.
+	if err := config.SaveRegistry(registryPathFor(ovPath), config.Registry{}); err != nil {
+		t.Fatalf("SaveRegistry: %v", err)
+	}
 
 	res, err := listSlicesReport(ws, ovPath, jPath)
 	if err != nil {

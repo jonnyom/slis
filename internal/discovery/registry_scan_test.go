@@ -125,9 +125,9 @@ func TestReport_ConfigIgnoreGlobHonored(t *testing.T) {
 	}
 }
 
-// The built-in default must hide worktrees under .claude/worktrees even with no
-// registry yet (first run) — the agent-sandbox case that caused the bug.
-func TestReport_DefaultClaudeWorktreesIgnored(t *testing.T) {
+// Invariant (c): once the registry exists (post-grandfather), a NEW unregistered
+// worktree under .claude/worktrees is ignored — the agent-sandbox case.
+func TestReport_DefaultClaudeWorktreesIgnoredWhenUnregistered(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	sandbox := filepath.Join(t.TempDir(), ".claude", "worktrees", "agent-x")
 	if err := os.MkdirAll(filepath.Dir(sandbox), 0o755); err != nil {
@@ -135,14 +135,87 @@ func TestReport_DefaultClaudeWorktreesIgnored(t *testing.T) {
 	}
 	testutil.AddWorktree(t, repo, "jonny/agentwork", sandbox)
 
-	rp := regPath(t) // does NOT exist → first run / grandfathering
+	rp := regPath(t)
+	writeEmptyRegistry(t, rp) // registry exists → NOT first run; ignore applies
 
 	res := discovery.Report(wsFor(map[string]string{"web": repo}), rp)
 	if len(res.Slices) != 0 {
-		t.Fatalf(".claude/worktrees sandbox must be ignored, got slices %+v", res.Slices)
+		t.Fatalf("unregistered .claude/worktrees sandbox must be ignored, got slices %+v", res.Slices)
+	}
+	if _, ok := candidateFor(t, res.Candidates, sandbox); ok {
+		t.Fatalf("ignored sandbox must not be a candidate, got %+v", res.Candidates)
 	}
 	if !hasReason(res.Skipped, discovery.ReasonIgnored) {
 		t.Fatalf("expected an ignored skip for the sandbox, got %+v", res.Skipped)
+	}
+}
+
+// Invariant (a): a registered slice whose worktree path matches an ignore glob
+// must stay MANAGED — ignore never hides registered work. This is the exact
+// upgrade regression: real feature worktrees under .claude/worktrees vanished.
+func TestReport_RegisteredBeatsIgnoreGlob(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	// A real feature worktree the user created under .claude/worktrees.
+	wt := filepath.Join(t.TempDir(), ".claude", "worktrees", "pay-119")
+	if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.AddWorktree(t, repo, "jonny/pay-119", wt)
+
+	rp := regPath(t)
+	reg := config.Registry{Slices: map[string]config.RegistrySlice{
+		"pay-119": {
+			Name:    "pay-119",
+			Source:  config.SourceImported,
+			Members: map[string]config.RegistryMember{"web": {Branch: "jonny/pay-119", WorktreePath: wt}},
+		},
+	}}
+	if err := config.SaveRegistry(rp, reg); err != nil {
+		t.Fatalf("SaveRegistry: %v", err)
+	}
+
+	res := discovery.Report(wsFor(map[string]string{"web": repo}), rp)
+	if len(res.Slices) != 1 || res.Slices[0].Name != "pay-119" {
+		t.Fatalf("registered worktree under an ignore glob must stay a slice, got %+v", res.Slices)
+	}
+	if hasReason(res.Skipped, discovery.ReasonIgnored) {
+		t.Fatalf("registered worktree must NOT be ignored, got %+v", res.Skipped)
+	}
+}
+
+// Invariant (b): a fresh grandfather run (no registry) with a worktree matching
+// DefaultIgnoreGlobs must register it and keep it visible — the whole point of
+// zero-behavior-change on upgrade. A second run must keep it visible too.
+func TestReport_GrandfatherRegistersIgnoredWorktree(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), ".claude", "worktrees", "pay-45-ssp")
+	if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.AddWorktree(t, repo, "jonny/pay-45-ssp", wt)
+
+	rp := regPath(t) // does NOT exist → first run grandfathers everything, pre-ignore
+	ws := wsFor(map[string]string{"web": repo})
+
+	res := discovery.Report(ws, rp)
+	if len(res.Slices) != 1 || res.Slices[0].Name != "pay-45-ssp" {
+		t.Fatalf("grandfathering must keep a .claude/worktrees slice visible, got %+v", res.Slices)
+	}
+	reg, exists, _ := config.LoadRegistry(rp)
+	if !exists {
+		t.Fatalf("registry must be written on first run")
+	}
+	if _, ok := reg.Slices["pay-45-ssp"]; !ok {
+		t.Fatalf("grandfathering must register the ignored-path worktree, got %+v", reg.Slices)
+	}
+
+	// Second run: still visible (registry precedence), not ignored.
+	res2 := discovery.Report(ws, rp)
+	if len(res2.Slices) != 1 || res2.Slices[0].Name != "pay-45-ssp" {
+		t.Fatalf("registered slice must stay visible on later runs, got %+v", res2.Slices)
+	}
+	if hasReason(res2.Skipped, discovery.ReasonIgnored) {
+		t.Fatalf("registered slice must not be ignored on later runs, got %+v", res2.Skipped)
 	}
 }
 

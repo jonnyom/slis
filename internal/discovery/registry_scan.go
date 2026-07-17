@@ -40,28 +40,36 @@ func ignoreGlobs(ws config.Workspace) []string {
 // Registered members whose worktree has disappeared (or moved off the recorded
 // branch) are surfaced in Missing so a known slice never silently vanishes.
 //
-// Grandfathering: when no registry file exists yet (first run on upgrade), every
-// non-ignored worktree is treated as managed and written to the registry
-// (source grandfathered), so existing users see zero behavior change.
+// Grandfathering: when no registry file exists yet (first run on upgrade), EVERY
+// discovered worktree is grandfathered — pre-ignore, i.e. exactly the group-all
+// set the old behavior produced — and written to the registry (source
+// grandfathered), so an upgrade hides nothing. Ignore globs only filter unknown,
+// unregistered worktrees discovered AFTER grandfathering.
+//
+// Precedence: a registered (or managed-tree) worktree is always MANAGED, even
+// when its path matches an ignore glob. Ignore never hides registered work — it
+// filters new/unknown worktrees only.
 func Report(ws config.Workspace, registryPath string) Result {
 	recs, skipped, repoErrors := collect(ws)
 
 	reg, exists, _ := config.LoadRegistry(registryPath)
 	globs := ignoreGlobs(ws)
-	managedPaths := registeredPaths(reg)
+	registered := registeredIndex(reg)
 
 	var managed []worktreeRec
 	var candidates []Candidate
 	for _, r := range recs {
 		switch {
+		// Precedence (invariant 1): registered / managed-tree beats ignore.
+		case underManagedTree(r.path, ws.Root) || registered.has(r.repo, r.branch, r.path):
+			managed = append(managed, r)
+		// First run (invariant 2): grandfather the whole raw discovery, pre-ignore,
+		// so nothing that worked before upgrade disappears.
+		case !exists:
+			managed = append(managed, r)
+		// Only unregistered, post-grandfather worktrees are filtered by ignore.
 		case matchesAnyGlob(r.path, globs):
 			skipped = append(skipped, SkippedWorktree{Repo: r.repo, Path: r.path, Branch: r.branch, Reason: ReasonIgnored})
-		case !exists:
-			// First run: grandfather every non-ignored worktree so nothing that
-			// worked before upgrade disappears.
-			managed = append(managed, r)
-		case underManagedTree(r.path, ws.Root) || managedPaths[resolvePath(r.path)]:
-			managed = append(managed, r)
 		default:
 			candidates = append(candidates, Candidate{
 				Repo:   r.repo,
@@ -90,18 +98,31 @@ func Report(ws config.Workspace, registryPath string) Result {
 	return result
 }
 
-// registeredPaths returns the set of resolved worktree paths the registry
-// manages, for fast membership checks during classification.
-func registeredPaths(reg config.Registry) map[string]bool {
-	paths := make(map[string]bool)
+// registeredMembers indexes the registry for fast "is this worktree managed?"
+// checks during classification. A worktree is registered if its repo+branch
+// identity matches (survives a moved worktree path) OR its resolved path
+// matches a recorded one.
+type registeredMembers struct {
+	keys  map[string]bool // "repo\x00branch"
+	paths map[string]bool // resolved worktree paths
+}
+
+func registeredIndex(reg config.Registry) registeredMembers {
+	ri := registeredMembers{keys: map[string]bool{}, paths: map[string]bool{}}
 	for _, s := range reg.Slices {
-		for _, m := range s.Members {
+		for repo, m := range s.Members {
+			ri.keys[repo+"\x00"+m.Branch] = true
 			if m.WorktreePath != "" {
-				paths[resolvePath(m.WorktreePath)] = true
+				ri.paths[resolvePath(m.WorktreePath)] = true
 			}
 		}
 	}
-	return paths
+	return ri
+}
+
+// has reports whether a discovered worktree (repo, branch, path) is registered.
+func (ri registeredMembers) has(repo, branch, path string) bool {
+	return ri.keys[repo+"\x00"+branch] || ri.paths[resolvePath(path)]
 }
 
 // underManagedTree reports whether path lives inside <root>/.slis/worktrees.
