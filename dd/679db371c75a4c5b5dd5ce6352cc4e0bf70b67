@@ -1,0 +1,41 @@
+internal/git/status_test.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 77-120
+internal/tui/diffpane_test.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 9,101-176
+internal/diff/diff.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 216-261
+internal/config/prefs.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 13-18
+internal/diff/diff_test.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 263-364
+internal/tui/app.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 91-95,191-196,236,250,356,395,829-831,842-844,1283-1284
+internal/git/status.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 22-36
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 161-164,166,219-220,461,464-470,473,880-883
+internal/tui/diffpane.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 12,25-95,109-128,136
+internal/tui/keys.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 53
+internal/tui/prview.go
+  s_e7cc16202efb78::t_d5ef63bbb74773 70-72,77-79,87
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_8a67ab8acdd240 13,140-159,161-163,166-177,183-184,218-220,272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dd679db371c75a4c5b5dd5ce6352cc4e0bf70b67",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
