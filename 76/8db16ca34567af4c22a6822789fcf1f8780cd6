@@ -1,0 +1,68 @@
+internal/gt/native.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-26
+internal/gt/gt.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 243-281
+internal/cli/ls.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 15,29-32,34,40-52,105,124,130-135,195-200,237-239
+internal/gt/track.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-25
+internal/radar/radar.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 157
+internal/tui/diffpane.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 98
+internal/gt/native_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-33
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_7622679d577104 62
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 53,59,64-65
+internal/cli/prstack.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 9,16-17,21-23,32-75,130-133,139
+internal/tui/detail.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 26
+internal/gt/track_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-56
+internal/cli/prstack_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-46
+internal/cli/doctor_gt_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-44
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 7,9,17,188-243,271,310,323-326
+docs/AGENT.md
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 32,34-39,50-56,113,117-119,149,159-168,217,219-223
+internal/discovery/stacks.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-46
+internal/cli/adopt.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 183-188
+internal/discovery/stacks_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-96
+internal/cli/create.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 10,16-29,194-199
+internal/gt/stackroot_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 1-63
+internal/cli/show.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 84
+internal/model/model.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 42-50
+internal/tui/app.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 314-318
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 46,241,671-716,718-719,727-728,741-744
+internal/cli/registry_test.go
+  s_e7cc16202efb78::t_6c47e4c4d3de9a 46,64,94,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "768db16ca34567af4c22a6822789fcf1f8780cd6",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
