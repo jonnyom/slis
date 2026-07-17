@@ -1,0 +1,72 @@
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_fefad1937e4a36 12,16
+  s_e7cc16202efb78::t_9eea932e4c745e 131-184,189
+internal/cli/initcmd.go
+  s_e7cc16202efb78::t_e5c8652fbb5d95 53-62
+  s_e7cc16202efb78::t_426078a713b600 11
+  s_e7cc16202efb78::t_9321020031aedf 100
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_3eacf9ba95f195 859
+internal/cli/fixci.go
+  s_e7cc16202efb78::t_8b119af1fcf9f4 61-77
+  s_e7cc16202efb78::t_294f747cf56e69 146-147,151,155,163
+  s_e7cc16202efb78::t_0893b48cab4695 124-126
+internal/tui/agentctx_test.go
+  s_e7cc16202efb78::t_8a84e9ee011836 59-136
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_67093654bd9af8 130
+  s_e7cc16202efb78::t_adb3b9b3f4f4c3 63
+  s_e7cc16202efb78::t_a24731ba8ffa71 82-116
+  s_e7cc16202efb78::t_58c0f44f661c73 43
+internal/skill/skill.go
+  s_e7cc16202efb78::t_813d06f2c95f13 1-220
+assets.go
+  s_e7cc16202efb78::t_84c91e794e15b2 1-19
+internal/config/config_test.go
+  s_e7cc16202efb78::t_46904eb289ca20 86-158
+internal/cli/initskill.go
+  s_e7cc16202efb78::t_20c2379d374ab6 1-60
+internal/skill/skill_test.go
+  s_e7cc16202efb78::t_c3db8a2f1ac182 1-166
+internal/cli/summary.go
+  s_e7cc16202efb78::t_6664afd08c7cf8 119
+assets_test.go
+  s_e7cc16202efb78::t_72c40d77a6f629 1-42
+internal/summary/summary.go
+  s_e7cc16202efb78::t_14f88c063882e8 107-156
+  s_e7cc16202efb78::t_4496079ad543a7 8
+internal/tui/agentctx.go
+  s_e7cc16202efb78::t_323d3444a12a61 59-60,67-97
+internal/tui/app.go
+  s_e7cc16202efb78::t_16b17e921f4ccb 408,412
+  s_e7cc16202efb78::t_23067f1e6a218f 1142-1146,1154-1163
+  s_e7cc16202efb78::t_d3d1a90f659a61 1187-1190
+  s_e7cc16202efb78::t_ecf90452235331 1164-1165
+internal/cli/fixci_test.go
+  s_e7cc16202efb78::t_d440096849e6cd 54-78
+internal/summary/summary_internal_test.go
+  s_e7cc16202efb78::t_ea459db2daa916 1-43
+internal/config/config.go
+  s_e7cc16202efb78::t_d0d4389ff457d2 177-182
+  s_e7cc16202efb78::t_fbf9bb2dfe4cb6 44-48,50-51,53-57,70-88
+  s_e7cc16202efb78::t_5374d61fadd44a 89
+docs/AGENT.md
+  s_e7cc16202efb78::t_8dd1b978abd1db 137-182
+  s_e7cc16202efb78::t_3017c0d0eaef0d 121-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "44d4429b8de5b8a960869882ded372c64ff303df",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
