@@ -30,6 +30,7 @@ when empty.
 ### `slis ls --json` → object
 ```jsonc
 { "slices": [{ "name": "checkout", "base": "", "active": false, "stale": false,
+     "partial": true,
      "stack_id": "webjonny/pay-103", "stack_order": 1,
      "members": [{ "repo": "web", "branch": "jonny/checkout",
                    "worktree_path": "/abs/path", "tip_sha": "f67b8a9..." }] }],
@@ -52,7 +53,10 @@ compare ids for equality, don't parse them.
 `active` is the currently-swapped-in slice (at most one); `stale` is `true` when
 that active slice's branch tip has advanced past the swapped-in primaries — the
 primaries are behind, run `slis refresh` to fast-forward them (only meaningful
-when `active`). `skipped`/`repo_errors`/`candidates`/`missing` are omitted when empty. A worktree
+when `active`). `partial` (omitted when false) is `true` when the active slice's
+swap journal covers only some of its member repos — a crash mid-activate left the
+rest un-swapped; `slis doctor` explains it, and `slis deactivate` then re-activate
+fixes it (only meaningful when `active`). `skipped`/`repo_errors`/`candidates`/`missing` are omitted when empty. A worktree
 is never dropped silently: `skipped[].reason` ∈ `detached | branchless | bare |
 prunable | invalid-branch-name | rev-parse-failed | grouping-collision |
 ignored`. `repo_errors` lists repos whose worktree listing failed entirely (the
@@ -148,8 +152,17 @@ swapped), a journal repo whose **prior branch was deleted** (so `slis deactivate
 can't restore it — remedy names the exact `git branch` recreate command), and an
 **orphaned `slis/live` branch / detach** (a primary left swapped-in with no
 journal — `--fix` switches it back to trunk and deletes the temp branch only when
-that branch's commits are fully contained in the slice branch). And a
-**Graphite** section (report-only): whether `gt` is installed, whether each repo
+that branch's commits are fully contained in the slice branch; each orphan finding
+is tagged `(auto-fixable with --fix)` or `(needs manual attention: has commits not
+on the slice branch)` so the two cases read differently). It also cross-checks the
+active journal against the slice's members to catch a **partial swap**: a member
+repo absent from the journal but still on its own branch — a crash during activate
+(**`ls`** shows the slice `● partial` / `"partial": true`) — and a repo **swapped
+but un-journaled** (its primary is on the slice's `slis/live` branch with no
+journal entry — a crash between the switch and the journal write). Both are
+report-only while a journal exists (remedy: `slis deactivate` to unwind, then
+re-activate); the un-journaled orphan is only auto-fixed after a deactivate empties
+the journal. And a **Graphite** section (report-only): whether `gt` is installed, whether each repo
 is Graphite-initialised, and whether each slice member's branch is tracked in gt
 metadata (an untracked branch drops out of stack views — remedy: `gt track
 --parent <trunk> <branch>`). These are report-only except the provably-safe

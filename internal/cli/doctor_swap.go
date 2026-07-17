@@ -107,12 +107,88 @@ func swapFindings(ws config.Workspace, dtos []SliceDTO, journalPath string) []do
 		findings = append(findings, f)
 	}
 
+	// Cross-check the journal against the active slice's members and the
+	// configured repos: a journal that only records some of the swap catches a
+	// crash mid-activate that the per-entry loop above cannot see.
+	findings = append(findings, partialSwapFindings(ws, dtos, j)...)
+
 	if len(findings) == 0 {
 		findings = append(findings, doctorFinding{
 			Level: lvlOK,
 			Title: fmt.Sprintf("swap journal healthy — %q active across %d repo(s)", j.Slice, len(j.Repos)),
 		})
 	}
+	return findings
+}
+
+// partialSwapFindings cross-checks the active journal against the active slice's
+// discovered members and the configured repos, catching a swap that only partly
+// took (a crash mid-activate). It reports two report-only warnings:
+//
+//   - a slice member repo absent from the journal whose primary is NOT swapped in
+//     (the activate crashed before it reached this repo);
+//   - a configured repo whose primary sits on this slice's slis/live temp branch
+//     but has no journal entry (the crash landed between the switch and the
+//     journal write).
+//
+// Both are report-only while a journal exists: `slis deactivate` unwinds the
+// journaled repos safely, and auto-fixing an un-journaled branch could discard
+// commits the journal can't vouch for. The un-journaled orphan is only cleared by
+// doctor's --fix flow AFTER a deactivate has emptied the journal.
+func partialSwapFindings(ws config.Workspace, dtos []SliceDTO, j *swap.Journal) []doctorFinding {
+	journalRepos := make(map[string]bool, len(j.Repos))
+	for _, rs := range j.Repos {
+		journalRepos[rs.Repo] = true
+	}
+	liveBranch := swap.LiveBranchName(j.Slice)
+
+	var findings []doctorFinding
+
+	// (a) Slice members that never made it into the journal (and aren't swapped in
+	//     on the live branch — those are the un-journaled case handled by (b)).
+	for _, d := range dtos {
+		if d.Name != j.Slice {
+			continue
+		}
+		for _, m := range d.Members {
+			if journalRepos[m.Repo] {
+				continue
+			}
+			if cur, _ := git.CurrentBranch(ws.Repos[m.Repo].Primary); cur == liveBranch {
+				continue // on the live branch but un-journaled — reported by (b)
+			}
+			findings = append(findings, doctorFinding{
+				Level: lvlWarn,
+				Title: fmt.Sprintf("partial swap: %q was never swapped (crash during activate?)", m.Repo),
+				Detail: fmt.Sprintf("the swap journal for %q covers only %d of the slice's repos, so this one is still on its own branch. Run `slis deactivate` to unwind the swapped repo(s), then `slis activate %s` again.",
+					j.Slice, len(j.Repos), j.Slice),
+			})
+		}
+	}
+
+	// (b) Configured repos on this slice's live branch but with no journal entry.
+	names := make([]string, 0, len(ws.Repos))
+	for name := range ws.Repos {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if journalRepos[name] {
+			continue
+		}
+		primary := ws.Repos[name].Primary
+		cur, err := git.CurrentBranch(primary)
+		if err != nil || cur != liveBranch {
+			continue
+		}
+		findings = append(findings, doctorFinding{
+			Level: lvlWarn,
+			Title: fmt.Sprintf("swapped but un-journaled: %q is on %q with no journal entry", name, liveBranch),
+			Detail: fmt.Sprintf("a crash between the switch and the journal write left this repo swapped in without a record; it is not auto-fixed while a journal exists. Run `slis deactivate` to unwind the journaled repos, then `slis doctor --fix` (or `git -C %s switch <trunk>`) to restore this one.",
+				primary),
+		})
+	}
+
 	return findings
 }
 
@@ -207,6 +283,7 @@ func orphanLiveBranchFinding(ws config.Workspace, memberBranch map[string]string
 	// Contained ⟺ the temp branch adds nothing that isn't already on the slice
 	// branch, so deleting it loses no work.
 	if !git.IsAncestor(primary, liveTip, sliceBranch) {
+		f.Detail += " (needs manual attention: has commits not on the slice branch)"
 		return f
 	}
 	trunk := ws.Repos[repo].DefaultBranch
@@ -217,6 +294,7 @@ func orphanLiveBranchFinding(ws config.Workspace, memberBranch map[string]string
 		return f
 	}
 
+	f.Detail += " (auto-fixable with --fix)"
 	f.fixDesc = "switch the primary to its trunk and delete the contained temp branch"
 	f.fix = func() (string, error) {
 		// Re-verify containment immediately before the delete (nothing changed
