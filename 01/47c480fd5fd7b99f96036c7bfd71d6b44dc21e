@@ -1,0 +1,24 @@
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_58c4bd5aeb792b 566
+internal/tmuxctl/tmux.go
+  s_e7cc16202efb78::t_50a710a1bfa882 51-82,100-106,109,114
+  s_e7cc16202efb78::t_bbbb2f23e02bad 10
+internal/tmuxctl/windows_test.go
+  s_e7cc16202efb78::t_618fd81a25d6d9 30-42,46-49,51-58,61,66-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0147c480fd5fd7b99f96036c7bfd71d6b44dc21e",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
