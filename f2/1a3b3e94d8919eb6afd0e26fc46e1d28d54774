@@ -1,0 +1,41 @@
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_24256414f20005 42
+internal/tui/app.go
+  s_e7cc16202efb78::t_c841a729963c9e 758-761
+internal/notify/notify_test.go
+  s_e7cc16202efb78::t_4128160e394f51 14-18,20,35,38,44,50,52,62,68,72-76,80,87
+internal/cli/hook.go
+  s_e7cc16202efb78::t_c3ba6a82772998 35
+internal/hooks/handler_test.go
+  s_e7cc16202efb78::t_c14d6516983ee8 8
+  s_e7cc16202efb78::t_c1e44c968f1e89 95,108,121,129
+internal/notify/backend_internal_test.go
+  s_e7cc16202efb78::t_a61c5b6d62eb06 8-9
+  s_e7cc16202efb78::t_17343921c4228e 1-7,10-114
+internal/hooks/handler.go
+  s_e7cc16202efb78::t_7f8bb7a84a3a36 108-112,115,138,140-175
+  s_e7cc16202efb78::t_0c88ee15d5d1dd 8,14,19-25
+  s_e7cc16202efb78::t_85d457bec67928 26
+docs/AGENT.md
+  s_e7cc16202efb78::t_272f6646664aea 115-123
+internal/notify/notify.go
+  s_e7cc16202efb78::t_d12fb2af2def1a 9-16,39-66,68-73,75-80,82,88-99,104,107
+internal/hooks/notify_internal_test.go
+  s_e7cc16202efb78::t_c2c7b85958ab8f 1-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f21a3b3e94d8919eb6afd0e26fc46e1d28d54774",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
