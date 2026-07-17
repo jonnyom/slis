@@ -1,0 +1,95 @@
+internal/config/paths.go
+  s_e7cc16202efb78::t_c9312ddbbb19b9 14-15
+  s_e7cc16202efb78::t_6a1a6ffca1800e 61
+internal/tui/app.go
+  s_e7cc16202efb78::t_620732343f3525 1296-1329,1331-1339,1341-1351
+  s_e7cc16202efb78::t_a82a371712bf41 56-58,63-64
+  s_e7cc16202efb78::t_01f3db9f022dd4 290,306-307
+  s_e7cc16202efb78::t_caeda4890d6b65 1010
+  s_e7cc16202efb78::t_c48efa86f855ca 1093-1095
+  s_e7cc16202efb78::t_e8f2e7a76bdf0e 973-979
+  s_e7cc16202efb78::t_f4b924af7a5038 83-90
+  s_e7cc16202efb78::t_d1f02fbb5834cd 1522-1524
+  s_e7cc16202efb78::t_3b86e0c418b4cd 806-811
+  s_e7cc16202efb78::t_204b97a73c8fa7 1330,1340
+internal/config/registry.go
+  s_e7cc16202efb78::t_c5212391ac9ac0 46-68
+  s_e7cc16202efb78::t_c366dcf6c0ba11 1-45,69-102
+internal/cli/registry_test.go
+  s_e7cc16202efb78::t_27d9246dd9bb08 1-3,5-134,136-161
+  s_e7cc16202efb78::t_d28ee4c3b93367 4
+  s_e7cc16202efb78::t_5a2adf4abc6290 135
+docs/AGENT.md
+  s_e7cc16202efb78::t_9722b1f7049f89 162-163
+  s_e7cc16202efb78::t_688e935196bcb6 125,127-130
+  s_e7cc16202efb78::t_36a5219c2391a8 13-21
+  s_e7cc16202efb78::t_25384cc786573e 110-117
+  s_e7cc16202efb78::t_b505557b4b9d63 37-41,44-53
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_cbef56141eb676 191,194-196
+  s_e7cc16202efb78::t_6f380748fc9e29 205
+internal/cli/hook.go
+  s_e7cc16202efb78::t_fdc27dabe70755 28
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_82831e0272233e 562-567
+  s_e7cc16202efb78::t_f48721b2144275 41-43,46-67
+  s_e7cc16202efb78::t_984923b949c1f5 1045-1052
+  s_e7cc16202efb78::t_93a5eac339a659 902-904,911-915
+  s_e7cc16202efb78::t_4c4a256fa2aca3 686-690
+  s_e7cc16202efb78::t_42222ff14d84b0 89-91,93
+  s_e7cc16202efb78::t_ebd17e16e5218d 68
+internal/cli/ls.go
+  s_e7cc16202efb78::t_d0d3884cc8f878 8
+  s_e7cc16202efb78::t_0cb13cc68907d1 138,247-250
+  s_e7cc16202efb78::t_5923fd26e7ac47 93-104,106,133-137,225
+  s_e7cc16202efb78::t_e3843cb062d6d4 52-69,71-73,78-79
+  s_e7cc16202efb78::t_04f6cfa9861dcc 206,212-224
+  s_e7cc16202efb78::t_2264d4b41f39df 226
+internal/config/config.go
+  s_e7cc16202efb78::t_2a5cef41a28254 22-25
+internal/tui/candidatepane.go
+  s_e7cc16202efb78::t_0346fc7ff2a2f7 1-42
+internal/discovery/registry_scan.go
+  s_e7cc16202efb78::t_856c3f2068edf1 1-231
+internal/cli/registry.go
+  s_e7cc16202efb78::t_eca264748e7fcf 1-103,105-182
+  s_e7cc16202efb78::t_5d09cd9a2f6a43 104
+internal/cli/conflicts.go
+  s_e7cc16202efb78::t_190ddfe8f4894a 28
+internal/cli/group.go
+  s_e7cc16202efb78::t_327af53c4dbdc5 31
+internal/tui/keys.go
+  s_e7cc16202efb78::t_f365ec80e9ec8b 26-27
+internal/discovery/discovery.go
+  s_e7cc16202efb78::t_76bcbecbb5c1d7 25-28,47-66,73-84,93,96-102,105-108,159-179,182-196,205,207,209-210,212-217,219-220,222,224-225,227-239,241-272
+internal/discovery/registry_scan_test.go
+  s_e7cc16202efb78::t_73185e6ffb40e1 1-28,31,33-53,55-119,121-187,189-191,197-219
+  s_e7cc16202efb78::t_a0573fd03edd67 54,120
+  s_e7cc16202efb78::t_b0e1b1a9ddb2ef 29-30,32
+  s_e7cc16202efb78::t_aa15daf4838f9d 188,192-196
+internal/cli/summary.go
+  s_e7cc16202efb78::t_00e288b89f32f1 31
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_48b8edfa5b99e8 55-58
+  s_e7cc16202efb78::t_b3f5ff19b6001c 124-134
+  s_e7cc16202efb78::t_0a06c1ebd04e80 26
+  s_e7cc16202efb78::t_c8423597187424 43-44
+internal/cli/doctor_worktrees.go
+  s_e7cc16202efb78::t_a693ce1e0e6d7d 71-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1e64d2d06510926cca6678db8050232c92732802",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
