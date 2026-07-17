@@ -25,10 +25,7 @@ var hookCmd = &cobra.Command{
 
 		sp := config.StatePaths()
 
-		slices, err := discovery.Discover(ws)
-		if err != nil {
-			return nil
-		}
+		slices := discovery.Report(ws, sp.Registry).Slices
 		ov, _ := discovery.LoadOverrides(sp.Overrides)
 		slices = discovery.Apply(slices, ov)
 

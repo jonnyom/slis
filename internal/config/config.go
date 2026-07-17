@@ -19,6 +19,10 @@ type Repo struct {
 type Grouping struct {
 	Strategy    string `yaml:"strategy"`
 	StripPrefix string `yaml:"strip_prefix"`
+	// Ignore is a list of globs for worktree paths that must never be ingested
+	// as slices (e.g. agent sandboxes). A built-in default always applies on top
+	// of this list; see discovery.DefaultIgnoreGlobs.
+	Ignore []string `yaml:"ignore,omitempty"`
 }
 
 // SliceNameFromBranch derives a slice name from a branch by removing the

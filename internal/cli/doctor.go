@@ -188,8 +188,12 @@ func runDoctor() []doctorFinding {
 	}
 	worktreeIssues := repoErrorFindings(rep.RepoErrors)
 	worktreeIssues = append(worktreeIssues, skippedWorktreeFindings(rep.Skipped)...)
+	worktreeIssues = append(worktreeIssues, missingSliceFindings(rep.Missing)...)
 	worktreeIssues = append(worktreeIssues, orphanWorktreeFindings(ws)...)
 	findings = append(findings, worktreeIssues...)
+	// Candidates are informational (opt-in), not issues — appended after the
+	// health verdict so they don't count as warns/fails.
+	candidateInfo := candidateFindings(rep.Candidates)
 
 	switch {
 	case len(dtos) == 0 && sliceIssues == 0 && len(worktreeIssues) == 0:
@@ -198,7 +202,7 @@ func runDoctor() []doctorFinding {
 		findings = append(findings, doctorFinding{Level: lvlOK,
 			Title: fmt.Sprintf("%d slice(s) look healthy", len(dtos))})
 	}
-	return findings
+	return append(findings, candidateInfo...)
 }
 
 // makeWorktreeFixer returns a fixer for a doubled-prefix worktree. If the

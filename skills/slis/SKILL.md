@@ -23,7 +23,7 @@ slis is built to be driven headlessly. Two rules:
 1. **Read with `--json`, parse the data — don't screen-scrape tables and don't
    branch on the exit code** (it's a flat `1` on any failure today). Every read
    command takes `--json`: `ls show status pr pr-stack summary conflicts comments
-   doctor`.
+   doctor candidates`.
 2. **Know what mutates before you run it.** See the safety map below. Prefer
    `--json` / `--dry-run` to inspect first; never run a remote/destructive
    mutator (`submit`, `merge`, `sync`, `rm --force`) without explicit intent.
@@ -40,7 +40,8 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
 | `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a tmux session is attached |
-| `slis ls` | read | **yes** | List all slices + members + active flag (`--json` is an object: `slices` + `skipped` + `repo_errors`) |
+| `slis ls` | read | **yes** | List all slices + members + active flag (`--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`) |
+| `slis candidates` | read | **yes** | List discovered-but-unmanaged worktrees awaiting opt-in import |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done) |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
@@ -51,7 +52,10 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs (`--fix` auto-repairs the safe ones; never prunes) |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
 | `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run) |
-| `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice |
+| `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees) |
+| `slis import [path]` | mutate | no | Register a candidate worktree (or `--all`) as a managed slice — registry only, never git |
+| `slis ignore <path-or-glob>` | mutate | no | Add a path/glob to `grouping.ignore` so matching worktrees are never ingested |
+| `slis forget <slice>` | mutate | no | Drop a slice from the registry (does not touch git — use for a missing slice) |
 | `slis activate <slice>` | mutate | no | Detach all primaries to the slice's branch tips (`--stash` if dirty) |
 | `slis deactivate` | mutate | no | Restore primaries to their prior branches |
 | `slis refresh` | mutate | no | Advance active primaries to the slice branches' new tips |
@@ -116,6 +120,17 @@ slis deactivate                 # restore primaries (pops the stash)
 ```sh
 slis conflicts --json   # → {overlaps:[{repo,path,slices}], incomplete:[...]}
 ```
+
+### A worktree slis found but didn't ingest (opt-in)
+```sh
+slis candidates --json          # → [{repo,path,branch,slice}] not-yet-managed
+slis import /path/to/worktree   # register it as a slice (or --all)
+slis ignore '**/scratch/**'     # or hide matching worktrees for good
+```
+Ingestion is opt-in: only managed worktrees (under `<root>/.slis/worktrees/**`
+or in the registry) become slices. A registered slice whose worktree vanished
+shows up as `missing` in `slis ls --json`; `slis forget <slice>` drops it from
+the registry (git untouched).
 
 ## Safety map (read before any mutator)
 

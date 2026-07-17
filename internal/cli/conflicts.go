@@ -25,10 +25,7 @@ type ConflictsDTO struct {
 // index over their changed-file sets. Stats are computed fresh (no TUI card
 // cache outside the running program), concurrently per slice.
 func computeConflicts(ws config.Workspace, overridesPath string) (*radar.Index, error) {
-	slices, err := discovery.Discover(ws)
-	if err != nil {
-		return nil, fmt.Errorf("discover: %w", err)
-	}
+	slices := discovery.Report(ws, registryPathFor(overridesPath)).Slices
 	ov, _ := discovery.LoadOverrides(overridesPath)
 	slices = discovery.Apply(slices, ov)
 

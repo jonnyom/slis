@@ -68,6 +68,56 @@ func skippedWorktreeFindings(skipped []SkippedWorktreeDTO) []doctorFinding {
 	return findings
 }
 
+// missingSliceFindings surfaces registered slice members whose worktree has
+// disappeared (or moved off its branch), so a known slice never silently
+// vanishes. Nothing is auto-fixed: the remedy needs a human decision.
+func missingSliceFindings(missing []MissingDTO) []doctorFinding {
+	bySlice := map[string][]MissingDTO{}
+	for _, m := range missing {
+		bySlice[m.Slice] = append(bySlice[m.Slice], m)
+	}
+	names := make([]string, 0, len(bySlice))
+	for n := range bySlice {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	findings := make([]doctorFinding, 0, len(names))
+	for _, name := range names {
+		items := bySlice[name]
+		paths := make([]string, 0, len(items))
+		for _, it := range items {
+			paths = append(paths, fmt.Sprintf("%s:%s", it.Repo, it.Path))
+		}
+		findings = append(findings, doctorFinding{
+			Level: lvlWarn,
+			Title: fmt.Sprintf("missing slice %q (%d worktree%s gone)", name, len(items), plural(len(items))),
+			Detail: "the registered worktree is gone or moved off its branch — recreate it " +
+				"(`slis create`/`slis adopt`) or drop it from the registry (`slis forget " + name + "`). (" +
+				strings.Join(paths, ", ") + ")",
+		})
+	}
+	return findings
+}
+
+// candidateFindings surfaces unmanaged worktrees slis will not ingest until the
+// user opts in. Informational — importing is a choice, not a problem.
+func candidateFindings(candidates []CandidateDTO) []doctorFinding {
+	if len(candidates) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		paths = append(paths, fmt.Sprintf("%s:%s", c.Repo, c.Path))
+	}
+	return []doctorFinding{{
+		Level: lvlInfo,
+		Title: fmt.Sprintf("%d new worktree%s not ingested (opt-in)", len(candidates), plural(len(candidates))),
+		Detail: "`slis import <path>` (or `slis import --all`) to manage, or `slis ignore <path-or-glob>` to hide. (" +
+			strings.Join(paths, ", ") + ")",
+	}}
+}
+
 // repoErrorFindings surfaces repos whose worktree listing failed entirely.
 func repoErrorFindings(repoErrors []RepoErrorDTO) []doctorFinding {
 	findings := make([]doctorFinding, 0, len(repoErrors))

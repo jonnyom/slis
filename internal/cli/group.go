@@ -28,10 +28,7 @@ as separate slices). Writes a grouping override; re-runnable and reversible with
 		}
 		sp := config.StatePaths()
 
-		raw, err := discovery.Discover(ws)
-		if err != nil {
-			return fmt.Errorf("discover: %w", err)
-		}
+		raw := discovery.Report(ws, sp.Registry).Slices
 		ov, _ := discovery.LoadOverrides(sp.Overrides)
 		if ov == nil {
 			ov = discovery.Overrides{}

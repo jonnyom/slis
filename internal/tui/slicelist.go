@@ -38,7 +38,33 @@ var (
 	readyStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag
 	emptyBoxStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(1, 3)
 	codeStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("159"))
+	candidateStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Bold(true) // new-worktree hint
+	missingStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true) // missing-slice badge
+	dimRowStyle     = lipgloss.NewStyle().Faint(true)
 )
+
+// candidateHint returns the one-line "N new worktrees found — press i" hint when
+// discovery found unmanaged worktrees, else "".
+func candidateHint(m Model) string {
+	if n := len(m.candidates); n > 0 {
+		return fmt.Sprintf("＋%d new worktree%s found — press i", n, plural(n))
+	}
+	return ""
+}
+
+// missingSliceNames returns the sorted distinct slice names with missing members.
+func missingSliceNames(m Model) []string {
+	set := map[string]bool{}
+	for _, mm := range m.missing {
+		set[mm.Slice] = true
+	}
+	names := make([]string, 0, len(set))
+	for n := range set {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // renderCreatePrompt renders the active "new slice" input as a loud magenta chip
 // plus the typed name and a cursor, so create mode is obvious at a glance.
@@ -60,8 +86,11 @@ func renderEmptyState(m Model) string {
 	if h := hiddenWorktreeHint(m); h != "" {
 		hdr += "   " + needsRestackStyle.Render(h)
 	}
+	if h := candidateHint(m); h != "" {
+		hdr += "   " + candidateStyle.Render(h)
+	}
 	header := clip(hdr, m.width)
-	hint := "[c] new slice   [i] adopt branch   [r] refresh   [?] help   [q] quit"
+	hint := "[c] new slice   [I] adopt branch   [i] import   [r] refresh   [?] help   [q] quit"
 	if m.status != "" {
 		hint = m.status
 	}
@@ -530,6 +559,12 @@ func renderBrowser(m Model) string {
 	if hint := hiddenWorktreeHint(m); hint != "" {
 		head.WriteString("   " + needsRestackStyle.Render(hint))
 	}
+	if names := missingSliceNames(m); len(names) > 0 {
+		head.WriteString("   " + missingStyle.Render(fmt.Sprintf("⚠ %d missing", len(names))))
+	}
+	if h := candidateHint(m); h != "" {
+		head.WriteString("   " + candidateStyle.Render(h))
+	}
 	if m.creating {
 		head.WriteString(renderCreatePrompt(m.createName))
 	} else if m.naming {
@@ -647,6 +682,11 @@ func slicesContent(m Model, vis []int, rows int) string {
 			name = focusStyle.Render(name)
 		}
 		sb.WriteString(marker + sliceGlyph(m, s) + " " + name + m.conflictBadge(s.Name) + "\n")
+	}
+	// Registered-but-missing slices show as dimmed, non-selectable rows badged
+	// "missing" so a vanished slice never silently disappears from the list.
+	for _, name := range missingSliceNames(m) {
+		sb.WriteString("  " + dimRowStyle.Render(name) + " " + missingStyle.Render("missing") + "\n")
 	}
 	return sb.String()
 }
@@ -859,15 +899,20 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Empty workspace: [c] (create) and [i] (adopt an existing branch) are the
-	// useful keys; ignore other browser keys (q / r / ? still work — handled
-	// globally). Status was cleared in handleKey.
+	// Empty workspace: [c] (create) and [I] (adopt an existing branch) are the
+	// useful keys; [i] imports discovered candidates when any exist. Other browser
+	// keys are ignored (q / r / ? still work — handled globally).
 	if len(m.slices) == 0 {
 		switch msg.String() {
 		case "c":
 			m.creating = true
 			m.createName = ""
 		case "i":
+			if len(m.candidates) > 0 {
+				m.showCandidates = true
+				m.candidateSel = 0
+			}
+		case "I":
 			return m, slisAdoptCmd()
 		}
 		return m, nil
@@ -997,6 +1042,14 @@ func (m Model) updateBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.createName = ""
 		return m, nil
 	case "i":
+		if len(m.candidates) > 0 {
+			m.showCandidates = true
+			m.candidateSel = 0
+			return m, nil
+		}
+		m.status = "no new worktrees to import"
+		return m, nil
+	case "I":
 		return m, slisAdoptCmd()
 	case "w":
 		m.requestSwap()
