@@ -10,6 +10,7 @@ import (
 
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/forge"
+	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/summary"
@@ -104,28 +105,51 @@ const (
 	mergeReady                     // every member PR is merged → ready to clear
 )
 
-// sliceMergeState reports whether a slice's PRs are all merged.
+// sliceGitMerged reports, per repo, whether the member branch is already merged
+// into its trunk — a cheap local `git merge-base --is-ancestor` check (no gh).
+// A branch with no divergence from trunk is trivially merged, so a repo that
+// carries no real work for the slice counts as merged too.
+func sliceGitMerged(sl model.Slice) map[string]bool {
+	out := make(map[string]bool, len(sl.Members))
+	for repo, member := range sl.Members {
+		if member.WorktreePath == "" || member.Branch == "" {
+			continue
+		}
+		trunk := git.DetectBase(member.WorktreePath)
+		out[repo] = git.IsMergedInto(member.WorktreePath, member.Branch, trunk)
+	}
+	return out
+}
+
+// sliceMergeState reports whether a slice is merged and ready to clear. A member
+// counts as merged when its PR is MERGED or — when it has no PR — when its branch
+// is already merged into trunk (a local check, so this works without gh and for
+// branches merged outside a PR). Every member merged → mergeReady.
 func (m Model) sliceMergeState(s model.Slice) mergeState {
-	slicePRs, ok := m.prs[s.Name]
-	if !ok {
+	slicePRs, prLoaded := m.prs[s.Name]
+	gitMerged, gitLoaded := m.gitMerged[s.Name]
+	if !prLoaded && !gitLoaded {
 		return mergeNone
 	}
-	prs, merged := 0, 0
-	for _, repo := range s.Repos() {
-		if pr := slicePRs[repo]; pr != nil {
-			prs++
-			if strings.EqualFold(pr.State, "MERGED") {
-				merged++
-			}
+	repos := s.Repos()
+	if len(repos) == 0 {
+		return mergeNone
+	}
+	merged := 0
+	for _, repo := range repos {
+		pr := slicePRs[repo]
+		switch {
+		case pr != nil && strings.EqualFold(pr.State, "MERGED"):
+			merged++
+		case pr == nil && gitMerged[repo]:
+			merged++
 		}
 	}
 	switch {
-	case prs == 0:
-		return mergeNone
-	case merged == prs:
-		return mergeReady
 	case merged == 0:
 		return mergeOpen
+	case merged == len(repos):
+		return mergeReady
 	default:
 		return mergePartial
 	}
@@ -159,8 +183,9 @@ type sliceCard struct {
 
 // cardLoadedMsg is delivered when a slice's browser card has been computed.
 type cardLoadedMsg struct {
-	slice string
-	card  sliceCard
+	slice  string
+	card   sliceCard
+	merged map[string]bool // repo → branch already merged into trunk (local check)
 }
 
 // loadCardCmd computes a slice's browser card off the UI goroutine: commit
@@ -212,7 +237,7 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 		}
 		card.stats = stats // retained for the conflict radar
 
-		return cardLoadedMsg{slice: sl.Name, card: card}
+		return cardLoadedMsg{slice: sl.Name, card: card, merged: sliceGitMerged(sl)}
 	})
 }
 

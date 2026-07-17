@@ -19,6 +19,21 @@ func RevParse(dir, rev string) (string, error) {
 	return Run(dir, "rev-parse", rev)
 }
 
+// IsMergedInto reports whether branch has been merged into trunk in dir's repo
+// — i.e. branch's tip is an ancestor of trunk. It runs
+// `git merge-base --is-ancestor <branch> <trunk>`, which exits 0 when branch is
+// an ancestor and 1 when it is not. A non-zero exit (including a missing ref) is
+// reported as "not merged" rather than a hard error, so a locally-merged branch
+// with no PR can still be flagged ready-to-clear without shelling out to gh.
+// A branch identical to trunk (no divergence) is trivially an ancestor → true.
+func IsMergedInto(dir, branch, trunk string) bool {
+	if branch == "" || trunk == "" {
+		return false
+	}
+	_, err := Run(dir, "merge-base", "--is-ancestor", "--end-of-options", branch, trunk)
+	return err == nil
+}
+
 // CurrentBranch returns the short branch name for the worktree at dir, or ""
 // if HEAD is detached. It uses `git symbolic-ref --quiet --short HEAD`:
 // the command exits non-zero with empty output when HEAD is not a symbolic

@@ -67,11 +67,11 @@ type Model struct {
 	height  int
 	loading bool
 
-	view        viewMode // browser or cockpit
-	panel       panel    // focused left panel within the cockpit
-	zoom        bool     // cockpit: right pane expanded full-width
-	splitDiff   bool     // cockpit: side-by-side diff instead of unified
-	diffVsTrunk bool     // cockpit: diff vs trunk (whole downstack) instead of vs the stack parent
+	view      viewMode  // browser or cockpit
+	panel     panel     // focused left panel within the cockpit
+	zoom      bool      // cockpit: right pane expanded full-width
+	splitDiff bool      // cockpit: side-by-side diff instead of unified
+	diffScope diffScope // cockpit: working-tree (default) / vs-parent / vs-trunk, cycled by [b]
 
 	// Failed-CI log shown in the right pane (rightCILog mode).
 	ciLog        string
@@ -167,6 +167,12 @@ type Model struct {
 	prs       map[string]map[string]*forge.PR
 	prLoading map[string]bool
 
+	// gitMerged records, per slice → repo, whether the member branch is already
+	// merged into its trunk (a local `git merge-base --is-ancestor` check). It is
+	// filled by the card and PR loaders (both local-only, no gh) so a merged slice
+	// can be flagged "ready to clear" even without a PR or before gh loads.
+	gitMerged map[string]map[string]bool
+
 	// Persisted PR comments (survive slice removal; backs the PR-pane fallback).
 	commentCache commentcache.Store
 
@@ -206,7 +212,7 @@ func New(ws config.Workspace) Model {
 		loading:        true,
 		view:           viewBrowser,
 		splitDiff:      prefs.SplitDiff,
-		diffVsTrunk:    prefs.DiffVsTrunk,
+		diffScope:      scopeFromPrefs(prefs),
 		stacks:         make(map[string]map[string]gt.State),
 		stackLoading:   make(map[string]bool),
 		diffs:          make(map[string][]diff.RepoDiff),
@@ -220,6 +226,7 @@ func New(ws config.Workspace) Model {
 		summaryLoading: make(map[string]bool),
 		prs:            make(map[string]map[string]*forge.PR),
 		prLoading:      make(map[string]bool),
+		gitMerged:      make(map[string]map[string]bool),
 		commentCache:   commentcache.Store{},
 		captures:       make(map[string]string),
 		captureLoading: make(map[string]bool),
@@ -322,7 +329,7 @@ func (m *Model) maybeLoadDiff() tea.Cmd {
 		return nil
 	}
 	m.diffLoading[sl.Name] = true
-	return loadDiffCmd(sl, m.diffVsTrunk)
+	return loadDiffCmd(sl, m.diffScope)
 }
 
 func (m *Model) maybeLoadProcs() tea.Cmd {
@@ -361,7 +368,7 @@ func (m *Model) forceLoadDiff() tea.Cmd {
 		return nil
 	}
 	m.diffLoading[sl.Name] = true
-	return loadDiffCmd(sl, m.diffVsTrunk)
+	return loadDiffCmd(sl, m.diffScope)
 }
 
 func (m *Model) forceLoadProcs() tea.Cmd {
@@ -795,6 +802,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case cardLoadedMsg:
 		m.cards[msg.slice] = msg.card
+		if msg.merged != nil {
+			m.gitMerged[msg.slice] = msg.merged
+		}
 		delete(m.cardLoading, msg.slice)
 		m.conflicts = m.buildConflicts()
 
@@ -805,6 +815,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case prsLoadedMsg:
 		m.prs[msg.slice] = msg.prs
+		if msg.merged != nil {
+			m.gitMerged[msg.slice] = msg.merged
+		}
 		delete(m.prLoading, msg.slice)
 		m.refreshRight()
 		return m, persistCommentsCmd(msg.slice, msg.prs)
@@ -1233,8 +1246,8 @@ func (m Model) spinnerGlyph() string {
 // savePrefs persists the remembered UI toggles (best-effort).
 func (m Model) savePrefs() {
 	_ = config.SavePrefs(config.StatePaths().Prefs, config.Prefs{
-		SplitDiff:   m.splitDiff,
-		DiffVsTrunk: m.diffVsTrunk,
+		SplitDiff: m.splitDiff,
+		DiffScope: m.diffScope.pref(),
 	})
 }
 

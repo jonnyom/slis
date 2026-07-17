@@ -260,3 +260,105 @@ func TestSliceDiffSortedOrder(t *testing.T) {
 		t.Errorf("expected sorted order [a-repo, z-repo], got [%s, %s]", diffs[0].Repo, diffs[1].Repo)
 	}
 }
+
+// TestSliceDirtyDiffCleanWorktree: a worktree with only committed content and no
+// uncommitted edits yields an empty Files slice (nothing to show).
+func TestSliceDirtyDiffCleanWorktree(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat", wt)
+
+	if err := os.WriteFile(filepath.Join(wt, "committed.txt"), []byte("done\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "add", "committed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	commitInDir(t, wt, "committed work")
+
+	sl := model.Slice{
+		Name:    "s",
+		Members: map[string]model.SliceMember{"r": {Repo: "r", Branch: "feat", WorktreePath: wt}},
+	}
+
+	diffs, err := diff.SliceDirtyDiff(sl)
+	if err != nil {
+		t.Fatalf("SliceDirtyDiff: %v", err)
+	}
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 RepoDiff, got %d", len(diffs))
+	}
+	if diffs[0].Err != "" {
+		t.Fatalf("unexpected Err: %s", diffs[0].Err)
+	}
+	if len(diffs[0].Files) != 0 {
+		t.Errorf("clean worktree: want no Files, got %v", diffs[0].Files)
+	}
+}
+
+// TestSliceDirtyDiffSeesUncommitted: staged, unstaged, and untracked changes all
+// appear; a purely committed file (unmodified since commit) does not.
+func TestSliceDirtyDiffSeesUncommitted(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat", wt)
+
+	// Committed-only file: must NOT appear in the dirty diff.
+	if err := os.WriteFile(filepath.Join(wt, "committed.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "add", "committed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	commitInDir(t, wt, "committed work")
+
+	// Staged (added, not committed).
+	if err := os.WriteFile(filepath.Join(wt, "staged.txt"), []byte("s1\ns2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "add", "staged.txt"); err != nil {
+		t.Fatal(err)
+	}
+	// Unstaged modification of the committed file.
+	if err := os.WriteFile(filepath.Join(wt, "committed.txt"), []byte("base\nmore\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Untracked (never git add-ed).
+	if err := os.WriteFile(filepath.Join(wt, "untracked.txt"), []byte("u1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sl := model.Slice{
+		Name:    "s",
+		Members: map[string]model.SliceMember{"r": {Repo: "r", Branch: "feat", WorktreePath: wt}},
+	}
+
+	diffs, err := diff.SliceDirtyDiff(sl)
+	if err != nil {
+		t.Fatalf("SliceDirtyDiff: %v", err)
+	}
+	paths := map[string]bool{}
+	for _, f := range diffs[0].Files {
+		paths[f.Path] = true
+	}
+	for _, want := range []string{"staged.txt", "committed.txt", "untracked.txt"} {
+		if !paths[want] {
+			t.Errorf("dirty diff missing %q; got %v", want, paths)
+		}
+	}
+	if !strings.Contains(diffs[0].Patch, "untracked.txt") {
+		t.Errorf("patch missing untracked.txt:\n%s", diffs[0].Patch)
+	}
+
+	// SliceDirtyStat mirrors the file set without a patch.
+	stats, err := diff.SliceDirtyStat(sl)
+	if err != nil {
+		t.Fatalf("SliceDirtyStat: %v", err)
+	}
+	if len(stats[0].Files) != len(diffs[0].Files) {
+		t.Errorf("SliceDirtyStat Files count = %d, want %d", len(stats[0].Files), len(diffs[0].Files))
+	}
+	if stats[0].Patch != "" {
+		t.Errorf("SliceDirtyStat should carry no patch, got %q", stats[0].Patch)
+	}
+}

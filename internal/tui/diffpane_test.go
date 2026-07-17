@@ -6,6 +6,7 @@ import (
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
+	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/model"
 )
 
@@ -95,5 +96,81 @@ func TestClipboardCmd(t *testing.T) {
 	}
 	if name == "" {
 		t.Error("clipboardCmd: name should not be empty when ok=true")
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// TestScopeFromPrefs covers the diff-scope prefs migration: an explicit
+// diff_scope wins; otherwise the legacy diff_vs_trunk bool maps true→trunk,
+// false→parent, and an absent value defaults to dirty.
+func TestScopeFromPrefs(t *testing.T) {
+	cases := []struct {
+		name string
+		p    config.Prefs
+		want diffScope
+	}{
+		{"absent → dirty", config.Prefs{}, scopeDirty},
+		{"explicit dirty", config.Prefs{DiffScope: "dirty"}, scopeDirty},
+		{"explicit parent", config.Prefs{DiffScope: "parent"}, scopeParent},
+		{"explicit trunk", config.Prefs{DiffScope: "trunk"}, scopeTrunk},
+		{"legacy true → trunk", config.Prefs{DiffVsTrunk: boolPtr(true)}, scopeTrunk},
+		{"legacy false → parent", config.Prefs{DiffVsTrunk: boolPtr(false)}, scopeParent},
+		{"scope wins over legacy", config.Prefs{DiffScope: "dirty", DiffVsTrunk: boolPtr(true)}, scopeDirty},
+	}
+	for _, c := range cases {
+		if got := scopeFromPrefs(c.p); got != c.want {
+			t.Errorf("%s: scopeFromPrefs = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestDiffScopeCycle verifies [b] cycles dirty → parent → trunk → dirty and the
+// persisted string round-trips through scopeFromPrefs.
+func TestDiffScopeCycle(t *testing.T) {
+	s := scopeDirty
+	for _, want := range []diffScope{scopeParent, scopeTrunk, scopeDirty} {
+		s = s.next()
+		if s != want {
+			t.Fatalf("next() = %v, want %v", s, want)
+		}
+	}
+	for _, sc := range []diffScope{scopeDirty, scopeParent, scopeTrunk} {
+		if got := scopeFromPrefs(config.Prefs{DiffScope: sc.pref()}); got != sc {
+			t.Errorf("round-trip %v: pref %q → %v", sc, sc.pref(), got)
+		}
+	}
+	if scopeDirty.label() == "" || scopeParent.label() == "" || scopeTrunk.label() == "" {
+		t.Error("scope labels must be non-empty")
+	}
+}
+
+// TestSliceMergeStateGitMerged: a member with no PR counts as merged when its
+// branch is locally merged into trunk, so an all-git-merged slice is ready even
+// without gh; an unmerged member keeps it out of the ready state.
+func TestSliceMergeStateGitMerged(t *testing.T) {
+	sl := model.Slice{
+		Name: "s",
+		Members: map[string]model.SliceMember{
+			"r": {Repo: "r", Branch: "feat"},
+		},
+	}
+
+	// Nothing loaded → mergeNone.
+	m := Model{prs: map[string]map[string]*forge.PR{}, gitMerged: map[string]map[string]bool{}}
+	if got := m.sliceMergeState(sl); got != mergeNone {
+		t.Errorf("no data: got %v, want mergeNone", got)
+	}
+
+	// No PR but git-merged → ready.
+	m.gitMerged["s"] = map[string]bool{"r": true}
+	if got := m.sliceMergeState(sl); got != mergeReady {
+		t.Errorf("git-merged: got %v, want mergeReady", got)
+	}
+
+	// No PR and not git-merged → not ready.
+	m.gitMerged["s"] = map[string]bool{"r": false}
+	if got := m.sliceMergeState(sl); got == mergeReady {
+		t.Errorf("unmerged git branch: got %v, want not ready", got)
 	}
 }
