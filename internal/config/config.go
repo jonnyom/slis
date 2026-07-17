@@ -41,10 +41,20 @@ func SliceNameFromBranch(branch, stripPrefix string) string {
 
 // Sessions holds session-related configuration.
 type Sessions struct {
-	AutostartClaude bool `yaml:"autostart_claude"`
+	// Harness selects the agent harness: "claude" (default) or "codex". It picks
+	// the launch binary and how slice context is injected (claude gets
+	// --append-system-prompt; codex gets neither a positional prompt nor a flag).
+	// An explicit Agent overrides the binary verbatim.
+	Harness string `yaml:"harness"`
 	// Agent is the command launched by the "launch agent" action (TUI `C`).
-	// Empty defaults to "claude". May include args, e.g. "claude --resume".
+	// Non-empty wins verbatim over Harness; empty → the Harness binary. May
+	// include args, e.g. "claude --resume".
 	Agent string `yaml:"agent"`
+	// Autostart launches the harness in a slice's session automatically when the
+	// session is first attached (same as pressing `C`).
+	Autostart bool `yaml:"autostart"`
+	// AutostartClaude is the legacy name for Autostart, merged into it on load.
+	AutostartClaude bool `yaml:"autostart_claude"`
 	// Editor is the binary used to open worktrees/slices (TUI `o`/`e`, `slis
 	// edit`), e.g. "code", "cursor", "zed". Empty → auto-detect (and the TUI
 	// prompts once when several are found).
@@ -55,6 +65,26 @@ type Sessions struct {
 	//   "both"  — a root window first, then one per repo
 	// Empty defaults to "root" when a workspace root is set, else "repos".
 	Layout string `yaml:"layout"`
+}
+
+// HarnessName returns the configured harness, defaulting to "claude".
+func (s Sessions) HarnessName() string {
+	if s.Harness == "" {
+		return "claude"
+	}
+	return s.Harness
+}
+
+// AgentCommand returns the command to launch the agent. A non-empty Agent wins
+// verbatim; otherwise the harness selects the binary ("claude" or "codex").
+func (s Sessions) AgentCommand() string {
+	if s.Agent != "" {
+		return s.Agent
+	}
+	if s.HarnessName() == "codex" {
+		return "codex"
+	}
+	return "claude"
 }
 
 // Processes holds process-monitoring thresholds.
@@ -142,6 +172,12 @@ func LoadWorkspace(path string) (Workspace, error) {
 			return Workspace{}, err
 		}
 		ws.Repos[name] = repo
+	}
+
+	// Merge the legacy autostart_claude alias into Autostart so old configs keep
+	// working after the field was generalised across harnesses.
+	if ws.Sessions.AutostartClaude {
+		ws.Sessions.Autostart = true
 	}
 
 	// Apply defaults.

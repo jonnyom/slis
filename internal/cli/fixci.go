@@ -58,6 +58,23 @@ func fixCIPrompt(repo string, pr *forge.PR) string {
 	)
 }
 
+// fixCIBinary returns the agent binary for the harness ("codex" or "claude").
+func fixCIBinary(harness string) string {
+	if harness == "codex" {
+		return "codex"
+	}
+	return "claude"
+}
+
+// fixCIArgs builds the argv (after the binary) that runs prompt headlessly:
+// `codex exec <prompt>` for codex, `claude -p <prompt>` otherwise.
+func fixCIArgs(harness, prompt string) []string {
+	if harness == "codex" {
+		return []string{"exec", prompt}
+	}
+	return []string{"-p", prompt}
+}
+
 var fixCICmd = &cobra.Command{
 	Use:   "fix-ci <slice>",
 	Short: "Point Claude at a slice's failing CI to fix it",
@@ -104,7 +121,9 @@ var fixCICmd = &cobra.Command{
 			return nil
 		}
 
-		claudePath, claudeErr := exec.LookPath("claude")
+		harness := ws.Sessions.HarnessName()
+		bin := fixCIBinary(harness)
+		binPath, binErr := exec.LookPath(bin)
 
 		for _, fm := range withFailures {
 			failingChecks := fm.pr.FailingChecks()
@@ -124,16 +143,16 @@ var fixCICmd = &cobra.Command{
 				continue
 			}
 
-			if claudeErr != nil {
-				// Claude CLI not found — print check URLs for manual inspection.
+			if binErr != nil {
+				// Agent CLI not found — print check URLs for manual inspection.
 				for _, c := range failingChecks {
 					fmt.Printf("  %s: %s\n", c.Name, c.URL)
 				}
-				fmt.Println("  claude CLI not found; open the run logs above to fix manually")
+				fmt.Printf("  %s CLI not found; open the run logs above to fix manually\n", bin)
 				continue
 			}
 
-			c := exec.Command(claudePath, "-p", prompt)
+			c := exec.Command(binPath, fixCIArgs(harness, prompt)...) //nolint:gosec
 			c.Dir = fm.worktreePath
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
@@ -141,7 +160,7 @@ var fixCICmd = &cobra.Command{
 
 			if err := c.Run(); err != nil {
 				// Per-repo failures are best-effort; log and continue.
-				fmt.Fprintf(os.Stderr, "slis: claude exited with error for %s: %v\n", fm.repo, err)
+				fmt.Fprintf(os.Stderr, "slis: %s exited with error for %s: %v\n", bin, fm.repo, err)
 			}
 		}
 

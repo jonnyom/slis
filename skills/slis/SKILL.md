@@ -40,6 +40,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
 | `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent) |
+| `slis init-skill` | mutate | no | Install this skill (+ `references/AGENT.md`) for an agent harness. `--harness claude\|codex\|both` (default both): claude → `~/.claude/skills/slis/`, codex → `~/.agents/skills/slis/`. Idempotent (content-hash version stamp). Also run by `slis init` unless `--no-skill` |
 | `slis ls` | read | **yes** | List all slices + members + active flag |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done) |
@@ -59,7 +60,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis sync <slice>` | mutate | no | `gt sync` per repo — **repo-wide**: may overwrite trunk, delete merged branches |
 | `slis submit <slice>` | mutate | no | `gt submit` — **force-pushes** the stack + opens/updates PRs |
 | `slis merge <slice>` | mutate | no | `gt merge` — triggers Graphite's **server-side merge queue** |
-| `slis fix-ci <slice>` | mutate | no | Point `claude -p` at failing CI in the worktree (`--dry-run` previews) |
+| `slis fix-ci <slice>` | mutate | no | Point the harness at failing CI in the worktree — `claude -p` or `codex exec` per `sessions.harness` (`--dry-run` previews) |
 | `slis rm <slice>` | mutate | no | Remove worktrees + kill tmux + delete merged branches (`--force`, `--dry-run`) |
 | `slis group <name> <slice>...` | mutate | no | Manually group slices under one name (writes `overrides.yaml`) |
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
@@ -78,6 +79,41 @@ slis init-hooks   # optional: feed `slis status` with live session state
 `--strip-prefix` strips a branch-name prefix (e.g. `jonny/`) when deriving the
 slice name from the branch name.
 
+## Agent harness (claude / codex)
+
+slis drives an agent harness for launching sessions, `fix-ci`, and `summary
+--ai`. Configure it under `sessions:` in `workspace.yaml`:
+
+```yaml
+sessions:
+  harness: claude   # or "codex". Empty defaults to "claude".
+  agent: ""         # explicit launch command; wins verbatim over harness.
+  autostart: false  # launch the harness automatically when a session is attached.
+```
+
+- **`harness`** picks the binary and the launch shape: `claude` gets a
+  `--append-system-prompt '<slice context>'`; `codex` gets **no** positional
+  prompt and no such flag (`codex exec` for headless work).
+- **`agent`** is an escape hatch — a non-empty value is used verbatim (e.g.
+  `claude --resume`), overriding `harness`.
+- **`autostart`** launches the harness in a slice's session the first time it's
+  attached (the same as pressing `C` in the TUI). Legacy `autostart_claude` is
+  accepted as an alias.
+
+## SLIS_* environment contract
+
+When slis launches the harness in a slice's tmux session, it prefixes these env
+vars onto the launch command. An agent running **inside** a slis session can
+trust them:
+
+| Var | Meaning |
+|---|---|
+| `SLIS_SLICE` | the slice name |
+| `SLIS_ROOT` | the workspace root |
+| `SLIS_ACTIVE` | `1` if the slice is swapped into the primaries, else `0` |
+| `SLIS_HARNESS` | `claude` or `codex` |
+| `SLIS_WORKTREES` | comma-separated `repo=worktree_path` pairs (make edits here, never the primaries) |
+
 ## Agent recipes
 
 ### Which slice needs my input?
@@ -91,7 +127,7 @@ Requires `slis init-hooks` once so Claude Code writes the events. `slis status
 ```sh
 slis pr <slice> --json            # find rows where .ci == "fail"
 slis fix-ci <slice> --dry-run     # preview the prompt + worktree
-slis fix-ci <slice>               # runs `claude -p` in each failing repo's worktree
+slis fix-ci <slice>               # runs the harness (claude -p / codex exec) in each failing repo's worktree
 ```
 
 ### Slice lifecycle, end to end

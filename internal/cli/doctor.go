@@ -9,9 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	slis "github.com/jonnyom/slis"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/hooks"
+	"github.com/jonnyom/slis/internal/skill"
 )
 
 // doctorLevel is the severity of a doctor finding.
@@ -126,10 +128,65 @@ func hookFindings() []doctorFinding {
 	}}
 }
 
+// skillFindings checks whether the slis agent skill is installed and up to date
+// for each harness (warn-level; --fix reinstalls).
+func skillFindings() []doctorFinding {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return []doctorFinding{{Level: lvlWarn, Title: "cannot locate home directory", Detail: err.Error()}}
+	}
+	want := skill.ContentVersion(slis.SkillMarkdown, slis.AgentDoc)
+	var findings []doctorFinding
+	for _, h := range skill.AllHarnesses {
+		dir := skill.InstallDir(home, h)
+		data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+		switch {
+		case err != nil:
+			findings = append(findings, doctorFinding{
+				Level:   lvlWarn,
+				Title:   fmt.Sprintf("slis skill not installed for %s", h),
+				Detail:  "run `slis init-skill` so the agent skill is available to " + string(h),
+				fixDesc: fmt.Sprintf("install the slis skill for %s", h),
+				fix:     makeSkillFixer(h),
+			})
+		case skill.InstalledVersion(string(data)) != want:
+			findings = append(findings, doctorFinding{
+				Level:   lvlWarn,
+				Title:   fmt.Sprintf("slis skill out of date for %s", h),
+				Detail:  "run `slis init-skill` to update " + dir,
+				fixDesc: fmt.Sprintf("update the slis skill for %s", h),
+				fix:     makeSkillFixer(h),
+			})
+		default:
+			findings = append(findings, doctorFinding{Level: lvlOK, Title: fmt.Sprintf("slis skill installed for %s", h)})
+		}
+	}
+	return findings
+}
+
+// makeSkillFixer returns a fixer that (re)installs the skill for one harness.
+func makeSkillFixer(h skill.Harness) func() (string, error) {
+	return func() (string, error) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		res, err := skill.Install(home, h, slis.SkillMarkdown, slis.AgentDoc)
+		if err != nil {
+			return "", err
+		}
+		if !res.Changed {
+			return "already up to date", nil
+		}
+		return "installed → " + res.Dir, nil
+	}
+}
+
 // runDoctor performs all read-only checks and returns the findings (some with an
 // attached fix closure).
 func runDoctor() []doctorFinding {
 	findings := hookFindings()
+	findings = append(findings, skillFindings()...)
 
 	ws, err := config.LoadWorkspace(config.WorkspacePath())
 	if err != nil {

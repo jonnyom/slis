@@ -116,7 +116,7 @@ var summaryCmd = &cobra.Command{
 		}
 		combined := sb.String()
 
-		out, err := summary.AISummary(combined, summary.DefaultClaudeRunner)
+		out, err := summary.AISummary(combined, summary.RunnerForHarness(ws.Sessions.HarnessName()))
 		if err != nil {
 			fmt.Printf("AI summary unavailable (%v); falling back to commit log:\n\n", err)
 			byRepo, _ := summary.CommitSummary(sl, base)

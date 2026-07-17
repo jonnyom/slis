@@ -51,3 +51,28 @@ func TestFixCIPromptNoFailing(t *testing.T) {
 		t.Error("fixCIPrompt: expected a non-empty string for a PR with no failing checks")
 	}
 }
+
+// TestFixCIBinary verifies the harness selects the right agent binary.
+func TestFixCIBinary(t *testing.T) {
+	if got := fixCIBinary("codex"); got != "codex" {
+		t.Errorf("fixCIBinary(codex) = %q, want codex", got)
+	}
+	for _, h := range []string{"claude", "", "anything-else"} {
+		if got := fixCIBinary(h); got != "claude" {
+			t.Errorf("fixCIBinary(%q) = %q, want claude", h, got)
+		}
+	}
+}
+
+// TestFixCIArgs verifies the headless invocation per harness: `claude -p <prompt>`
+// vs `codex exec <prompt>`.
+func TestFixCIArgs(t *testing.T) {
+	claudeArgs := fixCIArgs("claude", "PROMPT")
+	if len(claudeArgs) != 2 || claudeArgs[0] != "-p" || claudeArgs[1] != "PROMPT" {
+		t.Errorf("fixCIArgs(claude) = %v, want [-p PROMPT]", claudeArgs)
+	}
+	codexArgs := fixCIArgs("codex", "PROMPT")
+	if len(codexArgs) != 2 || codexArgs[0] != "exec" || codexArgs[1] != "PROMPT" {
+		t.Errorf("fixCIArgs(codex) = %v, want [exec PROMPT]", codexArgs)
+	}
+}
