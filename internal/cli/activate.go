@@ -31,7 +31,7 @@ func buildActivations(ws config.Workspace, sl model.Slice) []swap.RepoActivation
 
 var activateCmd = &cobra.Command{
 	Use:   "activate <slice>",
-	Short: "Activate a slice — detach all repo primaries to the slice's branch tips",
+	Short: "Activate a slice — put all repo primaries on a slis/live branch at the slice's branch tips",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sliceName := args[0]
@@ -135,9 +135,10 @@ var activateCmd = &cobra.Command{
 		if j != nil {
 			fmt.Printf("activated slice %q:\n", sliceName)
 			for _, rs := range j.Repos {
-				fmt.Printf("  %s: detached at %s (branch: %s)\n", rs.Repo, rs.TargetSHA[:min(7, len(rs.TargetSHA))], rs.Branch)
+				fmt.Printf("  %s: %s at %s (tracking: %s)\n", rs.Repo, rs.TempBranch, rs.TargetSHA[:min(7, len(rs.TargetSHA))], rs.Branch)
 			}
-			fmt.Println("primaries are now detached at the slice tips — run `slis deactivate` to restore them to their prior branches.")
+			fmt.Println("primaries are now on a slis/live branch at the slice tips (Graphite works here; do stack mutations in the worktrees).")
+			fmt.Println("undo with `slis deactivate` to restore them to their prior branches.")
 		}
 
 		if err != nil {

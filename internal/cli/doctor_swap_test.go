@@ -13,8 +13,8 @@ import (
 
 // swapDoctorFixture creates a single-repo workspace with a "feat" worktree
 // carrying one commit (so feat's tip differs from main), activates the slice so
-// the primary is detached at feat's tip, and returns the workspace, journal
-// path, and primary dir.
+// the primary is on its slis/live temp branch at feat's tip, and returns the
+// workspace, journal path, and primary dir.
 func swapDoctorFixture(t *testing.T) (config.Workspace, string, string) {
 	t.Helper()
 	primary := testutil.NewRepo(t)
@@ -61,7 +61,7 @@ func countSwapIssues(findings []doctorFinding) (warns, fails, fixable int) {
 func TestSwapFindingsHealthy(t *testing.T) {
 	ws, journalPath, _ := swapDoctorFixture(t)
 
-	findings := swapFindings(ws, journalPath)
+	findings := swapFindings(ws, nil, journalPath)
 	warns, fails, _ := countSwapIssues(findings)
 	if warns != 0 || fails != 0 {
 		t.Errorf("healthy swap should have no warns/fails, got %d warn / %d fail: %+v", warns, fails, findings)
@@ -77,7 +77,7 @@ func TestSwapFindingsStaleJournalFixDeletes(t *testing.T) {
 		t.Fatalf("switch main: %v", err)
 	}
 
-	findings := swapFindings(ws, journalPath)
+	findings := swapFindings(ws, nil, journalPath)
 	warns, _, fixable := countSwapIssues(findings)
 	if warns == 0 {
 		t.Fatalf("stale journal should warn, got: %+v", findings)
@@ -108,27 +108,29 @@ func TestSwapFindingsStaleJournalFixDeletes(t *testing.T) {
 	}
 }
 
-func TestSwapFindingsStaleJournalNoFixWhenStillDetached(t *testing.T) {
+func TestSwapFindingsStaleJournalNoFixWhenStillSwappedIn(t *testing.T) {
 	ws, journalPath, primary := swapDoctorFixture(t)
 
-	// User committed on the detached primary — HEAD moved off the slice tip but
-	// the primary is still detached (still effectively swapped). The stale-journal
-	// finding must NOT offer the delete fix (the safety gate: only delete when
-	// every primary is provably on a branch).
+	// User committed on the temp branch — HEAD moved off the slice tip but the
+	// primary is still ON its slis/live branch (still swapped in). There must be
+	// no stale-journal finding at all, so nothing fixable is offered.
 	if err := os.WriteFile(filepath.Join(primary, "x.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatalf("write x.txt: %v", err)
 	}
 	if _, err := git.Run(primary, "add", "x.txt"); err != nil {
 		t.Fatalf("git add: %v", err)
 	}
-	if _, err := git.Run(primary, "commit", "-q", "-m", "commit on detached"); err != nil {
+	if _, err := git.Run(primary, "commit", "-q", "-m", "commit on temp branch"); err != nil {
 		t.Fatalf("git commit: %v", err)
 	}
 
-	findings := swapFindings(ws, journalPath)
-	_, _, fixable := countSwapIssues(findings)
+	findings := swapFindings(ws, nil, journalPath)
+	warns, _, fixable := countSwapIssues(findings)
+	if warns != 0 {
+		t.Errorf("primary still on its temp branch — no stale-journal warning expected, got: %+v", findings)
+	}
 	if fixable != 0 {
-		t.Errorf("safety gate: no fix should be offered while a primary is still detached, got %d fixable: %+v", fixable, findings)
+		t.Errorf("no fix should be offered while a primary is still swapped in, got %d fixable: %+v", fixable, findings)
 	}
 }
 
@@ -160,7 +162,7 @@ func TestSwapFindingsPriorBranchGone(t *testing.T) {
 	}
 
 	ws := config.Workspace{Repos: map[string]config.Repo{"web": {Primary: primary, DefaultBranch: "main"}}}
-	findings := swapFindings(ws, journalPath)
+	findings := swapFindings(ws, nil, journalPath)
 	_, fails, _ := countSwapIssues(findings)
 	if fails == 0 {
 		t.Errorf("deleted prior branch should produce a fail finding, got: %+v", findings)
@@ -181,9 +183,67 @@ func TestSwapFindingsOrphanedDetach(t *testing.T) {
 	ws := config.Workspace{Repos: map[string]config.Repo{"web": {Primary: primary, DefaultBranch: "main"}}}
 	missingJournal := filepath.Join(t.TempDir(), "none.json")
 
-	findings := swapFindings(ws, missingJournal)
+	findings := swapFindings(ws, nil, missingJournal)
 	warns, _, _ := countSwapIssues(findings)
 	if warns == 0 {
 		t.Errorf("orphaned detached primary with no journal should warn, got: %+v", findings)
+	}
+}
+
+// TestSwapFindingsOrphanedLiveBranch verifies a primary stuck on a slis/live
+// temp branch with no journal warns, and that when the branch's commits are
+// fully contained in the slice's branch, --fix switches back to trunk and
+// deletes the temp branch (losing nothing).
+func TestSwapFindingsOrphanedLiveBranch(t *testing.T) {
+	primary := testutil.NewRepo(t)
+	base := t.TempDir()
+	featWT := filepath.Join(base, "feat")
+	testutil.AddWorktree(t, primary, "feat", featWT)
+	if err := os.WriteFile(filepath.Join(featWT, "f.txt"), []byte("feat\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := git.Run(featWT, "add", "f.txt"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := git.Run(featWT, "commit", "-q", "-m", "feat"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// Simulate an orphaned swap: primary on slis/live/myslice at feat's tip, but
+	// no journal. The temp branch's commits are fully contained in feat.
+	featTip, err := git.RevParse(primary, "feat")
+	if err != nil {
+		t.Fatalf("rev-parse feat: %v", err)
+	}
+	if _, err := git.Run(primary, "switch", "-c", "slis/live/myslice", featTip); err != nil {
+		t.Fatalf("create live branch: %v", err)
+	}
+
+	ws := config.Workspace{Repos: map[string]config.Repo{"web": {Primary: primary, DefaultBranch: "main"}}}
+	dtos := []SliceDTO{{Name: "myslice", Members: []MemberDTO{{Repo: "web", Branch: "feat", WorktreePath: featWT}}}}
+	missingJournal := filepath.Join(t.TempDir(), "none.json")
+
+	findings := swapFindings(ws, dtos, missingJournal)
+	warns, _, fixable := countSwapIssues(findings)
+	if warns == 0 {
+		t.Fatalf("orphaned slis/live branch should warn, got: %+v", findings)
+	}
+	if fixable == 0 {
+		t.Fatalf("contained orphaned slis/live branch should offer a --fix, got: %+v", findings)
+	}
+
+	// Run the fix — primary back on main, temp branch gone.
+	for _, f := range findings {
+		if f.fix != nil {
+			if _, err := f.fix(); err != nil {
+				t.Fatalf("fix: %v", err)
+			}
+		}
+	}
+	if cur, _ := git.CurrentBranch(primary); cur != "main" {
+		t.Errorf("after fix: want primary on main, got %q", cur)
+	}
+	if git.RefExists(primary, "refs/heads/slis/live/myslice") {
+		t.Error("after fix: orphaned temp branch was not deleted")
 	}
 }

@@ -308,9 +308,10 @@ func runDoctor() []doctorFinding {
 	worktreeIssues = append(worktreeIssues, orphanWorktreeFindings(ws)...)
 	findings = append(findings, worktreeIssues...)
 
-	// Swap-journal health (drift, stale journal, orphaned detach). Only warn/fail
-	// findings count toward the verdict; an "ok"/"healthy" swap line does not.
-	swapFinds := swapFindings(ws, sp.ActiveJournal)
+	// Swap-journal health (drift, stale journal, orphaned live branch/detach).
+	// Only warn/fail findings count toward the verdict; an "ok"/"healthy" swap
+	// line does not.
+	swapFinds := swapFindings(ws, dtos, sp.ActiveJournal)
 	swapIssues := 0
 	for _, f := range swapFinds {
 		if f.Level == lvlWarn || f.Level == lvlFail {

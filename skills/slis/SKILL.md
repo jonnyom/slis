@@ -12,18 +12,22 @@ servers onto one, review their combined diff/PRs, drive the Graphite stack, and
 track which slice's Claude session needs your attention.
 
 **Mental model.** Each repo has a "primary" checkout your dev servers read from.
-`slis activate` detaches those primaries to your slice's branch *tips* (detached
-HEAD) so the servers rebuild against your feature; `slis deactivate` restores
-them. The real worktrees are never touched — activate is a reversible swap.
+`slis activate` puts those primaries on a `slis/live/<slice>` branch at your
+slice's branch *tips* so the servers rebuild against your feature; `slis
+deactivate` restores them (and deletes the temp branch). The real worktrees are
+never touched — activate is a reversible swap.
 
-While a slice is active the primaries are in **detached HEAD** — do your commits
-and `gt` work in the slice's *worktrees* (`SLIS_WORKTREES`), never the primaries;
-`gt` mutations on a detached primary won't work by design. `deactivate` refuses a
-primary that drifted off its slice tip (you committed on the detached HEAD or
-switched branches) with zero state change; `deactivate --force` restores anyway
-and first rescues any commits on the detached HEAD to a `slis/rescue/<slice>-<repo>`
-branch so nothing is lost. If the branch advances, `slis refresh` fast-forwards
-the primaries (it refuses a dirty primary).
+While a slice is active each primary is on its `slis/live/<slice>` temp branch —
+do your commits and `gt` work in the slice's *worktrees* (`SLIS_WORKTREES`), not
+the primaries. `gt` *reads* work in the primary, but `gt` *mutations* refuse
+there ("branch not tracked") by design — that's what the worktrees are for.
+`deactivate` refuses a primary that drifted off its temp branch (you switched it
+away) with zero state change, and refuses when you *committed* on the temp branch
+(those commits are safe on that named branch — it lists them so you can graft
+them onto the slice branch in the worktree); `deactivate --force` restores anyway
+and renames a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never
+deletes it) so nothing is lost. If the branch advances, `slis refresh`
+fast-forwards the temp branch (it refuses a dirty primary or a diverged branch).
 
 ## Driving slis as an agent
 
@@ -59,16 +63,16 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
-| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs, swap-journal health (stale journal, deleted prior branch, orphaned detach), and a Graphite section (gt installed? repos initialised? branches tracked?). `--fix` auto-repairs the safe ones (incl. deleting a stale journal only when every primary is on a branch); never prunes worktrees |
+| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs, swap-journal health (stale journal, deleted prior branch, orphaned `slis/live` branch/detach), and a Graphite section (gt installed? repos initialised? branches tracked?). `--fix` auto-repairs the safe ones (incl. deleting a stale journal only when every primary is on a branch, and clearing a contained orphaned `slis/live` branch); never prunes worktrees |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
 | `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run); in a Graphite-native repo also `gt track`s the new branch (best-effort) |
 | `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees); in a Graphite-native repo also `gt track`s it (best-effort) |
 | `slis import [path]` | mutate | no | Register a candidate worktree (or `--all`) as a managed slice — registry only, never git |
 | `slis ignore <path-or-glob>` | mutate | no | Add a path/glob to `grouping.ignore` so matching worktrees are never ingested |
 | `slis forget <slice>` | mutate | no | Drop a slice from the registry (does not touch git — use for a missing slice) |
-| `slis activate <slice>` | mutate | no | Detach all primaries to the slice's branch tips (`--stash` if dirty) |
-| `slis deactivate` | mutate | no | Restore primaries to their prior branches; refuses a drifted primary (zero state change). `--force` restores anyway, rescuing detached-HEAD commits to `slis/rescue/<slice>-<repo>` first |
-| `slis refresh` | mutate | no | Advance active primaries to the slice branches' new tips (refuses a dirty primary) |
+| `slis activate <slice>` | mutate | no | Put all primaries on a `slis/live/<slice>` branch at the slice's branch tips (`--stash` if dirty) |
+| `slis deactivate` | mutate | no | Restore primaries to their prior branches and delete the temp branch; refuses a drifted primary or one you committed on (zero state change). `--force` restores anyway, renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` first (never deletes it) |
+| `slis refresh` | mutate | no | Fast-forward active primaries' temp branches to the slice branches' new tips (refuses a dirty primary or a diverged branch) |
 | `slis restack <slice>` | mutate | no | `gt restack` across the slice's repos (refuses dirty worktrees) |
 | `slis sync <slice>` | mutate | no | `gt sync` per repo — **repo-wide**: may overwrite trunk, delete merged branches |
 | `slis submit <slice>` | mutate | no | `gt submit` — **force-pushes** the stack + opens/updates PRs |
@@ -157,7 +161,7 @@ slis rm <slice>                      # clean up after merge
 
 ### Test a slice in the running dev servers
 ```sh
-slis activate <slice> --stash   # detach primaries to slice tips; stash dirty work
+slis activate <slice> --stash   # primaries → slis/live branch at slice tips; stash dirty work
 # ... exercise the servers; `slis refresh` if new commits land ...
 slis deactivate                 # restore primaries (pops the stash)
 ```

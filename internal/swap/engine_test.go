@@ -31,24 +31,27 @@ func setupRepoWithWorktree(t *testing.T) (primary, wt string) {
 	return r, wtPath
 }
 
-// TestActivateRepoDetachesPrimaryNotWorktree verifies the core invariant:
-// after activateRepo the primary is detached at feat's tip, and the worktree
-// is completely untouched.
-func TestActivateRepoDetachesPrimaryNotWorktree(t *testing.T) {
+// TestActivateRepoCreatesTempBranchNotWorktree verifies the core invariant:
+// after activateRepo the primary is on the temp branch at feat's tip, and the
+// worktree is completely untouched.
+func TestActivateRepoCreatesTempBranchNotWorktree(t *testing.T) {
 	r, wt := setupRepoWithWorktree(t)
 
-	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", Stash: false})
+	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s", Stash: false})
 	if err != nil {
 		t.Fatalf("activateRepo: unexpected error: %v", err)
 	}
 
-	// Primary must be detached (CurrentBranch returns "").
+	// Primary must be on the temp branch (not detached).
 	branch, err := git.CurrentBranch(r)
 	if err != nil {
 		t.Fatalf("CurrentBranch(primary): %v", err)
 	}
-	if branch != "" {
-		t.Errorf("primary: want detached HEAD (branch==\"\"), got %q", branch)
+	if branch != "slis/live/s" {
+		t.Errorf("primary: want on temp branch %q, got %q", "slis/live/s", branch)
+	}
+	if st.TempBranch != "slis/live/s" {
+		t.Errorf("st.TempBranch: want %q, got %q", "slis/live/s", st.TempBranch)
 	}
 
 	// Primary HEAD must equal feat tip.
@@ -100,7 +103,7 @@ func TestActivateRefusesDirtyWithoutStash(t *testing.T) {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
 
-	_, err = activateRepo(RepoPlan{Primary: r, Branch: "feat", Stash: false})
+	_, err = activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s", Stash: false})
 	if err == nil {
 		t.Fatal("expected error for dirty primary with Stash:false, got nil")
 	}
@@ -139,7 +142,7 @@ func TestDeactivateRestoresExactly(t *testing.T) {
 		t.Fatalf("RevParse before activate: %v", err)
 	}
 
-	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat"})
+	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s"})
 	if err != nil {
 		t.Fatalf("activateRepo: %v", err)
 	}
@@ -187,7 +190,7 @@ func TestDeactivateRestoresStashedEdits(t *testing.T) {
 		t.Fatalf("write wip: %v", err)
 	}
 
-	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", Stash: true})
+	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s", Stash: true})
 	if err != nil {
 		t.Fatalf("activateRepo: %v", err)
 	}
@@ -238,7 +241,7 @@ func TestDeactivateStashConflictSurfaces(t *testing.T) {
 		t.Fatalf("write wip: %v", err)
 	}
 
-	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", Stash: true})
+	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s", Stash: true})
 	if err != nil {
 		t.Fatalf("activateRepo: %v", err)
 	}
@@ -351,14 +354,14 @@ func TestActivateSliceWritesJournal(t *testing.T) {
 		t.Errorf("loaded.Repos: want 3, got %d", len(loaded.Repos))
 	}
 
-	// Each primary must be detached at its feat tip.
+	// Each primary must be on the slice's temp branch at its feat tip.
 	for _, ra := range repos {
 		branch, err := git.CurrentBranch(ra.Primary)
 		if err != nil {
 			t.Fatalf("CurrentBranch(%s): %v", ra.Repo, err)
 		}
-		if branch != "" {
-			t.Errorf("repo %s: want detached HEAD, got branch %q", ra.Repo, branch)
+		if branch != "slis/live/myslice" {
+			t.Errorf("repo %s: want on temp branch %q, got %q", ra.Repo, "slis/live/myslice", branch)
 		}
 	}
 }
@@ -419,6 +422,11 @@ func TestActivateSliceAtomicRollback(t *testing.T) {
 		}
 		if head != tc.priorHEA {
 			t.Errorf("repo %s HEAD after rollback: want %q, got %q", tc.name, tc.priorHEA, head)
+		}
+
+		// The temp branch created mid-activate must have been deleted on rollback.
+		if git.RefExists(tc.primary, "refs/heads/slis/live/myslice") {
+			t.Errorf("repo %s: temp branch slis/live/myslice was not deleted on rollback", tc.name)
 		}
 	}
 
@@ -749,7 +757,7 @@ func TestRecoverState(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestRefreshMovesToNewTip verifies that after a new commit lands on the feat
-// branch (in the worktree), Refresh advances the primary's detached HEAD to
+// branch (in the worktree), Refresh fast-forwards the primary's temp branch to
 // the new tip and persists the updated TargetSHA in the journal.
 func TestRefreshMovesToNewTip(t *testing.T) {
 	r, wt := setupRepoWithWorktree(t)
@@ -831,13 +839,13 @@ func TestRefreshMovesToNewTip(t *testing.T) {
 		t.Errorf("worktree branch after Refresh: want %q, got %q", "feat", wtBranch)
 	}
 
-	// Primary must still be detached.
+	// Primary must still be on its temp branch (fast-forwarded, not detached).
 	primaryBranch, err := git.CurrentBranch(r)
 	if err != nil {
 		t.Fatalf("CurrentBranch(primary): %v", err)
 	}
-	if primaryBranch != "" {
-		t.Errorf("primary after Refresh: want detached HEAD, got branch %q", primaryBranch)
+	if primaryBranch != "slis/live/s" {
+		t.Errorf("primary after Refresh: want on temp branch %q, got %q", "slis/live/s", primaryBranch)
 	}
 }
 
@@ -868,18 +876,18 @@ func TestStaleRepos(t *testing.T) {
 // Drift-detection / rescue tests (adversarial)
 // ---------------------------------------------------------------------------
 
-// commitOnDetachedPrimary makes a new commit directly on the (detached) primary
+// commitOnPrimary makes a new commit directly on the primary's current branch
 // and returns the new HEAD sha, simulating a user committing on a swapped-in
-// primary.
-func commitOnDetachedPrimary(t *testing.T, primary string) string {
+// primary (which is on its slis/live temp branch).
+func commitOnPrimary(t *testing.T, primary string) string {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(primary, "on-detached.txt"), []byte("work on detached HEAD\n"), 0o644); err != nil {
-		t.Fatalf("write on-detached.txt: %v", err)
+	if err := os.WriteFile(filepath.Join(primary, "on-primary.txt"), []byte("work on the primary\n"), 0o644); err != nil {
+		t.Fatalf("write on-primary.txt: %v", err)
 	}
-	if _, err := git.Run(primary, "add", "on-detached.txt"); err != nil {
+	if _, err := git.Run(primary, "add", "on-primary.txt"); err != nil {
 		t.Fatalf("git add: %v", err)
 	}
-	if _, err := git.Run(primary, "commit", "-q", "-m", "work on detached HEAD"); err != nil {
+	if _, err := git.Run(primary, "commit", "-q", "-m", "work on the primary"); err != nil {
 		t.Fatalf("git commit: %v", err)
 	}
 	head, err := git.RevParse(primary, "HEAD")
@@ -889,11 +897,11 @@ func commitOnDetachedPrimary(t *testing.T, primary string) string {
 	return head
 }
 
-// TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues verifies that a
-// commit made on a detached primary blocks a plain deactivate (zero state
-// change, no rescue branch), and that --force first rescues that commit to a
-// slis/rescue/<slice>-<repo> branch before restoring.
-func TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues(t *testing.T) {
+// TestDeactivateRefusesCommitOnTempBranchThenForceRescues verifies that a commit
+// made on the temp branch blocks a plain deactivate (zero state change, no
+// rescue branch), and that --force renames the temp branch to
+// slis/rescue/<slice>-<repo> (preserving the commit) before restoring.
+func TestDeactivateRefusesCommitOnTempBranchThenForceRescues(t *testing.T) {
 	r, _ := setupRepoWithWorktree(t)
 
 	priorHEAD, err := git.RevParse(r, "HEAD")
@@ -901,13 +909,13 @@ func TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues(t *testing.T) 
 		t.Fatalf("RevParse prior HEAD: %v", err)
 	}
 
-	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat"})
+	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat", TempBranch: "slis/live/myslice"})
 	if err != nil {
 		t.Fatalf("activateRepo: %v", err)
 	}
 
-	// User commits on the detached primary — HEAD advances beyond TargetSHA.
-	newHEAD := commitOnDetachedPrimary(t, r)
+	// User commits on the temp branch — HEAD advances beyond TargetSHA.
+	newHEAD := commitOnPrimary(t, r)
 	if newHEAD == st.TargetSHA {
 		t.Fatal("commit did not advance HEAD — test setup error")
 	}
@@ -921,24 +929,31 @@ func TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues(t *testing.T) 
 	if afterHEAD != newHEAD {
 		t.Errorf("HEAD changed on refused deactivate: want %q, got %q", newHEAD, afterHEAD)
 	}
+	if cur, _ := git.CurrentBranch(r); cur != st.TempBranch {
+		t.Errorf("primary left temp branch on refused deactivate: want %q, got %q", st.TempBranch, cur)
+	}
 	rescue := "slis/rescue/myslice-web"
 	if git.RefExists(r, "refs/heads/"+rescue) {
 		t.Errorf("rescue branch %q created without --force", rescue)
 	}
 
-	// Forced deactivate rescues the commit, then restores to the prior branch.
+	// Forced deactivate renames the temp branch to rescue, then restores prior.
 	if err := deactivateRepo("myslice", st, true); err != nil {
 		t.Fatalf("deactivateRepo (force): %v", err)
 	}
 	if !git.RefExists(r, "refs/heads/"+rescue) {
 		t.Fatalf("rescue branch %q was not created under --force", rescue)
 	}
+	// The temp branch must be gone (renamed, never left behind or deleted).
+	if git.RefExists(r, "refs/heads/"+st.TempBranch) {
+		t.Errorf("temp branch %q still exists after --force rescue — should have been renamed", st.TempBranch)
+	}
 	rescueTip, err := git.RevParse(r, rescue)
 	if err != nil {
 		t.Fatalf("RevParse rescue branch: %v", err)
 	}
 	if rescueTip != newHEAD {
-		t.Errorf("rescue branch tip: want %q (the detached commit), got %q", newHEAD, rescueTip)
+		t.Errorf("rescue branch tip: want %q (the committed work), got %q", newHEAD, rescueTip)
 	}
 	branch, _ := git.CurrentBranch(r)
 	if branch != "main" {
@@ -951,12 +966,12 @@ func TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues(t *testing.T) 
 }
 
 // TestDeactivateRefusesManualSwitchDrift verifies that when the user manually
-// switches the primary to another branch (no commits made on the detached
-// HEAD), a plain deactivate refuses cleanly with zero state change.
+// switches the primary off its temp branch to another branch, a plain
+// deactivate refuses cleanly with zero state change.
 func TestDeactivateRefusesManualSwitchDrift(t *testing.T) {
 	r, _ := setupRepoWithWorktree(t)
 
-	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat"})
+	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat", TempBranch: "slis/live/myslice"})
 	if err != nil {
 		t.Fatalf("activateRepo: %v", err)
 	}
@@ -989,7 +1004,7 @@ func TestDeactivateRefusesWhenPriorBranchGone(t *testing.T) {
 		t.Fatalf("create prior branch: %v", err)
 	}
 
-	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat"})
+	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat", TempBranch: "slis/live/myslice"})
 	if err != nil {
 		t.Fatalf("activateRepo: %v", err)
 	}
@@ -997,7 +1012,7 @@ func TestDeactivateRefusesWhenPriorBranchGone(t *testing.T) {
 		t.Fatalf("PriorBranch: want %q, got %q", "prior", st.PriorBranch)
 	}
 
-	// Delete the prior branch while the primary is detached.
+	// Delete the prior branch while the primary is on the temp branch.
 	if _, err := git.Run(r, "branch", "-D", "prior"); err != nil {
 		t.Fatalf("delete prior branch: %v", err)
 	}
@@ -1007,7 +1022,7 @@ func TestDeactivateRefusesWhenPriorBranchGone(t *testing.T) {
 		t.Fatalf("want ErrPriorBranchGone, got %v", err)
 	}
 
-	// State unchanged: still detached at the slice tip.
+	// State unchanged: still on the temp branch at the slice tip.
 	head, _ := git.RevParse(r, "HEAD")
 	if head != st.TargetSHA {
 		t.Errorf("HEAD changed on refused deactivate: want %q, got %q", st.TargetSHA, head)
@@ -1067,7 +1082,7 @@ func TestRefreshRefusesDirtyPrimary(t *testing.T) {
 }
 
 // TestActivateStashesDirty verifies that a dirty primary with Stash:true
-// succeeds: the primary is detached at feat tip, StashRef is set, and
+// succeeds: the primary is on the temp branch at feat tip, StashRef is set, and
 // the primary working tree is clean.
 func TestActivateStashesDirty(t *testing.T) {
 	r, wt := setupRepoWithWorktree(t)
@@ -1077,7 +1092,7 @@ func TestActivateStashesDirty(t *testing.T) {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
 
-	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", Stash: true})
+	st, err := activateRepo(RepoPlan{Primary: r, Branch: "feat", TempBranch: "slis/live/s", Stash: true})
 	if err != nil {
 		t.Fatalf("activateRepo: unexpected error: %v", err)
 	}
@@ -1109,12 +1124,183 @@ func TestActivateStashesDirty(t *testing.T) {
 		t.Errorf("primary HEAD %q != wt HEAD %q", primaryHEAD, wtHEAD)
 	}
 
-	// Primary must be detached.
+	// Primary must be on the temp branch.
 	branch, err := git.CurrentBranch(r)
 	if err != nil {
 		t.Fatalf("CurrentBranch: %v", err)
 	}
-	if branch != "" {
-		t.Errorf("primary: want detached HEAD, got branch %q", branch)
+	if branch != "slis/live/s" {
+		t.Errorf("primary: want on temp branch %q, got %q", "slis/live/s", branch)
+	}
+}
+
+// TestActivateRefusesPreexistingTempBranch verifies that when the slis/live temp
+// branch already exists (a previous swap wasn't cleaned up), activateRepo refuses
+// with zero state change: the primary stays on its prior branch at its prior SHA.
+func TestActivateRefusesPreexistingTempBranch(t *testing.T) {
+	r := testutil.NewRepo(t)
+	// A "feat" branch to activate and a stray temp branch left by an earlier,
+	// uncleaned swap. No worktree needed — the refusal happens before any switch.
+	if _, err := git.Run(r, "branch", "feat"); err != nil {
+		t.Fatalf("create feat branch: %v", err)
+	}
+	if _, err := git.Run(r, "branch", "slis/live/myslice"); err != nil {
+		t.Fatalf("create stray temp branch: %v", err)
+	}
+
+	priorHEAD, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse prior HEAD: %v", err)
+	}
+
+	_, err = activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat", TempBranch: "slis/live/myslice"})
+	if err == nil {
+		t.Fatal("activateRepo: expected refusal for pre-existing temp branch, got nil")
+	}
+
+	// Zero state change: still on main at the prior HEAD.
+	branch, _ := git.CurrentBranch(r)
+	if branch != "main" {
+		t.Errorf("branch after refusal: want %q, got %q", "main", branch)
+	}
+	head, _ := git.RevParse(r, "HEAD")
+	if head != priorHEAD {
+		t.Errorf("HEAD after refusal: want %q, got %q", priorHEAD, head)
+	}
+}
+
+// TestActivateSliceRefusesPreexistingTempBranchRollsBack verifies that when the
+// second repo has a stray temp branch, the whole multi-repo Activate rolls back:
+// the first repo's just-created temp branch is deleted and its primary restored,
+// and no journal is written.
+func TestActivateSliceRefusesPreexistingTempBranchRollsBack(t *testing.T) {
+	rA, _ := setupRepoWithFeatBranch(t)
+	rB, _ := setupRepoWithFeatBranch(t)
+
+	headA, err := git.RevParse(rA, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse A: %v", err)
+	}
+
+	// Repo B already has the temp branch — activation of B must refuse.
+	if _, err := git.Run(rB, "branch", "slis/live/myslice"); err != nil {
+		t.Fatalf("create stray temp branch in B: %v", err)
+	}
+
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+	repos := []RepoActivation{
+		{Repo: "a", Primary: rA, Branch: "feat"},
+		{Repo: "b", Primary: rB, Branch: "feat"},
+	}
+
+	if _, err := Activate("myslice", repos, journalPath, ActivateOptions{}); err == nil {
+		t.Fatal("Activate: expected error for pre-existing temp branch, got nil")
+	}
+
+	// Repo A rolled back to main at its prior HEAD, temp branch deleted.
+	if branch, _ := git.CurrentBranch(rA); branch != "main" {
+		t.Errorf("repo A after rollback: want branch %q, got %q", "main", branch)
+	}
+	if head, _ := git.RevParse(rA, "HEAD"); head != headA {
+		t.Errorf("repo A HEAD after rollback: want %q, got %q", headA, head)
+	}
+	if git.RefExists(rA, "refs/heads/slis/live/myslice") {
+		t.Error("repo A: temp branch not deleted on rollback")
+	}
+
+	// No journal written.
+	loaded, err := Load(journalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded != nil {
+		t.Error("journal was written despite failed Activate")
+	}
+}
+
+// TestDeactivateRestoresLegacyDetachedJournal verifies the migration path: a
+// journal written by the old detached-HEAD engine (no TempBranch field) is still
+// restored — the primary is detached at TargetSHA, and deactivate switches it
+// back to the prior branch.
+func TestDeactivateRestoresLegacyDetachedJournal(t *testing.T) {
+	r, _ := setupRepoWithWorktree(t)
+
+	priorHEAD, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse prior HEAD: %v", err)
+	}
+	target, err := git.RevParse(r, "feat")
+	if err != nil {
+		t.Fatalf("RevParse feat: %v", err)
+	}
+
+	// Reproduce the old engine's on-disk state: primary detached at the slice tip,
+	// journal entry with NO temp branch recorded.
+	if _, err := git.Run(r, "switch", "--detach", target); err != nil {
+		t.Fatalf("switch --detach: %v", err)
+	}
+	st := RepoState{
+		Repo:        "web",
+		Primary:     r,
+		Branch:      "feat",
+		PriorBranch: "main",
+		PriorSHA:    priorHEAD,
+		TargetSHA:   target,
+		// TempBranch intentionally empty — legacy journal.
+	}
+
+	if err := deactivateRepo("myslice", st, false); err != nil {
+		t.Fatalf("deactivateRepo (legacy): %v", err)
+	}
+
+	if branch, _ := git.CurrentBranch(r); branch != "main" {
+		t.Errorf("branch after legacy deactivate: want %q, got %q", "main", branch)
+	}
+	if head, _ := git.RevParse(r, "HEAD"); head != priorHEAD {
+		t.Errorf("HEAD after legacy deactivate: want %q, got %q", priorHEAD, head)
+	}
+}
+
+// TestRefreshRefusesDivergedBranch verifies that Refresh refuses to advance when
+// the slice branch has diverged (no fast-forward possible) rather than
+// force-moving the temp branch, leaving the primary at its old tip.
+func TestRefreshRefusesDivergedBranch(t *testing.T) {
+	r, wt := setupRepoWithWorktree(t)
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	if _, err := Activate("s", []RepoActivation{{Repo: "a", Primary: r, Branch: "feat"}}, journalPath, ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	oldTip, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse old tip: %v", err)
+	}
+
+	// Rewrite feat's history in the worktree so its new tip is NOT a descendant of
+	// the old tip (a rebase-style divergence) — fast-forward is impossible.
+	if _, err := git.Run(wt, "reset", "--hard", "HEAD~1"); err != nil {
+		t.Fatalf("reset feat back: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, "divergent.txt"), []byte("divergent\n"), 0o644); err != nil {
+		t.Fatalf("write divergent.txt: %v", err)
+	}
+	if _, err := git.Run(wt, "add", "divergent.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := git.Run(wt, "commit", "-q", "-m", "divergent feat"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	_, err = Refresh(journalPath)
+	if err == nil {
+		t.Fatal("Refresh: expected refusal for diverged branch, got nil")
+	}
+
+	// Zero state change: primary still on the temp branch at the old tip.
+	if branch, _ := git.CurrentBranch(r); branch != "slis/live/s" {
+		t.Errorf("primary left temp branch on refused refresh: got %q", branch)
+	}
+	if head, _ := git.RevParse(r, "HEAD"); head != oldTip {
+		t.Errorf("primary advanced despite refusal: want %q, got %q", oldTip, head)
 	}
 }

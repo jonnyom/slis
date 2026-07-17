@@ -648,8 +648,8 @@ func renderSwapOverlay(m Model) string {
 		sb.WriteString(key("[y]") + " deactivate     " + key("[n]") + " cancel\n")
 	} else {
 		sb.WriteString(cockpitHeaderStyle.Render("Set running code → "+req.slice) + "\n\n")
-		sb.WriteString("Detach each repo's primary HEAD to this slice's branch tips so running\n")
-		sb.WriteString("dev servers rebuild this feature. Reversible; worktrees are untouched.\n")
+		sb.WriteString("Put each repo's primary on a slis/live branch at this slice's branch tips\n")
+		sb.WriteString("so running dev servers rebuild this feature. Reversible; worktrees untouched.\n")
 		sb.WriteString("A dirty primary needs " + cockpitDimStyle.Render("--stash") + ".\n\n")
 		sb.WriteString(key("[y]") + " activate     " + key("[s]") + " activate + stash dirty     " + key("[n]") + " cancel\n")
 	}
