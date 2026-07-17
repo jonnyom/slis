@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/hooks"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
@@ -91,7 +92,7 @@ func TestHandleHookWritesStatus(t *testing.T) {
 	t.Run("matching cwd writes status", func(t *testing.T) {
 		body := fmt.Sprintf(`{"cwd":%q,"hook_event_name":"Notification"}`, worktreeDir)
 		r := strings.NewReader(body)
-		if err := hooks.HandleHook("Notification", r, slices, eventsDir, 1); err != nil {
+		if err := hooks.HandleHook("Notification", r, slices, eventsDir, config.Notify{}, 1); err != nil {
 			t.Fatalf("HandleHook: %v", err)
 		}
 		got := notify.ReadStatus(eventsDir, "my-slice")
@@ -104,7 +105,7 @@ func TestHandleHookWritesStatus(t *testing.T) {
 		eventsDir2 := t.TempDir()
 		body := `{"cwd":"/totally/unrelated/path","hook_event_name":"Notification"}`
 		r := strings.NewReader(body)
-		if err := hooks.HandleHook("Notification", r, slices, eventsDir2, 1); err != nil {
+		if err := hooks.HandleHook("Notification", r, slices, eventsDir2, config.Notify{}, 1); err != nil {
 			t.Fatalf("HandleHook unmatched: %v", err)
 		}
 		// No files should have been written.
@@ -117,7 +118,7 @@ func TestHandleHookWritesStatus(t *testing.T) {
 	t.Run("empty body is no-op", func(t *testing.T) {
 		eventsDir3 := t.TempDir()
 		r := strings.NewReader("")
-		if err := hooks.HandleHook("Stop", r, slices, eventsDir3, 1); err != nil {
+		if err := hooks.HandleHook("Stop", r, slices, eventsDir3, config.Notify{}, 1); err != nil {
 			t.Fatalf("HandleHook empty: %v", err)
 		}
 	})
@@ -125,7 +126,7 @@ func TestHandleHookWritesStatus(t *testing.T) {
 	t.Run("garbage body is no-op", func(t *testing.T) {
 		eventsDir4 := t.TempDir()
 		r := strings.NewReader("not json at all")
-		if err := hooks.HandleHook("Stop", r, slices, eventsDir4, 1); err != nil {
+		if err := hooks.HandleHook("Stop", r, slices, eventsDir4, config.Notify{}, 1); err != nil {
 			t.Fatalf("HandleHook garbage: %v", err)
 		}
 	})

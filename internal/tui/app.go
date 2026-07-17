@@ -755,19 +755,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case sessionsLoadedMsg:
-		// Notify when Claude yields control: either blocked on input or finished
-		// a turn. Both are "your move" moments for an autonomous session.
-		var alerts []sessionAlert
-		for _, s := range NewlyInStatus(m.sessionStatus, msg.statuses, model.SessWaitingInput) {
-			alerts = append(alerts, sessionAlert{slice: s, status: model.SessWaitingInput})
-		}
-		for _, s := range NewlyInStatus(m.sessionStatus, msg.statuses, model.SessDone) {
-			alerts = append(alerts, sessionAlert{slice: s, status: model.SessDone})
-		}
+		// Desktop banners are fired by the `slis hook` process (see
+		// internal/hooks), not here — the TUI's Update loop is suspended while a
+		// tmux session is attached, so it can't reliably deliver them. The TUI
+		// just keeps the live session badges up to date.
 		m.sessionStatus = msg.statuses
-		if len(alerts) > 0 {
-			return m, notifyCmd(alerts)
-		}
 
 	case sessionsRefreshMsg:
 		sp := config.StatePaths()
