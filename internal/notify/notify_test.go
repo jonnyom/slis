@@ -17,7 +17,7 @@ func TestDesktopNotifyArgv(t *testing.T) {
 		Message:  "alpha needs input",
 	}
 
-	name, args, ok := notify.DesktopNotifyArgv(nil, n)
+	name, args, ok := notify.DesktopNotifyArgv(nil, n, "")
 
 	if !ok {
 		// Unsupported platform — just confirm no panic.
@@ -49,7 +49,7 @@ func TestDesktopNotifyArgv(t *testing.T) {
 func TestDesktopNotifyArgvTitlePresent(t *testing.T) {
 	n := notify.Notification{Title: "mytitle", Message: "mymessage"}
 
-	name, args, ok := notify.DesktopNotifyArgv(nil, n)
+	name, args, ok := notify.DesktopNotifyArgv(nil, n, "")
 	if !ok {
 		t.Skip("platform not supported")
 	}

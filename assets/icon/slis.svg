@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>slis — bacon rasher</title>
+  <defs>
+    <clipPath id="rasher">
+      <path d="M34,104 C70,78 108,78 132,100 C156,122 196,122 222,100 C236,108 236,156 222,164 C196,186 156,186 132,164 C108,142 70,142 34,168 C20,160 20,112 34,104 Z"/>
+    </clipPath>
+  </defs>
+  <path d="M34,104 C70,78 108,78 132,100 C156,122 196,122 222,100 C236,108 236,156 222,164 C196,186 156,186 132,164 C108,142 70,142 34,168 C20,160 20,112 34,104 Z"
+        fill="#C4453C" stroke="#9E3A31" stroke-width="6" stroke-linejoin="round"/>
+  <g clip-path="url(#rasher)" fill="none" stroke="#F2D7C9" stroke-linecap="round">
+    <path d="M40,116 C74,94 108,94 132,114 C156,134 194,134 220,114" stroke-width="11"/>
+    <path d="M44,134 C76,114 110,114 132,133 C156,152 190,152 214,133" stroke-width="7"/>
+    <path d="M40,152 C74,130 108,130 132,150 C156,170 194,170 220,150" stroke-width="11"/>
+  </g>
+</svg>

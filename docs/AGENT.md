@@ -134,8 +134,9 @@ The headline automation signal: *which slice's Claude is waiting for input.*
   attached (the TUI's event loop is suspended then, so it cannot deliver them).
   Backend: `terminal-notifier` if on `PATH`, else `osascript` (macOS) /
   `notify-send` (Linux); sound honours `notify.needs_input.sound` /
-  `notify.done.sound` from `workspace.yaml`. Delivery is best-effort and never
-  fails the hook.
+  `notify.done.sound` from `workspace.yaml`. The `terminal-notifier` backend also
+  carries the slis bacon-rasher icon (extracted to `<state>/slis.png`). Delivery
+  is best-effort and never fails the hook.
 
 ## Mutation classification
 

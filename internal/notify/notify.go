@@ -1,6 +1,8 @@
 package notify
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -37,13 +39,17 @@ func escapeAppleScript(s string) string {
 }
 
 // terminalNotifierArgs builds the argv tail for the terminal-notifier backend.
-func terminalNotifierArgs(n Notification) []string {
+// A non-empty icon path is set as both the banner app icon and content image.
+func terminalNotifierArgs(n Notification, icon string) []string {
 	args := []string{"-title", n.Title, "-message", n.Message}
 	if n.Subtitle != "" {
 		args = append(args, "-subtitle", n.Subtitle)
 	}
 	if n.Sound != "" {
 		args = append(args, "-sound", n.Sound)
+	}
+	if icon != "" {
+		args = append(args, "-appIcon", icon, "-contentImage", icon)
 	}
 	return args
 }
@@ -65,16 +71,19 @@ func appleScript(n Notification) string {
 // argvFor is the pure backend selector: given a target OS and a PATH probe it
 // picks a notification backend and builds its argv, without running anything.
 //
-//   - darwin + terminal-notifier on PATH → terminal-notifier -title/-subtitle/-message[-sound]
+//   - darwin + terminal-notifier on PATH → terminal-notifier -title/-subtitle/-message[-sound][-appIcon/-contentImage]
 //   - darwin otherwise                   → osascript -e '<AppleScript>'
 //   - linux                              → notify-send <title> <message>
 //   - anything else                      → ok=false
-func argvFor(goos string, lookPath func(string) (string, error), n Notification) (name string, args []string, ok bool) {
+//
+// The icon path is only used by the terminal-notifier backend; osascript and
+// notify-send take no icon. An empty icon path omits the icon flags entirely.
+func argvFor(goos string, lookPath func(string) (string, error), n Notification, icon string) (name string, args []string, ok bool) {
 	switch goos {
 	case "darwin":
 		if lookPath != nil {
 			if _, err := lookPath("terminal-notifier"); err == nil {
-				return "terminal-notifier", terminalNotifierArgs(n), true
+				return "terminal-notifier", terminalNotifierArgs(n, icon), true
 			}
 		}
 		return "osascript", []string{"-e", appleScript(n)}, true
@@ -87,16 +96,22 @@ func argvFor(goos string, lookPath func(string) (string, error), n Notification)
 
 // DesktopNotifyArgv builds the notification argv for the current OS, probing
 // PATH via lookPath (pass exec.LookPath in production) to prefer
-// terminal-notifier on macOS. It is pure — it never executes a process.
-func DesktopNotifyArgv(lookPath func(string) (string, error), n Notification) (name string, args []string, ok bool) {
-	return argvFor(runtime.GOOS, lookPath, n)
+// terminal-notifier on macOS. A non-empty icon path decorates the
+// terminal-notifier banner. It is pure — it never executes a process.
+func DesktopNotifyArgv(lookPath func(string) (string, error), n Notification, icon string) (name string, args []string, ok bool) {
+	return argvFor(runtime.GOOS, lookPath, n, icon)
 }
 
 // Notify shows a desktop notification (best-effort). It returns an error only
 // when the chosen backend was found and executed but failed; an unsupported OS
 // or a missing backend binary is not an error (returns nil).
 func Notify(n Notification) error {
-	name, args, ok := DesktopNotifyArgv(exec.LookPath, n)
+	icon, err := iconPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slis: could not extract notification icon: %v\n", err)
+		icon = ""
+	}
+	name, args, ok := DesktopNotifyArgv(exec.LookPath, n, icon)
 	if !ok {
 		return nil
 	}
