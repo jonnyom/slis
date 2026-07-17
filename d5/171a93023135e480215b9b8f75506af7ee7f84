@@ -1,0 +1,65 @@
+internal/cli/doctor.go
+  s_e7cc16202efb78::t_e217a1501fa5f9 251-262,268,270
+internal/swap/engine_test.go
+  s_e7cc16202efb78::t_042aab09db6dce 147,195,268,454,628,734
+  s_e7cc16202efb78::t_79c5c1bc8ad363 844-866
+  s_e7cc16202efb78::t_091c5055aeec50 867-1068
+internal/tui/cockpit.go
+  s_e7cc16202efb78::t_f2dca481e47884 162-167
+internal/cli/doctor_swap_test.go
+  s_e7cc16202efb78::t_c5a99f42cb657b 1-189
+internal/cli/doctor_swap.go
+  s_e7cc16202efb78::t_7d69c8817c5d5c 12-19
+  s_e7cc16202efb78::t_da931fc03a3514 1-11,20-132
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_c09cb1e1963b76 19-27
+  s_e7cc16202efb78::t_9938326bc551bb 62
+  s_e7cc16202efb78::t_70e09e039eb8ea 70-71
+internal/cli/ls_test.go
+  s_e7cc16202efb78::t_c38cc2aa3c3c44 144-176
+internal/model/model.go
+  s_e7cc16202efb78::t_abf2117a8af24c 41
+internal/tui/app.go
+  s_e7cc16202efb78::t_f26f133109d6fa 306-310
+docs/AGENT.md
+  s_e7cc16202efb78::t_02705ee3fa1838 32
+  s_e7cc16202efb78::t_6e2b2723ab6d17 44-47
+  s_e7cc16202efb78::t_a9b234d1114acb 189
+  s_e7cc16202efb78::t_d1a554c70f6517 132-140
+internal/swap/engine.go
+  s_e7cc16202efb78::t_fc4cb4982d4ad0 139-147,160
+  s_e7cc16202efb78::t_5b3c203d3d646b 223-228,237
+  s_e7cc16202efb78::t_b3c51d49d06bec 373-401,405-410,412-415,423-457
+  s_e7cc16202efb78::t_f719d8ae4a0180 124-126
+  s_e7cc16202efb78::t_295f98b3fa325a 260-281
+  s_e7cc16202efb78::t_e3dade74d751dd 204-212,219,229-236,239-240,242
+internal/tui/slicelist.go
+  s_e7cc16202efb78::t_2867936742a6d2 38
+internal/cli/ls.go
+  s_e7cc16202efb78::t_9f93e7a1b6b154 33
+  s_e7cc16202efb78::t_07f2770173cabb 119-121
+  s_e7cc16202efb78::t_8679bbcee9d432 186-188
+  s_e7cc16202efb78::t_c146bbc7629c1a 146-155
+internal/cli/deactivate.go
+  s_e7cc16202efb78::t_845253b947c06e 14-25,27,29,38
+internal/cli/activate.go
+  s_e7cc16202efb78::t_2f457c4896a433 140
+internal/git/status.go
+  s_e7cc16202efb78::t_8e12905bb341fd 37-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d5171a93023135e480215b9b8f75506af7ee7f84",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
