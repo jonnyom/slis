@@ -1,0 +1,41 @@
+internal/cli/doctor_swap.go
+  s_e7cc16202efb78::t_a39c67482cffbd 110-114,124-191
+  s_e7cc16202efb78::t_cf93f7a9323623 286
+  s_e7cc16202efb78::t_e9556ac2f0443a 297
+  s_e7cc16202efb78::t_d613c188a8ae36 192-194
+docs/AGENT.md
+  s_e7cc16202efb78::t_26f6240bb7f1a8 33
+  s_e7cc16202efb78::t_3b92eff5d5d30d 56-59
+  s_e7cc16202efb78::t_57c587f525033b 155-165
+internal/cli/ls.go
+  s_e7cc16202efb78::t_7362eba52d2fd7 135-137
+  s_e7cc16202efb78::t_46134e04990c6d 162-177
+  s_e7cc16202efb78::t_b0f28591f66bd3 38
+  s_e7cc16202efb78::t_6f3d8a6e70bcdf 220-223
+internal/cli/ls_test.go
+  s_e7cc16202efb78::t_cc4eacec52ec95 4,7
+  s_e7cc16202efb78::t_67d1e7738614ff 179-222
+skills/slis/SKILL.md
+  s_e7cc16202efb78::t_0abb0cd695d385 66
+  s_e7cc16202efb78::t_bb10b7bd306321 57
+internal/cli/doctor_swap_test.go
+  s_e7cc16202efb78::t_caa9a60e081203 421-429
+  s_e7cc16202efb78::t_369887e1700458 497-505
+  s_e7cc16202efb78::t_ede7eb9a2b5e5a 179-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ba640b128a975e6e9dfca8a4f518a1c672b503db",
+  "prompts": {},
+  "sessions": {
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
