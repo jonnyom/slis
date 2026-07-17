@@ -1,0 +1,45 @@
+docs/AGENT.md
+  s_e7cc16202efb78::t_d5fe7eaf817c47 130-138
+internal/cli/hook.go
+  s_e7cc16202efb78::t_a9da7c623e8f79 35
+internal/hooks/handler.go
+  s_e7cc16202efb78::t_0c9f80116823a8 8,14,19-26,108-112,115,138,140-175
+internal/hooks/handler_test.go
+  s_e7cc16202efb78::t_524b9c698c4396 8,95,108,121,129
+internal/hooks/notify_internal_test.go
+  s_e7cc16202efb78::t_781c924a83980b 1-148
+internal/notify/backend_internal_test.go
+  s_e7cc16202efb78::t_43e68dc5ac5586 1-114
+internal/notify/notify.go
+  s_e7cc16202efb78::t_02ed8c1c64d837 9-16,39-66,68-73,75-80,82,88-99,104,107
+internal/notify/notify_test.go
+  s_e7cc16202efb78::t_10610f34edb502 14-18,20,35,38,44,50,52,62,68,72-76,80,87
+internal/tui/app.go
+  s_e7cc16202efb78::t_01cd977fe1ce3d 768-771
+skills/slis/SKILL.md
+  s_403eb8c2619347::t_e03ec931f6279d 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "2945c0b8aa2bfc5c93aaaf8534f77f46c9f6087f",
+  "prompts": {},
+  "sessions": {
+    "s_403eb8c2619347": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0989925282c25b88",
+        "model": "unknown"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_e7cc16202efb78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90820fe9-ff33-42e5-a458-280f43deec9f",
+        "model": "unknown"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
