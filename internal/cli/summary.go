@@ -28,10 +28,7 @@ type RepoCommitsDTO struct {
 func findSlice(ws config.Workspace, name string) (model.Slice, error) {
 	sp := config.StatePaths()
 
-	slices, err := discovery.Discover(ws)
-	if err != nil {
-		return model.Slice{}, fmt.Errorf("discover: %w", err)
-	}
+	slices := discovery.Report(ws, sp.Registry).Slices
 
 	ov, _ := discovery.LoadOverrides(sp.Overrides)
 	slices = discovery.Apply(slices, ov)

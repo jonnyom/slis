@@ -53,11 +53,15 @@ const (
 
 // slicesLoadedMsg is sent by loadSlicesCmd when slice discovery completes.
 // skipped/repoErrors count the worktrees/repos discovery could not surface, so
-// the browser can hint that some worktrees are hidden.
+// the browser can hint that some worktrees are hidden. candidates are unmanaged
+// worktrees awaiting opt-in import; missing are registered slices whose worktree
+// has gone.
 type slicesLoadedMsg struct {
 	slices     []model.Slice
 	skipped    int
 	repoErrors int
+	candidates []discovery.Candidate
+	missing    []discovery.MissingMember
 	err        error
 }
 
@@ -75,6 +79,14 @@ type Model struct {
 	// hint ("N hidden worktrees — slis doctor") so slices never vanish silently.
 	skippedWorktrees int
 	skippedRepos     int
+
+	// Unmanaged worktrees awaiting opt-in import (candidates) and registered
+	// slices whose worktree has gone (missing). Candidates drive the "N new
+	// worktrees — press i" hint + import overlay; missing show as dimmed rows.
+	candidates     []discovery.Candidate
+	missing        []discovery.MissingMember
+	showCandidates bool // candidate import/ignore overlay
+	candidateSel   int
 
 	view        viewMode // browser or cockpit
 	panel       panel    // focused left panel within the cockpit
@@ -275,7 +287,7 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 	return func() tea.Msg {
 		sp := config.StatePaths()
 
-		rep := discovery.DiscoverReport(ws)
+		rep := discovery.Report(ws, sp.Registry)
 
 		ov, _ := discovery.LoadOverrides(sp.Overrides)
 		slices := discovery.Apply(rep.Slices, ov)
@@ -291,6 +303,8 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 			slices:     slices,
 			skipped:    len(rep.Skipped),
 			repoErrors: len(rep.RepoErrors),
+			candidates: rep.Candidates,
+			missing:    rep.Missing,
 		}
 	}
 }
@@ -789,6 +803,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.slices = msg.slices
 		m.skippedWorktrees = msg.skipped
 		m.skippedRepos = msg.repoErrors
+		m.candidates = msg.candidates
+		m.missing = msg.missing
+		if len(m.candidates) == 0 {
+			m.showCandidates = false // nothing left to import
+		}
+		m.candidateSel = clamp(m.candidateSel, 0, max(0, len(m.candidates)-1))
 		if len(m.slices) == 0 {
 			m.focus = 0
 		} else if m.focus >= len(m.slices) {
@@ -950,6 +970,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sp := config.StatePaths()
 		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir), m.batchLoadAll(), m.loadPreview())
 
+	case candidateActionMsg:
+		if msg.wsDirty {
+			m.ws = msg.ws // pick up the new ignore entry
+		}
+		sp := config.StatePaths()
+		return m, tea.Batch(loadSlicesCmd(m.ws), loadSessionsCmd(m.slices, sp.EventsDir))
+
 	case editorOpenedMsg:
 		if msg.err != nil {
 			m.status = msg.err.Error()
@@ -980,7 +1007,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Ignore while an overlay/help is up.
 	if m.showHelp || m.pendingSwap != nil || m.pendingRemove != nil ||
 		m.pendingStack != nil || m.showProcOverlay ||
-		m.showConflictOverlay || m.showEditorPicker {
+		m.showConflictOverlay || m.showEditorPicker || m.showCandidates {
 		return m, nil
 	}
 
@@ -1062,6 +1089,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.showProcOverlay {
 		return m.updateOverlayKeys(msg)
+	}
+	if m.showCandidates {
+		return m.updateCandidateKeys(msg)
 	}
 	if m.showEditorPicker {
 		return m.updateEditorPickerKeys(msg)
@@ -1263,6 +1293,62 @@ func slisAdoptCmd() tea.Cmd {
 	return tea.ExecProcess(c, func(err error) tea.Msg { return adoptFinishedMsg{err: err} })
 }
 
+// candidateActionMsg is delivered after an import/ignore action on a candidate.
+// ws carries the (possibly updated) workspace so the model picks up a new ignore
+// entry; it is zero for an import (which only touches the registry).
+type candidateActionMsg struct {
+	ws      config.Workspace
+	wsDirty bool
+}
+
+// importCandidateCmd registers a candidate worktree in the registry off the UI
+// goroutine (opt-in ingestion), then triggers a reload so it appears as a slice.
+func importCandidateCmd(c discovery.Candidate) tea.Cmd {
+	return func() tea.Msg {
+		sp := config.StatePaths()
+		reg, _, _ := config.LoadRegistry(sp.Registry)
+		reg.Import(c.Slice, c.Repo, c.Branch, c.Path)
+		_ = config.SaveRegistry(sp.Registry, reg)
+		return candidateActionMsg{}
+	}
+}
+
+// ignoreCandidateCmd appends a candidate's exact path to grouping.ignore in
+// workspace.yaml so it is never ingested, then reports the updated workspace.
+func ignoreCandidateCmd(ws config.Workspace, c discovery.Candidate) tea.Cmd {
+	return func() tea.Msg {
+		ws.Grouping.Ignore = append(ws.Grouping.Ignore, c.Path)
+		_ = config.SaveWorkspace(config.WorkspacePath(), ws)
+		return candidateActionMsg{ws: ws, wsDirty: true}
+	}
+}
+
+// updateCandidateKeys handles the candidate import/ignore overlay.
+func (m Model) updateCandidateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	n := len(m.candidates)
+	switch msg.String() {
+	case "esc", "q":
+		m.showCandidates = false
+	case "j", "down":
+		if n > 0 && m.candidateSel < n-1 {
+			m.candidateSel++
+		}
+	case "k", "up":
+		if m.candidateSel > 0 {
+			m.candidateSel--
+		}
+	case "i", "enter":
+		if m.candidateSel >= 0 && m.candidateSel < n {
+			return m, importCandidateCmd(m.candidates[m.candidateSel])
+		}
+	case "x":
+		if m.candidateSel >= 0 && m.candidateSel < n {
+			return m, ignoreCandidateCmd(m.ws, m.candidates[m.candidateSel])
+		}
+	}
+	return m, nil
+}
+
 // updateSwapKeys handles the activate/deactivate confirmation prompt.
 func (m Model) updateSwapKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	req := *m.pendingSwap
@@ -1432,6 +1518,9 @@ func (m Model) View() string {
 	}
 	if m.showProcOverlay {
 		return renderProcOverlay(m)
+	}
+	if m.showCandidates {
+		return renderCandidateOverlay(m)
 	}
 	if m.showConflictOverlay {
 		return renderConflictOverlay(m)

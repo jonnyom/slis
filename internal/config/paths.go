@@ -11,6 +11,8 @@ type Paths struct {
 	StateDir string
 	// Overrides is the path to the manual-grouping overrides file.
 	Overrides string
+	// Registry is the path to the managed-slice registry file (opt-in ingestion).
+	Registry string
 	// ActiveJournal is the path to the active-swap journal file.
 	ActiveJournal string
 	// EventsDir is the directory where hook events are stored.
@@ -56,6 +58,7 @@ func StatePaths() Paths {
 	return Paths{
 		StateDir:      stateDir,
 		Overrides:     filepath.Join(stateDir, "overrides.yaml"),
+		Registry:      filepath.Join(stateDir, "registry.yaml"),
 		ActiveJournal: filepath.Join(stateDir, "active.json"),
 		EventsDir:     filepath.Join(stateDir, "events"),
 		Prefs:         filepath.Join(stateDir, "prefs.json"),

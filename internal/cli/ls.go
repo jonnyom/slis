@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -48,13 +49,34 @@ type RepoErrorDTO struct {
 	Err  string `json:"error"`
 }
 
+// CandidateDTO is a JSON-friendly worktree that slis found but did NOT ingest as
+// a slice (opt-in): import it with `slis import` or hide it with `slis ignore`.
+type CandidateDTO struct {
+	Repo   string `json:"repo"`
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	Slice  string `json:"slice"`
+}
+
+// MissingDTO is a JSON-friendly registered slice member whose worktree no longer
+// exists (or moved off its branch), so a known slice never silently vanishes.
+type MissingDTO struct {
+	Slice  string `json:"slice"`
+	Repo   string `json:"repo"`
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+}
+
 // LsResultDTO is the top-level `slis ls --json` payload: the slices plus the
-// worktrees that were skipped and the repos that failed to list, so no worktree
-// disappears without explanation.
+// worktrees that were skipped, the repos that failed to list, unmanaged
+// candidate worktrees, and registered-but-missing members — so no worktree
+// disappears (or appears) without explanation.
 type LsResultDTO struct {
 	Slices     []SliceDTO           `json:"slices"`
 	Skipped    []SkippedWorktreeDTO `json:"skipped,omitempty"`
 	RepoErrors []RepoErrorDTO       `json:"repo_errors,omitempty"`
+	Candidates []CandidateDTO       `json:"candidates,omitempty"`
+	Missing    []MissingDTO         `json:"missing,omitempty"`
 }
 
 // listSlices loads all slices from the workspace, applies overrides, marks the
@@ -68,11 +90,20 @@ func listSlices(ws config.Workspace, overridesPath, journalPath string) ([]Slice
 	return res.Slices, nil
 }
 
-// listSlicesReport is listSlices plus the skipped-worktree / repo-error report
-// from discovery, so callers that surface hidden worktrees (ls, doctor, TUI)
-// can report them.
+// registryPathFor returns the managed-slice registry path that sits beside the
+// given overrides file, so a caller that passes an isolated overrides path (a
+// test) automatically gets an isolated registry too.
+func registryPathFor(overridesPath string) string {
+	return filepath.Join(filepath.Dir(overridesPath), "registry.yaml")
+}
+
+// listSlicesReport is listSlices plus the skipped-worktree / repo-error /
+// candidate / missing report from discovery, so callers that surface hidden or
+// unmanaged worktrees (ls, doctor, TUI) can report them. Ingestion is opt-in:
+// only registered (or managed-tree) worktrees become slices; the rest are
+// candidates.
 func listSlicesReport(ws config.Workspace, overridesPath, journalPath string) (LsResultDTO, error) {
-	rep := discovery.DiscoverReport(ws)
+	rep := discovery.Report(ws, registryPathFor(overridesPath))
 
 	ov, _ := discovery.LoadOverrides(overridesPath)
 	slices := discovery.Apply(rep.Slices, ov)
@@ -98,6 +129,12 @@ func listSlicesReport(ws config.Workspace, overridesPath, journalPath string) (L
 	}
 	for _, e := range rep.RepoErrors {
 		result.RepoErrors = append(result.RepoErrors, RepoErrorDTO(e))
+	}
+	for _, c := range rep.Candidates {
+		result.Candidates = append(result.Candidates, CandidateDTO(c))
+	}
+	for _, mm := range rep.Missing {
+		result.Missing = append(result.Missing, MissingDTO(mm))
 	}
 	return result, nil
 }
@@ -166,9 +203,25 @@ var lsCmd = &cobra.Command{
 		}
 
 		renderSlicesTable(os.Stdout, res.Slices)
+		renderMissingTable(os.Stdout, res.Missing)
 		renderSkippedNotice(os.Stderr, res)
 		return nil
 	},
+}
+
+// renderMissingTable prints registered slices whose worktree has gone missing,
+// each flagged so a vanished slice is obvious (not silently absent).
+func renderMissingTable(w io.Writer, missing []MissingDTO) {
+	if len(missing) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "MISSING\tREPO\tBRANCH\tPATH")
+	for _, m := range missing {
+		fmt.Fprintf(tw, "⚠ %s\t%s\t%s\t%s\n", m.Slice, m.Repo, m.Branch, m.Path)
+	}
+	tw.Flush()
 }
 
 // renderSkippedNotice prints a short warning to w (stderr) when discovery hid
@@ -190,6 +243,10 @@ func renderSkippedNotice(w io.Writer, res LsResultDTO) {
 	}
 	for _, e := range res.RepoErrors {
 		fmt.Fprintf(w, "⚠ repo %q could not be read: %s — run slis doctor\n", e.Repo, e.Err)
+	}
+	if n := len(res.Candidates); n > 0 {
+		fmt.Fprintf(w, "%d new worktree%s found — `slis candidates` to list, `slis import <path>` (or --all) to adopt\n",
+			n, plural(n))
 	}
 }
 
