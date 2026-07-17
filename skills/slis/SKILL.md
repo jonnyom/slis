@@ -39,7 +39,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 |---|---|---|---|
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
-| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a tmux session is attached |
+| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a tmux session is attached. Clicking a banner runs `slis focus <slice>` to jump your tmux client to that slice (terminal-notifier only; set `notify.activate` to a terminal app bundle id to also foreground it) |
 | `slis ls` | read | **yes** | List all slices + members + active flag (`--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`) |
 | `slis candidates` | read | **yes** | List discovered-but-unmanaged worktrees awaiting opt-in import |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
@@ -68,6 +68,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis group <name> <slice>...` | mutate | no | Manually group slices under one name (writes `overrides.yaml`) |
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |
+| `slis focus <slice>` | mutate | no | Switch the active tmux client to the slice's session (creates it if missing); prints `tmux attach -t …` when no client is attached. This is what a clicked desktop notification runs |
 
 `*` `edit` opens an editor / prints a path; it does not change repo state.
 `slis hook <event>` exists but is hidden and machine-invoked by Claude Code — never call it by hand.

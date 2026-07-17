@@ -269,6 +269,78 @@ func Attach(slice string) error {
 	return cmd.Run()
 }
 
+// Client is a single attached tmux client: its controlling TTY, the session it
+// is currently viewing, and its last-activity time (unix seconds) used to pick
+// the most recently used client to steal focus onto.
+type Client struct {
+	TTY          string
+	Session      string
+	LastActivity int64
+}
+
+// clientListFormat is the -F format string for ListClients: tty, session name,
+// and last-activity timestamp, tab-separated.
+const clientListFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
+
+// parseClients parses `tmux list-clients -F clientListFormat` output. Lines that
+// are blank, malformed, or missing a TTY are skipped. Pure — unit-testable
+// without spawning tmux.
+func parseClients(raw string) []Client {
+	var clients []Client
+	for _, line := range strings.Split(strings.TrimRight(raw, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		tty := strings.TrimSpace(parts[0])
+		if tty == "" {
+			continue
+		}
+		activity, _ := strconv.ParseInt(strings.TrimSpace(parts[2]), 10, 64)
+		clients = append(clients, Client{
+			TTY:          tty,
+			Session:      strings.TrimSpace(parts[1]),
+			LastActivity: activity,
+		})
+	}
+	return clients
+}
+
+// ListClients returns the currently attached tmux clients. tmux only lists
+// attached clients, so an empty slice means nobody is attached anywhere.
+func ListClients() ([]Client, error) {
+	out, err := exec.Command("tmux", "list-clients", "-F", clientListFormat).Output()
+	if err != nil {
+		return nil, fmt.Errorf("tmux list-clients: %w", err)
+	}
+	return parseClients(string(out)), nil
+}
+
+// MostRecentClient returns the client with the greatest last-activity time (the
+// one the user most recently used). ok is false when clients is empty.
+func MostRecentClient(clients []Client) (Client, bool) {
+	if len(clients) == 0 {
+		return Client{}, false
+	}
+	best := clients[0]
+	for _, c := range clients[1:] {
+		if c.LastActivity > best.LastActivity {
+			best = c
+		}
+	}
+	return best, true
+}
+
+// SwitchClientArgv returns the argv to point a specific client (by its TTY) at
+// the slice's session. Returned as (name, args) so it is unit-testable without
+// spawning tmux.
+func SwitchClientArgv(clientTTY, slice string) (string, []string) {
+	return "tmux", []string{"switch-client", "-c", clientTTY, "-t", SessionName(slice)}
+}
+
 // KillSession kills the slice's session (used for cleanup/teardown).
 // Returns nil if the session does not exist.
 func KillSession(slice string) error {

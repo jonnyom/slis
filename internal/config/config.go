@@ -88,6 +88,10 @@ type NotifyChannel struct {
 type Notify struct {
 	NeedsInput NotifyChannel `yaml:"needs_input"`
 	Done       NotifyChannel `yaml:"done"`
+	// Activate is an optional macOS application bundle id (e.g.
+	// "com.mitchellh.ghostty", "com.googlecode.iterm2", "com.apple.Terminal") that
+	// terminal-notifier foregrounds when a banner is clicked. Empty = off.
+	Activate string `yaml:"activate"`
 }
 
 // Workspace is the top-level config loaded from workspace.yaml.

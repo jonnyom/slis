@@ -122,6 +122,45 @@ func TestHandleHookDoneFires(t *testing.T) {
 	}
 }
 
+func TestHandleHookSetsFocusClickAction(t *testing.T) {
+	fired, restore := captureNotifier(t)
+	defer restore()
+
+	origSelf := selfExecutable
+	selfExecutable = func() string { return "/opt/bin/slis" }
+	defer func() { selfExecutable = origSelf }()
+
+	wt := t.TempDir()
+	ev := t.TempDir()
+	cfg := config.Notify{Activate: "com.apple.Terminal"}
+
+	sendHook(t, "Notification", wt, ev, cfg, 1) // → waiting-input (fires)
+
+	if len(*fired) != 1 {
+		t.Fatalf("want 1 notification, got %d: %v", len(*fired), *fired)
+	}
+	got := (*fired)[0]
+	want := `'/opt/bin/slis' focus 'alpha'`
+	if got.ExecuteOnClick != want {
+		t.Errorf("ExecuteOnClick = %q, want %q", got.ExecuteOnClick, want)
+	}
+	if got.Activate != "com.apple.Terminal" {
+		t.Errorf("Activate = %q, want com.apple.Terminal", got.Activate)
+	}
+}
+
+func TestFocusCommandQuotesQuoteInSliceName(t *testing.T) {
+	origSelf := selfExecutable
+	selfExecutable = func() string { return "slis" }
+	defer func() { selfExecutable = origSelf }()
+
+	got := focusCommand("weird'name")
+	want := `'slis' focus 'weird'\''name'`
+	if got != want {
+		t.Errorf("focusCommand = %q, want %q", got, want)
+	}
+}
+
 func TestHandleHookAppliesConfiguredSound(t *testing.T) {
 	fired, restore := captureNotifier(t)
 	defer restore()
