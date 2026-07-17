@@ -144,7 +144,7 @@ func TestDeactivateRestoresExactly(t *testing.T) {
 		t.Fatalf("activateRepo: %v", err)
 	}
 
-	if err := deactivateRepo(st); err != nil {
+	if err := deactivateRepo("", st, false); err != nil {
 		t.Fatalf("deactivateRepo: %v", err)
 	}
 
@@ -192,7 +192,7 @@ func TestDeactivateRestoresStashedEdits(t *testing.T) {
 		t.Fatalf("activateRepo: %v", err)
 	}
 
-	if err := deactivateRepo(st); err != nil {
+	if err := deactivateRepo("", st, false); err != nil {
 		t.Fatalf("deactivateRepo: %v", err)
 	}
 
@@ -265,7 +265,7 @@ func TestDeactivateStashConflictSurfaces(t *testing.T) {
 
 	// deactivate: switches primary back to main (shared.txt="other"), then pops
 	// stash (base→wip) → CONFLICT.
-	err = deactivateRepo(st)
+	err = deactivateRepo("", st, false)
 	if !errors.Is(err, ErrStashConflict) {
 		t.Fatalf("want ErrStashConflict, got %v", err)
 	}
@@ -451,7 +451,7 @@ func TestDeactivateSliceClearsJournal(t *testing.T) {
 		t.Fatalf("Activate: %v", err)
 	}
 
-	if err := Deactivate(journalPath); err != nil {
+	if err := Deactivate(journalPath, false); err != nil {
 		t.Fatalf("Deactivate: unexpected error: %v", err)
 	}
 
@@ -625,7 +625,7 @@ func TestDeactivateConflictKeepsJournal(t *testing.T) {
 	}
 
 	// Deactivate should return a non-nil error (stash conflict).
-	deactivateErr := Deactivate(journalPath)
+	deactivateErr := Deactivate(journalPath, false)
 	if deactivateErr == nil {
 		t.Fatal("Deactivate: expected error on stash conflict, got nil")
 	}
@@ -731,7 +731,7 @@ func TestRecoverState(t *testing.T) {
 	}
 
 	// After Deactivate, RecoverState must return nil.
-	if err := Deactivate(journalPath); err != nil {
+	if err := Deactivate(journalPath, false); err != nil {
 		t.Fatalf("Deactivate: %v", err)
 	}
 
@@ -838,6 +838,231 @@ func TestRefreshMovesToNewTip(t *testing.T) {
 	}
 	if primaryBranch != "" {
 		t.Errorf("primary after Refresh: want detached HEAD, got branch %q", primaryBranch)
+	}
+}
+
+// TestStaleRepos verifies the staleness comparison: a repo is stale only when
+// its recorded TargetSHA differs from the current branch tip.
+func TestStaleRepos(t *testing.T) {
+	j := &Journal{Slice: "s", Repos: []RepoState{
+		{Repo: "web", TargetSHA: "aaa"},
+		{Repo: "api", TargetSHA: "bbb"},
+	}}
+	if got := StaleRepos(j, map[string]string{"web": "aaa", "api": "bbb"}); len(got) != 0 {
+		t.Errorf("all tips match — want no stale repos, got %v", got)
+	}
+	got := StaleRepos(j, map[string]string{"web": "aaa", "api": "ZZZ"})
+	if len(got) != 1 || got[0] != "api" {
+		t.Errorf("api tip advanced — want [api], got %v", got)
+	}
+	// A repo with no known tip (or empty target) is skipped, not flagged.
+	if got := StaleRepos(j, map[string]string{"web": ""}); len(got) != 0 {
+		t.Errorf("missing/empty tips should be skipped, got %v", got)
+	}
+	if got := StaleRepos(nil, map[string]string{"web": "x"}); got != nil {
+		t.Errorf("nil journal → nil, got %v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Drift-detection / rescue tests (adversarial)
+// ---------------------------------------------------------------------------
+
+// commitOnDetachedPrimary makes a new commit directly on the (detached) primary
+// and returns the new HEAD sha, simulating a user committing on a swapped-in
+// primary.
+func commitOnDetachedPrimary(t *testing.T, primary string) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(primary, "on-detached.txt"), []byte("work on detached HEAD\n"), 0o644); err != nil {
+		t.Fatalf("write on-detached.txt: %v", err)
+	}
+	if _, err := git.Run(primary, "add", "on-detached.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := git.Run(primary, "commit", "-q", "-m", "work on detached HEAD"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	head, err := git.RevParse(primary, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse HEAD: %v", err)
+	}
+	return head
+}
+
+// TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues verifies that a
+// commit made on a detached primary blocks a plain deactivate (zero state
+// change, no rescue branch), and that --force first rescues that commit to a
+// slis/rescue/<slice>-<repo> branch before restoring.
+func TestDeactivateRefusesCommitOnDetachedPrimaryThenForceRescues(t *testing.T) {
+	r, _ := setupRepoWithWorktree(t)
+
+	priorHEAD, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse prior HEAD: %v", err)
+	}
+
+	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat"})
+	if err != nil {
+		t.Fatalf("activateRepo: %v", err)
+	}
+
+	// User commits on the detached primary — HEAD advances beyond TargetSHA.
+	newHEAD := commitOnDetachedPrimary(t, r)
+	if newHEAD == st.TargetSHA {
+		t.Fatal("commit did not advance HEAD — test setup error")
+	}
+
+	// Plain deactivate must refuse with ErrPrimaryDrifted and change nothing.
+	err = deactivateRepo("myslice", st, false)
+	if !errors.Is(err, ErrPrimaryDrifted) {
+		t.Fatalf("deactivateRepo (no force): want ErrPrimaryDrifted, got %v", err)
+	}
+	afterHEAD, _ := git.RevParse(r, "HEAD")
+	if afterHEAD != newHEAD {
+		t.Errorf("HEAD changed on refused deactivate: want %q, got %q", newHEAD, afterHEAD)
+	}
+	rescue := "slis/rescue/myslice-web"
+	if git.RefExists(r, "refs/heads/"+rescue) {
+		t.Errorf("rescue branch %q created without --force", rescue)
+	}
+
+	// Forced deactivate rescues the commit, then restores to the prior branch.
+	if err := deactivateRepo("myslice", st, true); err != nil {
+		t.Fatalf("deactivateRepo (force): %v", err)
+	}
+	if !git.RefExists(r, "refs/heads/"+rescue) {
+		t.Fatalf("rescue branch %q was not created under --force", rescue)
+	}
+	rescueTip, err := git.RevParse(r, rescue)
+	if err != nil {
+		t.Fatalf("RevParse rescue branch: %v", err)
+	}
+	if rescueTip != newHEAD {
+		t.Errorf("rescue branch tip: want %q (the detached commit), got %q", newHEAD, rescueTip)
+	}
+	branch, _ := git.CurrentBranch(r)
+	if branch != "main" {
+		t.Errorf("branch after forced deactivate: want %q, got %q", "main", branch)
+	}
+	head, _ := git.RevParse(r, "HEAD")
+	if head != priorHEAD {
+		t.Errorf("HEAD after forced deactivate: want prior %q, got %q", priorHEAD, head)
+	}
+}
+
+// TestDeactivateRefusesManualSwitchDrift verifies that when the user manually
+// switches the primary to another branch (no commits made on the detached
+// HEAD), a plain deactivate refuses cleanly with zero state change.
+func TestDeactivateRefusesManualSwitchDrift(t *testing.T) {
+	r, _ := setupRepoWithWorktree(t)
+
+	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat"})
+	if err != nil {
+		t.Fatalf("activateRepo: %v", err)
+	}
+
+	// User manually switches the primary back to main.
+	if _, err := git.Run(r, "switch", "main"); err != nil {
+		t.Fatalf("manual switch to main: %v", err)
+	}
+
+	err = deactivateRepo("myslice", st, false)
+	if !errors.Is(err, ErrPrimaryDrifted) {
+		t.Fatalf("want ErrPrimaryDrifted, got %v", err)
+	}
+
+	// State unchanged: still on main.
+	branch, _ := git.CurrentBranch(r)
+	if branch != "main" {
+		t.Errorf("branch after refused deactivate: want %q, got %q", "main", branch)
+	}
+}
+
+// TestDeactivateRefusesWhenPriorBranchGone verifies that if the branch the
+// primary was on before activation has been deleted, deactivate errors with
+// ErrPriorBranchGone rather than silently detaching.
+func TestDeactivateRefusesWhenPriorBranchGone(t *testing.T) {
+	r, _ := setupRepoWithWorktree(t)
+
+	// Put the primary on a deletable branch "prior" before activating.
+	if _, err := git.Run(r, "switch", "-c", "prior"); err != nil {
+		t.Fatalf("create prior branch: %v", err)
+	}
+
+	st, err := activateRepo(RepoPlan{Repo: "web", Primary: r, Branch: "feat"})
+	if err != nil {
+		t.Fatalf("activateRepo: %v", err)
+	}
+	if st.PriorBranch != "prior" {
+		t.Fatalf("PriorBranch: want %q, got %q", "prior", st.PriorBranch)
+	}
+
+	// Delete the prior branch while the primary is detached.
+	if _, err := git.Run(r, "branch", "-D", "prior"); err != nil {
+		t.Fatalf("delete prior branch: %v", err)
+	}
+
+	err = deactivateRepo("myslice", st, false)
+	if !errors.Is(err, ErrPriorBranchGone) {
+		t.Fatalf("want ErrPriorBranchGone, got %v", err)
+	}
+
+	// State unchanged: still detached at the slice tip.
+	head, _ := git.RevParse(r, "HEAD")
+	if head != st.TargetSHA {
+		t.Errorf("HEAD changed on refused deactivate: want %q, got %q", st.TargetSHA, head)
+	}
+}
+
+// TestRefreshRefusesDirtyPrimary verifies that Refresh refuses to advance a
+// dirty primary and makes zero state change (mirrors activate's dirty guard).
+func TestRefreshRefusesDirtyPrimary(t *testing.T) {
+	r, wt := setupRepoWithWorktree(t)
+	journalPath := filepath.Join(t.TempDir(), "active.json")
+
+	if _, err := Activate("s", []RepoActivation{{Repo: "a", Primary: r, Branch: "feat"}}, journalPath, ActivateOptions{}); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	oldTip, err := git.RevParse(r, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParse old tip: %v", err)
+	}
+
+	// Advance feat so Refresh would want to move the primary.
+	if err := os.WriteFile(filepath.Join(wt, "advance.txt"), []byte("advance\n"), 0o644); err != nil {
+		t.Fatalf("write advance.txt: %v", err)
+	}
+	if _, err := git.Run(wt, "add", "advance.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := git.Run(wt, "commit", "-q", "-m", "advance feat"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	// Make the primary dirty with an untracked file.
+	if err := os.WriteFile(filepath.Join(r, "dirty.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatalf("write dirty.txt: %v", err)
+	}
+
+	_, err = Refresh(journalPath)
+	if err == nil {
+		t.Fatal("Refresh: expected error for dirty primary, got nil")
+	}
+	if !strings.Contains(err.Error(), "dirty") {
+		t.Errorf("Refresh error: want mention of 'dirty', got %v", err)
+	}
+
+	// Zero state change: primary still at the old tip.
+	head, _ := git.RevParse(r, "HEAD")
+	if head != oldTip {
+		t.Errorf("primary HEAD advanced despite refusal: want %q, got %q", oldTip, head)
+	}
+	loaded, err := Load(journalPath)
+	if err != nil || loaded == nil {
+		t.Fatalf("Load: %v (loaded=%v)", err, loaded)
+	}
+	if loaded.Repos[0].TargetSHA != oldTip {
+		t.Errorf("journal TargetSHA changed despite refusal: want %q, got %q", oldTip, loaded.Repos[0].TargetSHA)
 	}
 }
 

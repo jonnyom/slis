@@ -30,6 +30,7 @@ type SliceDTO struct {
 	Name    string      `json:"name"`
 	Base    string      `json:"base"`
 	Active  bool        `json:"active"`
+	Stale   bool        `json:"stale"`
 	Members []MemberDTO `json:"members"`
 }
 
@@ -115,6 +116,9 @@ func listSlicesReport(ws config.Workspace, overridesPath, journalPath string) (L
 		dto := toSliceDTO(s)
 		if j != nil && j.Slice == s.Name {
 			dto.Active = true
+			if len(swap.StaleRepos(j, tipByRepo(s))) > 0 {
+				dto.Stale = true
+			}
 		}
 		dtos = append(dtos, dto)
 	}
@@ -137,6 +141,16 @@ func listSlicesReport(ws config.Workspace, overridesPath, journalPath string) (L
 		result.Missing = append(result.Missing, MissingDTO(mm))
 	}
 	return result, nil
+}
+
+// tipByRepo maps each member's repo name to its current branch tip SHA, for
+// staleness comparison against the swap journal's recorded TargetSHA.
+func tipByRepo(s model.Slice) map[string]string {
+	m := make(map[string]string, len(s.Members))
+	for repo, mem := range s.Members {
+		m[repo] = mem.TipSHA
+	}
+	return m
 }
 
 // toSliceDTO converts a model.Slice to a SliceDTO. Members are sorted by Repo
@@ -169,6 +183,9 @@ func renderSlicesTable(w io.Writer, dtos []SliceDTO) {
 		active := ""
 		if dto.Active {
 			active = "●"
+			if dto.Stale {
+				active = "● stale"
+			}
 		}
 		repoSummaries := make([]string, 0, len(dto.Members))
 		for _, m := range dto.Members {

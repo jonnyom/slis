@@ -16,6 +16,15 @@ track which slice's Claude session needs your attention.
 HEAD) so the servers rebuild against your feature; `slis deactivate` restores
 them. The real worktrees are never touched — activate is a reversible swap.
 
+While a slice is active the primaries are in **detached HEAD** — do your commits
+and `gt` work in the slice's *worktrees* (`SLIS_WORKTREES`), never the primaries;
+`gt` mutations on a detached primary won't work by design. `deactivate` refuses a
+primary that drifted off its slice tip (you committed on the detached HEAD or
+switched branches) with zero state change; `deactivate --force` restores anyway
+and first rescues any commits on the detached HEAD to a `slis/rescue/<slice>-<repo>`
+branch so nothing is lost. If the branch advances, `slis refresh` fast-forwards
+the primaries (it refuses a dirty primary).
+
 ## Driving slis as an agent
 
 slis is built to be driven headlessly. Two rules:
@@ -50,7 +59,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
-| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs (`--fix` auto-repairs the safe ones; never prunes) |
+| `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs, plus swap-journal health (stale journal, deleted prior branch, orphaned detach). `--fix` auto-repairs the safe ones (incl. deleting a stale journal only when every primary is on a branch); never prunes worktrees |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
 | `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run) |
 | `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees) |
@@ -58,8 +67,8 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis ignore <path-or-glob>` | mutate | no | Add a path/glob to `grouping.ignore` so matching worktrees are never ingested |
 | `slis forget <slice>` | mutate | no | Drop a slice from the registry (does not touch git — use for a missing slice) |
 | `slis activate <slice>` | mutate | no | Detach all primaries to the slice's branch tips (`--stash` if dirty) |
-| `slis deactivate` | mutate | no | Restore primaries to their prior branches |
-| `slis refresh` | mutate | no | Advance active primaries to the slice branches' new tips |
+| `slis deactivate` | mutate | no | Restore primaries to their prior branches; refuses a drifted primary (zero state change). `--force` restores anyway, rescuing detached-HEAD commits to `slis/rescue/<slice>-<repo>` first |
+| `slis refresh` | mutate | no | Advance active primaries to the slice branches' new tips (refuses a dirty primary) |
 | `slis restack <slice>` | mutate | no | `gt restack` across the slice's repos (refuses dirty worktrees) |
 | `slis sync <slice>` | mutate | no | `gt sync` per repo — **repo-wide**: may overwrite trunk, delete merged branches |
 | `slis submit <slice>` | mutate | no | `gt submit` — **force-pushes** the stack + opens/updates PRs |

@@ -248,14 +248,26 @@ func runDoctor() []doctorFinding {
 	worktreeIssues = append(worktreeIssues, missingSliceFindings(rep.Missing)...)
 	worktreeIssues = append(worktreeIssues, orphanWorktreeFindings(ws)...)
 	findings = append(findings, worktreeIssues...)
+
+	// Swap-journal health (drift, stale journal, orphaned detach). Only warn/fail
+	// findings count toward the verdict; an "ok"/"healthy" swap line does not.
+	swapFinds := swapFindings(ws, sp.ActiveJournal)
+	swapIssues := 0
+	for _, f := range swapFinds {
+		if f.Level == lvlWarn || f.Level == lvlFail {
+			swapIssues++
+		}
+	}
+	findings = append(findings, swapFinds...)
+
 	// Candidates are informational (opt-in), not issues — appended after the
 	// health verdict so they don't count as warns/fails.
 	candidateInfo := candidateFindings(rep.Candidates)
 
 	switch {
-	case len(dtos) == 0 && sliceIssues == 0 && len(worktreeIssues) == 0:
+	case len(dtos) == 0 && sliceIssues == 0 && len(worktreeIssues) == 0 && swapIssues == 0:
 		findings = append(findings, doctorFinding{Level: lvlInfo, Title: "no slices discovered"})
-	case sliceIssues == 0 && len(worktreeIssues) == 0:
+	case sliceIssues == 0 && len(worktreeIssues) == 0 && swapIssues == 0:
 		findings = append(findings, doctorFinding{Level: lvlOK,
 			Title: fmt.Sprintf("%d slice(s) look healthy", len(dtos))})
 	}

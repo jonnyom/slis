@@ -35,6 +35,7 @@ var (
 	waitStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // needs-input
 	doneStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("87")).Bold(true)  // finished a turn — your move (cyan)
 	liveStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)  // currently-active slice
+	staleStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true) // active but behind tip
 	mergedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))            // a merged PR
 	readyStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true) // ready-to-clear tag
 	emptyBoxStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(1, 3)

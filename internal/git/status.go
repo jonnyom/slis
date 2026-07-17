@@ -34,6 +34,20 @@ func IsMergedInto(dir, branch, trunk string) bool {
 	return err == nil
 }
 
+// IsAncestor reports whether commit `ancestor` is an ancestor of commit
+// `descendant` in dir's repo — i.e. `descendant` contains `ancestor` in its
+// history. It runs `git merge-base --is-ancestor <ancestor> <descendant>`,
+// which exits 0 when true and non-zero otherwise. A missing ref or any other
+// non-zero exit is reported as false (not an ancestor) rather than a hard
+// error. Two identical commits are trivially ancestor-of each other → true.
+func IsAncestor(dir, ancestor, descendant string) bool {
+	if ancestor == "" || descendant == "" {
+		return false
+	}
+	_, err := Run(dir, "merge-base", "--is-ancestor", "--end-of-options", ancestor, descendant)
+	return err == nil
+}
+
 // CurrentBranch returns the short branch name for the worktree at dir, or ""
 // if HEAD is detached. It uses `git symbolic-ref --quiet --short HEAD`:
 // the command exits non-zero with empty output when HEAD is not a symbolic

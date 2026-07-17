@@ -121,7 +121,9 @@ func Activate(slice string, repos []RepoActivation, journalPath string, opts Act
 // the repos that failed to deactivate (still in an indeterminate state).
 func rollback(states []RepoState) (failed []RepoState, errs []error) {
 	for i := len(states) - 1; i >= 0; i-- {
-		if err := deactivateRepo(states[i]); err != nil {
+		// During rollback each repo was just detached at its TargetSHA (no drift
+		// possible), so force is not needed and no rescue branch is created.
+		if err := deactivateRepo("", states[i], false); err != nil {
 			failed = append(failed, states[i])
 			errs = append(errs, fmt.Errorf("rollback %q: %w", states[i].Repo, err))
 		}
@@ -134,7 +136,15 @@ func rollback(states []RepoState) (failed []RepoState, errs []error) {
 // If all repos deactivate successfully, the journal is cleared. If any repo
 // fails, the journal is updated to contain only the failed repos so that
 // `slis deactivate` can be re-run to resume.
-func Deactivate(journalPath string) error {
+//
+// Before restoring each repo, Deactivate checks that the primary's HEAD is
+// still detached at the journal's recorded TargetSHA. If it drifted (the user
+// committed on the detached HEAD, switched branches, or the journal is stale),
+// the repo is refused with zero state change — unless force is true. Under
+// force, if commits were made on the detached HEAD (TargetSHA is an ancestor
+// of HEAD), those commits are first rescued to a `slis/rescue/<slice>-<repo>`
+// branch so nothing is ever orphaned.
+func Deactivate(journalPath string, force bool) error {
 	j, err := Load(journalPath)
 	if err != nil {
 		return err
@@ -147,7 +157,7 @@ func Deactivate(journalPath string) error {
 	var errs []error
 	var failed []RepoState
 	for _, st := range j.Repos {
-		if e := deactivateRepo(st); e != nil {
+		if e := deactivateRepo(j.Slice, st, force); e != nil {
 			errs = append(errs, e)
 			failed = append(failed, st)
 		}
@@ -191,21 +201,45 @@ func Refresh(journalPath string) (*Journal, error) {
 		return nil, nil // nothing active
 	}
 
-	changed := false
+	// Resolve each branch's new tip up front so we know which repos need to
+	// advance. Fix F4: refuse to advance any dirty primary — switching would
+	// carry the user's uncommitted work onto the new tip or conflict. This
+	// validation pass runs BEFORE any switch, so a dirty primary aborts the whole
+	// refresh with zero state change (mirrors activate's dirty guard). Refresh has
+	// no --stash of its own: any activation stash is already held and popped on
+	// deactivate, so a second stash here would be unmanaged; the user must commit
+	// or stash their new edits, then re-run refresh.
+	newTargets := make([]string, len(j.Repos))
 	for i := range j.Repos {
 		rs := &j.Repos[i]
 		newTarget, err := git.RevParse(rs.Primary, rs.Branch)
 		if err != nil {
 			return nil, fmt.Errorf("refresh rev-parse %q in %q: %w", rs.Branch, rs.Primary, err)
 		}
+		newTargets[i] = newTarget
 		if newTarget == rs.TargetSHA {
 			continue
 		}
-		// Advance the detached primary to the branch's new tip.
-		if _, err := git.Run(rs.Primary, "switch", "--detach", newTarget); err != nil {
-			return nil, fmt.Errorf("refresh switch --detach %q in %q: %w", newTarget, rs.Primary, err)
+		dirty, err := git.IsDirty(rs.Primary)
+		if err != nil {
+			return nil, fmt.Errorf("refresh is-dirty %q: %w", rs.Primary, err)
 		}
-		rs.TargetSHA = newTarget
+		if dirty {
+			return nil, fmt.Errorf("refresh: primary %q is dirty; commit or stash your changes, then re-run `slis refresh`", rs.Primary)
+		}
+	}
+
+	changed := false
+	for i := range j.Repos {
+		rs := &j.Repos[i]
+		if newTargets[i] == rs.TargetSHA {
+			continue
+		}
+		// Advance the detached primary to the branch's new tip.
+		if _, err := git.Run(rs.Primary, "switch", "--detach", newTargets[i]); err != nil {
+			return nil, fmt.Errorf("refresh switch --detach %q in %q: %w", newTargets[i], rs.Primary, err)
+		}
+		rs.TargetSHA = newTargets[i]
 		changed = true
 	}
 
@@ -222,6 +256,28 @@ func Refresh(journalPath string) (*Journal, error) {
 // produces a merge conflict. The stash is intentionally left intact so the
 // user can resolve the conflict and pop it manually.
 var ErrStashConflict = errors.New("stash pop conflicted; resolve manually (stash left intact)")
+
+// StaleRepos returns the names of the journal's repos whose recorded TargetSHA
+// no longer matches the branch tip given in tipByRepo (keyed by repo name) —
+// i.e. the slice branch has advanced past the detached primary and
+// `slis refresh` would move the primary forward. A repo missing from tipByRepo
+// (no known tip) is skipped. The result is nil when nothing is stale.
+func StaleRepos(j *Journal, tipByRepo map[string]string) []string {
+	if j == nil {
+		return nil
+	}
+	var stale []string
+	for _, rs := range j.Repos {
+		tip, ok := tipByRepo[rs.Repo]
+		if !ok || tip == "" || rs.TargetSHA == "" {
+			continue
+		}
+		if tip != rs.TargetSHA {
+			stale = append(stale, rs.Repo)
+		}
+	}
+	return stale
+}
 
 // RepoPlan describes a single-repo activation request.
 type RepoPlan struct {
@@ -314,13 +370,49 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 	}, nil
 }
 
+// ErrPriorBranchGone is returned when the branch the primary was on before
+// activation no longer exists, so deactivateRepo cannot restore it. The user
+// must recreate the branch (the error names the exact `git branch` command)
+// before deactivating.
+var ErrPriorBranchGone = errors.New("prior branch no longer exists")
+
+// ErrPrimaryDrifted is returned when the primary's HEAD is no longer detached
+// at the journal's recorded TargetSHA, so restoring blindly could lose work.
+// Pass force to restore anyway (commits on the detached HEAD are rescued first).
+var ErrPrimaryDrifted = errors.New("primary HEAD drifted from the recorded slice tip")
+
+// rescueBranchName is the branch a forced deactivate creates to hold commits
+// made on a detached primary before switching away, so they are never orphaned.
+func rescueBranchName(slice string, st RepoState) string {
+	name := "slis/rescue/" + slice
+	if st.Repo != "" {
+		name += "-" + st.Repo
+	}
+	return name
+}
+
+// shortSHA truncates a commit SHA to 7 chars for human-facing messages.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
 // deactivateRepo restores the primary checkout to its state before activateRepo
 // was called. It is the exact inverse of activateRepo:
 //
+//  0. Drift guard: verify the primary is still detached at the recorded
+//     TargetSHA. If it drifted (user committed on the detached HEAD, switched
+//     branches, or the journal is stale) refuse with zero state change unless
+//     force is set. Under force, if commits were made on the detached HEAD
+//     (TargetSHA is an ancestor of HEAD) they are first rescued to a
+//     `slis/rescue/<slice>-<repo>` branch so nothing is orphaned.
 //  1. Switch the primary back to the prior branch (or detach at the prior SHA
-//     if the primary was detached before activation). If the branch switch
-//     fails, fall back to a detached-SHA restore so the stash pop can still
-//     proceed.
+//     if the primary was detached before activation). A prior branch that no
+//     longer exists is a hard error (never a silent fallback); a prior branch
+//     that exists but is checked out elsewhere falls back to a detached-SHA
+//     restore so the stash pop can still proceed.
 //  2. If a stash was saved during activation, locate it by its pinned SHA (and
 //     optionally message) and pop THAT exact entry. On conflict, return
 //     ErrStashConflict without dropping the stash (the user must resolve and
@@ -328,7 +420,41 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 //
 // deactivateRepo never uses --force and never drops/clears the stash on the
 // conflict path.
-func deactivateRepo(st RepoState) error {
+func deactivateRepo(slice string, st RepoState, force bool) error {
+	// 0. Drift guard — compare the primary's current HEAD to the recorded tip.
+	currentHEAD, err := git.RevParse(st.Primary, "HEAD")
+	if err != nil {
+		return fmt.Errorf("rev-parse HEAD in %q: %w", st.Primary, err)
+	}
+	if st.TargetSHA != "" && currentHEAD != st.TargetSHA {
+		if !force {
+			where := "detached at " + shortSHA(currentHEAD)
+			if cur, _ := git.CurrentBranch(st.Primary); cur != "" {
+				where = fmt.Sprintf("on branch %q (%s)", cur, shortSHA(currentHEAD))
+			}
+			return fmt.Errorf("%w in %q: journal expected %s, primary is %s; re-run `slis deactivate --force` to restore anyway",
+				ErrPrimaryDrifted, st.Primary, shortSHA(st.TargetSHA), where)
+		}
+		// Forced restore. If commits were made on the detached HEAD (the recorded
+		// tip is an ancestor of the current HEAD), protect them on a rescue branch
+		// before switching away — never orphan commits.
+		if git.IsAncestor(st.Primary, st.TargetSHA, currentHEAD) {
+			rescue := rescueBranchName(slice, st)
+			if git.RefExists(st.Primary, "refs/heads/"+rescue) {
+				return fmt.Errorf("rescue branch %q already exists in %q — inspect/remove it, then re-run", rescue, st.Primary)
+			}
+			if _, err := git.Run(st.Primary, "branch", "--", rescue, currentHEAD); err != nil {
+				return fmt.Errorf("create rescue branch %q in %q: %w", rescue, st.Primary, err)
+			}
+		}
+	}
+
+	// 1a. Refuse (never silently detach) when the prior branch is gone.
+	if st.PriorBranch != "" && !git.RefExists(st.Primary, "refs/heads/"+st.PriorBranch) {
+		return fmt.Errorf("%w: %q in %q — recreate it with `git -C %s branch %s %s`, then re-run `slis deactivate`",
+			ErrPriorBranchGone, st.PriorBranch, st.Primary, st.Primary, st.PriorBranch, shortSHA(st.PriorSHA))
+	}
+
 	// 1. Restore the branch (or detached HEAD if prior was detached).
 	// Fix C: if restoring the prior branch fails, fall back to detached-SHA
 	// restore so we can still pop the stash.
