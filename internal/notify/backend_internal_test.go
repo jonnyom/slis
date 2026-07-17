@@ -35,7 +35,7 @@ func TestArgvForBackendSelection(t *testing.T) {
 	}
 
 	t.Run("darwin prefers terminal-notifier when present", func(t *testing.T) {
-		name, args, ok := argvFor("darwin", found, n)
+		name, args, ok := argvFor("darwin", found, n, "")
 		if !ok || name != "terminal-notifier" {
 			t.Fatalf("got name=%q ok=%v, want terminal-notifier", name, ok)
 		}
@@ -50,7 +50,7 @@ func TestArgvForBackendSelection(t *testing.T) {
 	})
 
 	t.Run("darwin falls back to osascript when terminal-notifier absent", func(t *testing.T) {
-		name, args, ok := argvFor("darwin", onlyOsascript, n)
+		name, args, ok := argvFor("darwin", onlyOsascript, n, "")
 		if !ok || name != "osascript" {
 			t.Fatalf("got name=%q ok=%v, want osascript", name, ok)
 		}
@@ -66,14 +66,14 @@ func TestArgvForBackendSelection(t *testing.T) {
 	})
 
 	t.Run("darwin with nil lookPath uses osascript", func(t *testing.T) {
-		name, _, ok := argvFor("darwin", nil, n)
+		name, _, ok := argvFor("darwin", nil, n, "")
 		if !ok || name != "osascript" {
 			t.Fatalf("got name=%q ok=%v, want osascript", name, ok)
 		}
 	})
 
 	t.Run("linux uses notify-send", func(t *testing.T) {
-		name, args, ok := argvFor("linux", found, n)
+		name, args, ok := argvFor("linux", found, n, "")
 		if !ok || name != "notify-send" {
 			t.Fatalf("got name=%q ok=%v, want notify-send", name, ok)
 		}
@@ -83,7 +83,7 @@ func TestArgvForBackendSelection(t *testing.T) {
 	})
 
 	t.Run("unsupported OS returns ok=false", func(t *testing.T) {
-		_, _, ok := argvFor("plan9", found, n)
+		_, _, ok := argvFor("plan9", found, n, "")
 		if ok {
 			t.Errorf("argvFor(plan9) ok=true, want false")
 		}
@@ -91,13 +91,38 @@ func TestArgvForBackendSelection(t *testing.T) {
 
 	t.Run("empty sound omits sound flags", func(t *testing.T) {
 		plain := Notification{Title: "slis", Subtitle: "alpha", Message: "hi"}
-		_, args, _ := argvFor("darwin", found, plain)
+		_, args, _ := argvFor("darwin", found, plain, "")
 		if contains(args, "-sound") {
 			t.Errorf("terminal-notifier args %v should not include -sound when Sound empty", args)
 		}
-		_, osArgs, _ := argvFor("darwin", onlyOsascript, plain)
+		_, osArgs, _ := argvFor("darwin", onlyOsascript, plain, "")
 		if containsSub(osArgs[1], "sound name") {
 			t.Errorf("osascript script %q should not include sound when Sound empty", osArgs[1])
+		}
+	})
+
+	t.Run("terminal-notifier sets icon flags when path given", func(t *testing.T) {
+		_, args, _ := argvFor("darwin", found, n, "/tmp/slis.png")
+		for _, want := range []string{"-appIcon", "-contentImage", "/tmp/slis.png"} {
+			if !contains(args, want) {
+				t.Errorf("terminal-notifier args %v missing %q", args, want)
+			}
+		}
+	})
+
+	t.Run("terminal-notifier omits icon flags when path empty", func(t *testing.T) {
+		_, args, _ := argvFor("darwin", found, n, "")
+		for _, unwanted := range []string{"-appIcon", "-contentImage"} {
+			if contains(args, unwanted) {
+				t.Errorf("terminal-notifier args %v should not include %q when icon empty", args, unwanted)
+			}
+		}
+	})
+
+	t.Run("osascript ignores icon path", func(t *testing.T) {
+		_, args, _ := argvFor("darwin", onlyOsascript, n, "/tmp/slis.png")
+		if contains(args, "/tmp/slis.png") || contains(args, "-appIcon") {
+			t.Errorf("osascript args %v should not reference the icon", args)
 		}
 	})
 }
