@@ -3,9 +3,16 @@ import type { Slice } from "../rpc/types";
 import type { SliceView } from "./derive";
 import {
   attentionIndices,
+  buildRows,
+  clampFocus,
   clusterByStack,
+  missingSliceNames,
   nextAttentionIndex,
+  nextAttentionRow,
+  selectableIndices,
   stackRootOf,
+  stepSelectable,
+  type BrowserRow,
 } from "./cluster";
 
 function view(
@@ -93,5 +100,74 @@ describe("attention navigation", () => {
 
   test("nothing needs attention → null", () => {
     expect(nextAttentionIndex([view("a"), view("b")], 0, 1)).toBeNull();
+  });
+});
+
+describe("missingSliceNames", () => {
+  test("dedupes by slice name, preserves first-seen order", () => {
+    expect(
+      missingSliceNames([
+        { slice: "b" },
+        { slice: "a" },
+        { slice: "b" },
+      ]),
+    ).toEqual(["b", "a"]);
+  });
+  test("undefined → empty", () => {
+    expect(missingSliceNames(undefined)).toEqual([]);
+  });
+});
+
+describe("browser rows (missing-row navigation skip)", () => {
+  const rows: BrowserRow[] = buildRows([view("a"), view("b")], ["gone", "vanished"]);
+
+  test("missing rows are appended and non-selectable", () => {
+    expect(rows.map((r) => r.kind)).toEqual(["slice", "slice", "missing", "missing"]);
+    expect(selectableIndices(rows)).toEqual([0, 1]);
+  });
+
+  test("stepSelectable never lands on a missing row and clamps", () => {
+    expect(stepSelectable(rows, 0, 1)).toBe(1);
+    expect(stepSelectable(rows, 1, 1)).toBe(1); // clamps at last slice, skips missing
+    expect(stepSelectable(rows, 1, -1)).toBe(0);
+    expect(stepSelectable(rows, 0, -1)).toBe(0);
+  });
+
+  test("stepSelectable from a missing row snaps back to a slice", () => {
+    expect(stepSelectable(rows, 2, -1)).toBe(1);
+    expect(stepSelectable(rows, 3, 1)).toBe(1);
+  });
+
+  test("clampFocus pulls a missing/out-of-range index onto a slice", () => {
+    expect(clampFocus(rows, 2)).toBe(1);
+    expect(clampFocus(rows, 99)).toBe(1);
+    expect(clampFocus(rows, 0)).toBe(0);
+  });
+
+  test("interleaved missing row is skipped", () => {
+    const mixed: BrowserRow[] = [
+      { kind: "slice", view: view("a") },
+      { kind: "missing", name: "gap" },
+      { kind: "slice", view: view("b") },
+    ];
+    expect(stepSelectable(mixed, 0, 1)).toBe(2);
+    expect(stepSelectable(mixed, 2, -1)).toBe(0);
+  });
+
+  test("nextAttentionRow wraps over slice rows only", () => {
+    const attn: BrowserRow[] = buildRows(
+      [view("calm"), view("wait", {}, { status: "waiting-input" })],
+      ["gone"],
+    );
+    expect(nextAttentionRow(attn, 0, 1)).toBe(1);
+    expect(nextAttentionRow(attn, 1, 1)).toBe(1); // single attention row, wraps to itself
+    expect(nextAttentionRow(buildRows([view("calm")], []), 0, 1)).toBeNull();
+  });
+
+  test("all-missing list has no selectable rows", () => {
+    const allMissing = buildRows([], ["x", "y"]);
+    expect(selectableIndices(allMissing)).toEqual([]);
+    expect(stepSelectable(allMissing, 0, 1)).toBe(0);
+    expect(clampFocus(allMissing, 1)).toBe(0);
   });
 });

@@ -88,6 +88,16 @@ export const FILTERS: Filter[] = [
   },
 ];
 
+export function isPhantomBranch(branch: string, sliceName: string): boolean {
+  if (sliceName === "" || branch === sliceName || !branch.endsWith(sliceName)) return false;
+  const prefix = branch.slice(0, branch.length - sliceName.length);
+  return prefix !== "" && sliceName.startsWith(prefix);
+}
+
+export function isPhantom(view: SliceView): boolean {
+  return view.slice.members.some((m) => isPhantomBranch(m.branch, view.slice.name));
+}
+
 /** Sort key for the Inbox filter: most-urgent first. */
 export function attentionRank(view: SliceView): number {
   if (view.status === "waiting-input") return 0;
