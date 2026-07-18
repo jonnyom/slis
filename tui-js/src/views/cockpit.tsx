@@ -26,6 +26,7 @@ import type { SliceView } from "../state/derive";
 import { color, glyph, sessionBadge, sessionLabel } from "../theme";
 import { Panel } from "../components/panel";
 import { DiffPane } from "../components/diffpane";
+import { DiffView, type DiffMode } from "../components/diffview";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 
@@ -434,6 +435,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [scopeIdx, setScopeIdx] = useState(0);
   const [showPatch, setShowPatch] = useState(false);
   const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffMode, setDiffMode] = useState<DiffMode>("unified");
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
   const scope = SCOPES[scopeIdx]!;
@@ -476,11 +479,20 @@ export function Cockpit(props: CockpitProps): ReactNode {
 
   useKeyboard((key) => {
     if (!enabled) return;
+    // While the full diff view is open it owns the keyboard.
+    if (diffOpen) return;
     const name = key.name;
     if (name === "q") return props.onQuit();
     if (name === "?") return props.onToggleHelp();
     if (name === "escape" || name === "h") return props.onBack();
     if (name === "w") return props.onSwap(slice);
+    if (
+      panel === "stack" &&
+      (name === "return" || name === "enter" || name === "l" || name === "right")
+    ) {
+      setDiffOpen(true);
+      return;
+    }
     if (name === "tab") {
       setPanel((p) => PANEL_ORDER[(PANEL_ORDER.indexOf(p) + 1) % PANEL_ORDER.length]!);
       return;
@@ -540,7 +552,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const footer = useMemo(() => {
     switch (panel) {
       case "stack":
-        return `tab panel · j/k repo · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · ^d/^u scroll · w swap · esc back`;
+        return `tab panel · j/k repo · enter rich diff · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · ^d/^u scroll · w swap · esc back`;
       case "prs":
         return "tab panel · j/k pr · w swap · esc back";
       case "session":
@@ -549,6 +561,23 @@ export function Cockpit(props: CockpitProps): ReactNode {
         return "tab panel · j/k proc · w swap · esc back";
     }
   }, [panel, scope, showPatch]);
+
+  if (diffOpen) {
+    return (
+      <DiffView
+        enabled={enabled}
+        repos={diff?.repos ?? []}
+        scope={scope}
+        mode={diffMode}
+        width={props.width}
+        height={props.height}
+        onCycleScope={() => setScopeIdx((i) => (i + 1) % SCOPES.length)}
+        onToggleMode={() => setDiffMode((m) => (m === "unified" ? "split" : "unified"))}
+        onClose={() => setDiffOpen(false)}
+        onQuit={props.onQuit}
+      />
+    );
+  }
 
   return (
     <box flexDirection="column" width="100%" height="100%">

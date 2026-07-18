@@ -4,6 +4,9 @@
 
 export type DiffLineType = "add" | "del" | "context" | "meta";
 
+/** High-level change status for a file, for the file-tree glyph (A/M/D/R). */
+export type FileStatus = "added" | "deleted" | "modified" | "renamed";
+
 export interface DiffLine {
   type: DiffLineType;
   content: string; // without the leading +/-/space marker
@@ -25,9 +28,27 @@ export interface FileDiff {
   path: string;
   oldPath?: string; // set when the file was renamed
   binary: boolean;
+  status: FileStatus;
   added: number; // added line count (0 for binary)
   deleted: number; // deleted line count (0 for binary)
   hunks: DiffHunk[];
+}
+
+const NEW_FILE: FileDiff["status"] = "modified";
+
+/** The one-letter tree glyph for a file status. */
+export function statusGlyph(status: FileStatus): string {
+  switch (status) {
+    case "added":
+      return "A";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    case "modified":
+    default:
+      return "M";
+  }
 }
 
 const HUNK_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
@@ -67,6 +88,7 @@ export function parseUnifiedDiff(patch: string): FileDiff[] {
       current = {
         path: stripQuotes(p.new ?? p.old ?? "?"),
         binary: false,
+        status: NEW_FILE,
         added: 0,
         deleted: 0,
         hunks: [],
@@ -77,7 +99,7 @@ export function parseUnifiedDiff(patch: string): FileDiff[] {
     if (!current) {
       // Bare patch without a git header — synthesize a file on the first ---.
       if (raw.startsWith("--- ")) {
-        current = { path: "?", binary: false, added: 0, deleted: 0, hunks: [] };
+        current = { path: "?", binary: false, status: NEW_FILE, added: 0, deleted: 0, hunks: [] };
         hunk = null;
       } else {
         continue;
@@ -89,6 +111,7 @@ export function parseUnifiedDiff(patch: string): FileDiff[] {
     }
     if (raw.startsWith("rename to ")) {
       current.path = stripQuotes(raw.slice("rename to ".length));
+      current.status = "renamed";
       continue;
     }
     if (raw.startsWith("Binary files ") || raw.startsWith("GIT binary patch")) {
@@ -97,14 +120,20 @@ export function parseUnifiedDiff(patch: string): FileDiff[] {
     }
     if (raw.startsWith("--- ")) {
       const p = raw.slice(4).trim();
-      if (p !== "/dev/null" && current.path === "?") {
+      if (p === "/dev/null") {
+        if (current.status !== "renamed") current.status = "added";
+      } else if (current.path === "?") {
         current.path = stripQuotes(p.replace(/^a\//, ""));
       }
       continue;
     }
     if (raw.startsWith("+++ ")) {
       const p = raw.slice(4).trim();
-      if (p !== "/dev/null") current.path = stripQuotes(p.replace(/^b\//, ""));
+      if (p === "/dev/null") {
+        if (current.status !== "renamed") current.status = "deleted";
+      } else {
+        current.path = stripQuotes(p.replace(/^b\//, ""));
+      }
       continue;
     }
     const hm = raw.match(HUNK_RE);
