@@ -1,0 +1,72 @@
+tui-js/src/components/help.tsx
+  s_470615ee13fe83::t_4fc7368c0f17fd 71,74,82-89
+  s_470615ee13fe83::t_26ba50a2b9ef1f 90-91
+tui-js/src/state/stacknav.test.ts
+  s_470615ee13fe83::t_e0e7ccaecf70d0 1-85
+tui-js/src/rpc/feature.test.ts
+  s_470615ee13fe83::t_3eff9e887d4b51 1-24
+tui-js/src/rpc/client.ts
+  s_470615ee13fe83::t_64887c7dd7aba6 289-313
+  s_470615ee13fe83::t_d3174fa6a301a6 9,17,26,29-35
+  s_470615ee13fe83::t_f39d1f21efc0d7 36
+tui-js/src/components/fileview.tsx
+  s_470615ee13fe83::t_7c48a65a6fe15b 1-82
+tui-js/src/state/filetree.ts
+  s_470615ee13fe83::t_a0566c0a36e6cb 1-75
+tui-js/src/views/cockpit.hints.test.ts
+  s_470615ee13fe83::t_69e2f8b2a3a597 53-61
+  s_470615ee13fe83::t_67e52022a44566 87-103
+tui-js/src/state/filetree.test.ts
+  s_470615ee13fe83::t_bbe63895bbbd2d 1-80
+tui-js/src/views/cockpit.hints.ts
+  s_470615ee13fe83::t_e421c50fc8496c 41-44,50-53
+  s_470615ee13fe83::t_44fc7ef5bb6942 74-87,89-90,92
+tui-js/src/rpc/index.ts
+  s_470615ee13fe83::t_d061b2f725748e 6
+tui-js/src/state/stacknav.ts
+  s_470615ee13fe83::t_21ebf29b3af5c3 1-64
+tui-js/src/rpc/types.ts
+  s_470615ee13fe83::t_56b3d53e78d112 320-341
+  s_470615ee13fe83::t_1c931354e182a9 226-267
+tui-js/src/components/filetree.tsx
+  s_470615ee13fe83::t_af959e1d5a6156 1-56
+tui-js/src/views/cockpit.tsx
+  s_470615ee13fe83::t_5f32526886f811 43
+  s_470615ee13fe83::t_9963291f59db3c 413-442
+  s_470615ee13fe83::t_d0a1daf53e7b61 85
+  s_470615ee13fe83::t_6e442880164270 1124-1126
+  s_470615ee13fe83::t_a8ffdf00d8388b 191-192,197-198,210-218,220-228,230-233,235-238
+  s_470615ee13fe83::t_520d569f0fab3f 1174-1175,1181-1185
+  s_470615ee13fe83::t_bdccd947c87e85 1304
+  s_470615ee13fe83::t_83659cc68506ea 704-707
+  s_470615ee13fe83::t_8aa860d432c111 1083-1084
+  s_470615ee13fe83::t_6b729bf73b5f20 1255-1281,1286-1287,1291-1293
+  s_470615ee13fe83::t_6aee0cc2869032 1319-1320
+  s_470615ee13fe83::t_da39ff181383fa 1038-1067
+  s_470615ee13fe83::t_2f4996329d6a67 1170-1172
+  s_470615ee13fe83::t_934e7d72fb6589 1356-1369
+  s_470615ee13fe83::t_4589fcd612b4d3 753
+  s_470615ee13fe83::t_6ff44fdfc1fb14 1195-1201,1211-1224,1233-1235,1237
+  s_470615ee13fe83::t_4e7f79ba85e4c8 767-768,781-818,822-833
+  s_470615ee13fe83::t_e700662b684446 722-732,736-752,754-755
+  s_470615ee13fe83::t_840b2101ee97d9 841-845,851-926
+  s_470615ee13fe83::t_32c81284f413e5 29,33,39,41-42,44-48
+  s_470615ee13fe83::t_c150cacef3f2cf 60-61
+  s_470615ee13fe83::t_de155746430308 927
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "820391d23311ead592c48624768dc2e80d870c56",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
