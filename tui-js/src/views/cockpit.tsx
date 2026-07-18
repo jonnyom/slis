@@ -26,15 +26,26 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  BranchDiffResult,
   CiLogResult,
   DiffResult,
   DiffScope,
+  FileResult,
   PrComment,
   PrStackEntry,
   ProcsResult,
   RpcClient,
 } from "../rpc/types";
+import { isMethodNotFound } from "../rpc/client";
 import type { SliceView } from "../state/derive";
+import { buildStackRows, clampSel } from "../state/stacknav";
+import {
+  flattenTree as flattenFileTree,
+  parentPath,
+  toggled,
+  withChildren,
+  type ChildrenByPath,
+} from "../state/filetree";
 import type { OverlayApi } from "../overlays/useOverlays";
 import { commentBlocks } from "../pr/comments";
 import { sessionName } from "../term/tmux";
@@ -46,6 +57,8 @@ import { Divider } from "../components/divider";
 import { HintBar } from "../components/hintbar";
 import { DiffPane } from "../components/diffpane";
 import { DiffView, type DiffMode } from "../components/diffview";
+import { FileTree } from "../components/filetree";
+import { FileView } from "../components/fileview";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 import { normalizeKeyName } from "../util/keys";
@@ -69,6 +82,7 @@ import {
   cyclePanel,
   PANEL_ORDER,
   type PanelId,
+  type ReviewMode,
 } from "./cockpit.hints";
 
 const SCOPES: DiffScope[] = ["working", "parent", "trunk"];
@@ -174,12 +188,14 @@ function useComments(
 function StackSection({
   view,
   focused,
-  repoSel,
+  rows,
+  sel,
   flexGrow,
 }: {
   view: SliceView;
   focused: boolean;
-  repoSel: number;
+  rows: ReturnType<typeof buildStackRows>;
+  sel: number;
   flexGrow?: number;
 }): ReactNode {
   const n = view.slice.members.length;
@@ -191,49 +207,36 @@ function StackSection({
       flexGrow={flexGrow}
       trailing={`${n} ${n === 1 ? "repo" : "repos"}`}
     >
-      {view.slice.members.map((m, i) => {
-        const stack = view.show?.members.find((s) => s.repo === m.repo)?.stack;
-        const selected = i === repoSel;
+      {rows.map((row, i) => {
+        const selected = i === sel && focused;
+        const c = row.trunk
+          ? color.synced
+          : row.needsRestack
+            ? color.restack
+            : row.isMember
+              ? color.white
+              : color.fg;
         return (
-          <box key={m.repo} flexDirection="column">
-            <text wrapMode="none">
-              <span fg={color.cursorBar}>
-                {selected && focused ? glyph.focusBar : " "}
-              </span>
-              <span fg={color.repoHeader} attributes={BOLD}>
-                {m.repo}
-              </span>
-            </text>
-            {stack && stack.length > 0 ? (
-              stack.map((node) => {
-                const isMember = node.name === m.branch;
-                const c = node.trunk
-                  ? color.synced
-                  : node.needs_restack
-                    ? color.restack
-                    : isMember
-                      ? color.white
-                      : color.fg;
-                const pad = "  ".repeat(Math.max(0, node.depth));
-                return (
-                  <text key={node.name} wrapMode="none">
-                    <span fg={color.dim}>{"  " + pad}</span>
-                    <span fg={c} attributes={isMember ? BOLD : 0}>
-                      {node.name}
-                    </span>
-                    {node.trunk ? <span fg={color.synced}> [trunk]</span> : null}
-                    {node.needs_restack ? (
-                      <span fg={color.restack}> {glyph.restack} restack</span>
-                    ) : null}
-                  </text>
-                );
-              })
-            ) : (
+          <box key={`${row.repo}\t${row.branch}`} flexDirection="column">
+            {row.firstOfRepo ? (
               <text wrapMode="none">
-                <span fg={color.dim}>  </span>
-                <span fg={color.fg}>{m.branch}</span>
+                <span fg={color.cursorBar}> </span>
+                <span fg={color.repoHeader} attributes={BOLD}>
+                  {row.repo}
+                </span>
               </text>
-            )}
+            ) : null}
+            <text wrapMode="none">
+              <span fg={color.cursorBar}>{selected ? glyph.focusBar : " "}</span>
+              <span fg={color.dim}>{"  " + "  ".repeat(Math.max(0, row.depth))}</span>
+              <span fg={c} attributes={row.isMember || selected ? BOLD : 0}>
+                {row.branch}
+              </span>
+              {row.trunk ? <span fg={color.synced}> [trunk]</span> : null}
+              {row.needsRestack ? (
+                <span fg={color.restack}> {glyph.restack} restack</span>
+              ) : null}
+            </text>
           </box>
         );
       })}
@@ -402,6 +405,36 @@ function DiffRight({
       patch={rd?.patch}
       err={rd?.err}
       scope={scope}
+      showPatch={showPatch}
+    />
+  );
+}
+
+// BranchDiffRight renders a non-member branch's diff-vs-parent (F3). It reuses
+// DiffPane with the "parent" scope label; the panel title carries the parent ref.
+function BranchDiffRight({
+  bd,
+  repo,
+  showPatch,
+}: {
+  bd: BranchDiffResult | null;
+  repo: string;
+  showPatch: boolean;
+}): ReactNode {
+  if (!bd) {
+    return (
+      <text fg={color.dim} attributes={DIM}>
+        loading diff…
+      </text>
+    );
+  }
+  return (
+    <DiffPane
+      repo={repo}
+      stat={bd.stat}
+      patch={bd.patch}
+      err={bd.err}
+      scope="parent"
       showPatch={showPatch}
     />
   );
@@ -668,7 +701,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const slice = view.slice.name;
 
   const [panel, setPanel] = useState<PanelId>(props.initialPanel ?? "stack");
-  const [repoSel, setRepoSel] = useState(0);
+  // Stack panel selection is tracked by branch identity (repo\tbranch), not a
+  // raw index, so it survives the stack rows growing when `show` (the lineage)
+  // arrives after the first paint. An empty key means "default to the member".
+  const [stackSelKey, setStackSelKey] = useState("");
   const [prSel, setPrSel] = useState(0);
   const [procSel, setProcSel] = useState(0);
   const [procSort, setProcSort] = useState<ProcSort>("cpu");
@@ -683,10 +719,40 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [diffMode, setDiffMode] = useState<DiffMode>("unified");
   const [zoomed, setZoomed] = useState(false);
   const [captureNonce, setCaptureNonce] = useState(0);
+  // F3 stack-review state.
+  const [reviewMode, setReviewMode] = useState<ReviewMode>("diff");
+  const [branchDiff, setBranchDiff] = useState<BranchDiffResult | null>(null);
+  const [treeChildren, setTreeChildren] = useState<ChildrenByPath>({});
+  const [treeExpanded, setTreeExpanded] = useState<Set<string>>(() => new Set());
+  const [treeSel, setTreeSel] = useState(0);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [openFile, setOpenFile] = useState<FileResult | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [stackReviewSupported, setStackReviewSupported] = useState(true);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
   const scope = SCOPES[scopeIdx]!;
-  const selectedRepo = view.slice.members[repoSel]?.repo ?? "";
+
+  const stackRows = useMemo(() => buildStackRows(view), [view]);
+  const defaultStackSel = useMemo(() => {
+    const m = stackRows.findIndex((r) => r.isMember);
+    return m >= 0 ? m : 0;
+  }, [stackRows]);
+  const stackSel = useMemo(() => {
+    if (stackSelKey === "") return defaultStackSel;
+    const i = stackRows.findIndex((r) => `${r.repo}\t${r.branch}` === stackSelKey);
+    return i >= 0 ? i : defaultStackSel;
+  }, [stackRows, stackSelKey, defaultStackSel]);
+  const stackRow = stackRows[stackSel];
+  const selectedRepo = stackRow?.repo ?? view.slice.members[0]?.repo ?? "";
+  const selectedBranch = stackRow?.branch ?? "";
+  const onMemberBranch = stackRow?.isMember ?? true;
+
+  const treeRows = useMemo(
+    () => flattenFileTree(treeChildren, treeExpanded),
+    [treeChildren, treeExpanded],
+  );
 
   const monitor = useProcMonitor(client, slice, panel === "procs");
   const comments = useComments(client, slice, panel === "prs");
@@ -698,7 +764,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const captureLines = useCapture(client, slice, panel === "session", captureNonce);
   const lastLine = captureLines[captureLines.length - 1];
 
-  // Load diff for the stack panel's right pane; refetch on slice/scope change.
+  // Load the slice diff for the stack panel's right pane (member branch, scoped
+  // working/parent/trunk); refetch on slice/scope change.
   useEffect(() => {
     if (panel !== "stack") return;
     let live = true;
@@ -711,10 +778,59 @@ export function Cockpit(props: CockpitProps): ReactNode {
     };
   }, [client, slice, scope, panel]);
 
+  // Load the branch-vs-parent diff when a NON-member branch is selected (F3). A
+  // method-not-found means the sidecar predates F3 — hide the feature and fall
+  // back to the member-scoped diff for every node.
+  useEffect(() => {
+    if (panel !== "stack" || reviewMode !== "diff" || onMemberBranch) return;
+    if (!stackReviewSupported || !selectedBranch) return;
+    let live = true;
+    setBranchDiff(null);
+    client.branchDiff({ slice, repo: selectedRepo, branch: selectedBranch, format: "both" }).then(
+      (r) => live && setBranchDiff(r),
+      (err) => {
+        if (isMethodNotFound(err)) setStackReviewSupported(false);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [
+    client,
+    slice,
+    panel,
+    reviewMode,
+    onMemberBranch,
+    selectedRepo,
+    selectedBranch,
+    stackReviewSupported,
+  ]);
+
+  // Leaving the Stack panel (or changing slice) drops back to the diff sub-mode.
+  useEffect(() => {
+    setReviewMode("diff");
+  }, [panel, slice]);
+
+  // A fresh slice starts from the default (member) branch selection.
+  useEffect(() => {
+    setStackSelKey("");
+  }, [slice]);
+
   // Reset scroll to top whenever the right-pane content identity changes.
   useEffect(() => {
     scrollRef.current?.scrollTo(0);
-  }, [panel, selectedRepo, scope, showPatch, prSel, ciLog?.repo, ciLog?.loading]);
+  }, [
+    panel,
+    selectedRepo,
+    selectedBranch,
+    scope,
+    showPatch,
+    reviewMode,
+    openFile?.path,
+    prSel,
+    ciLog?.repo,
+    ciLog?.loading,
+  ]);
 
   // Drop any open CI log when the focus moves off it (new PR, panel, or slice).
   useEffect(() => {
@@ -722,14 +838,91 @@ export function Cockpit(props: CockpitProps): ReactNode {
   }, [slice, panel, prSel]);
 
   const moveSel = (delta: number) => {
-    if (panel === "stack")
-      setRepoSel((i) =>
-        Math.max(0, Math.min(view.slice.members.length - 1, i + delta)),
-      );
-    else if (panel === "prs")
+    if (panel === "stack") {
+      const next = clampSel(stackSel + delta, stackRows.length);
+      const row = stackRows[next];
+      if (row) setStackSelKey(`${row.repo}\t${row.branch}`);
+    } else if (panel === "prs")
       setPrSel((i) => Math.max(0, Math.min((view.prs?.length ?? 1) - 1, i + delta)));
     else if (panel === "procs")
       setProcSel((i) => Math.max(0, Math.min(procRows.length - 1, i + delta)));
+  };
+
+  // ── F3 file-tree browser ────────────────────────────────────────────────────
+
+  // fetchLevel loads one directory level of the selected branch's tree and stores
+  // it. A method-not-found means the sidecar predates F3 — hide the feature.
+  const fetchLevel = (path: string) => {
+    setTreeLoading(true);
+    client.tree({ slice, repo: selectedRepo, branch: selectedBranch, path }).then(
+      (r) => {
+        setTreeChildren((c) => withChildren(c, path, r.entries));
+        setTreeLoading(false);
+      },
+      (err) => {
+        if (isMethodNotFound(err)) setStackReviewSupported(false);
+        setTreeLoading(false);
+      },
+    );
+  };
+
+  const openTree = () => {
+    if (!stackReviewSupported || !selectedBranch) return;
+    setTreeChildren({});
+    setTreeExpanded(new Set());
+    setTreeSel(0);
+    setReviewMode("tree");
+    fetchLevel("");
+  };
+
+  const openFileAt = (path: string) => {
+    setOpenFile(null);
+    setFileError(null);
+    setFileLoading(true);
+    setReviewMode("file");
+    client.file({ slice, repo: selectedRepo, branch: selectedBranch, path }).then(
+      (r) => {
+        setOpenFile(r);
+        setFileLoading(false);
+      },
+      (err) => {
+        if (isMethodNotFound(err)) setStackReviewSupported(false);
+        setFileError(err instanceof Error ? err.message : String(err));
+        setFileLoading(false);
+      },
+    );
+  };
+
+  // l/enter in the tree: expand/collapse a directory (fetching its children the
+  // first time), or open a file.
+  const treeActivate = () => {
+    const row = treeRows[treeSel];
+    if (!row) return;
+    if (row.type === "tree") {
+      const willExpand = !treeExpanded.has(row.path);
+      setTreeExpanded((e) => toggled(e, row.path));
+      if (willExpand && !treeChildren[row.path]) fetchLevel(row.path);
+    } else if (row.type === "blob") {
+      openFileAt(row.path);
+    }
+  };
+
+  // h/← in the tree: collapse the selected directory, else collapse+select its
+  // parent directory.
+  const treeCollapse = () => {
+    const row = treeRows[treeSel];
+    if (!row) return;
+    if (row.type === "tree" && row.expanded) {
+      setTreeExpanded((e) => toggled(e, row.path));
+      return;
+    }
+    const parent = parentPath(row.path);
+    if (parent === "") return;
+    const pi = treeRows.findIndex((r) => r.path === parent);
+    if (pi >= 0) {
+      setTreeSel(pi);
+      setTreeExpanded((e) => toggled(e, parent));
+    }
   };
 
   const toggleCollapse = (expand: boolean) => {
@@ -842,6 +1035,36 @@ export function Cockpit(props: CockpitProps): ReactNode {
       return;
     }
 
+    // F3 stack-review sub-modes own navigation + the esc chain (file → tree →
+    // diff → back). Only q and ? escape them.
+    if (panel === "stack" && reviewMode === "file") {
+      if (name === "q") return props.onQuit();
+      if (name === "?") return overlays.help();
+      if (name === "escape" || name === "h") return setReviewMode("tree");
+      if (name === "j" || name === "down") return scrollRef.current?.scrollBy(1);
+      if (name === "k" || name === "up") return scrollRef.current?.scrollBy(-1);
+      if (name === "g") return scrollRef.current?.scrollTo(0);
+      if (name === "G") return scrollRef.current?.scrollTo(scrollRef.current.scrollHeight);
+      if (name === "space" || (key.ctrl && name === "d") || name === "pagedown")
+        return scrollRef.current?.scrollBy(halfPage);
+      if ((key.ctrl && name === "u") || name === "pageup")
+        return scrollRef.current?.scrollBy(-halfPage);
+      return;
+    }
+    if (panel === "stack" && reviewMode === "tree") {
+      if (name === "q") return props.onQuit();
+      if (name === "?") return overlays.help();
+      if (name === "escape") return setReviewMode("diff");
+      if (name === "j" || name === "down")
+        return setTreeSel((i) => clampSel(i + 1, treeRows.length));
+      if (name === "k" || name === "up")
+        return setTreeSel((i) => clampSel(i - 1, treeRows.length));
+      if (name === "l" || name === "right" || name === "return" || name === "enter")
+        return treeActivate();
+      if (name === "h" || name === "left") return treeCollapse();
+      return;
+    }
+
     if (name === "q") return props.onQuit();
     if (name === "?") return overlays.help();
     if (name === "P") return props.onToggleProcs();
@@ -857,6 +1080,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (name === "C") return props.onOpenTerm(slice, true);
     if (name === "e") return overlays.editor(slice);
     if (name === "o") return overlays.editor(slice, selectedRepo);
+    // F3: open the file-tree browser for the selected branch (diff sub-mode).
+    if (name === "f" && panel === "stack" && stackReviewSupported) return openTree();
     if (
       panel === "stack" &&
       (name === "return" || name === "enter" || name === "l" || name === "right")
@@ -896,7 +1121,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     }
     if (name === "j" || name === "down") return moveSel(1);
     if (name === "k" || name === "up") return moveSel(-1);
-    if (name === "b" && panel === "stack") {
+    // Scope cycling applies to the member branch only; other branches are always
+    // shown vs their stack parent.
+    if (name === "b" && panel === "stack" && onMemberBranch) {
       setScopeIdx((i) => (i + 1) % SCOPES.length);
       return;
     }
@@ -940,13 +1167,22 @@ export function Cockpit(props: CockpitProps): ReactNode {
   useEffect(() => {
     setProcSel((i) => Math.max(0, Math.min(i, Math.max(0, procRows.length - 1))));
   }, [procRows.length]);
+  useEffect(() => {
+    setTreeSel((i) => clampSel(i, treeRows.length));
+  }, [treeRows.length]);
 
-  // A fresh slice starts with a clean process view (selection, kill state).
+  // A fresh slice starts with a clean process view (selection, kill state) and a
+  // reset file-tree/file-review state.
   useEffect(() => {
     setProcSel(0);
     setCollapsed(new Set());
     setPendingKill(null);
     setKillStatus(null);
+    setTreeChildren({});
+    setTreeExpanded(new Set());
+    setTreeSel(0);
+    setOpenFile(null);
+    setFileError(null);
   }, [slice]);
 
   const leftW = Math.min(46, Math.floor(props.width / 2));
@@ -956,7 +1192,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
     const arrow = ` ${glyph.arrow} `;
     switch (panel) {
       case "stack":
-        return `${selectedRepo}${arrow}Changes · ${SCOPE_SHORT[scope]}`;
+        if (reviewMode === "file")
+          return `${selectedRepo}${arrow}${selectedBranch}${arrow}${openFile?.path ?? "file"}`;
+        if (reviewMode === "tree")
+          return `${selectedRepo}${arrow}${selectedBranch}${arrow}files`;
+        if (onMemberBranch)
+          return `${selectedRepo}${arrow}Changes · ${SCOPE_SHORT[scope]}`;
+        return `${selectedRepo}${arrow}${selectedBranch}${arrow}vs ${branchDiff?.parent ?? "parent"}`;
       case "prs":
         return ciLog
           ? `${ciLog.repo}${arrow}CI log`
@@ -966,7 +1208,20 @@ export function Cockpit(props: CockpitProps): ReactNode {
       case "procs":
         return `${slice}${arrow}Processes`;
     }
-  }, [panel, selectedRepo, scope, view.prs, prSel, slice, ciLog]);
+  }, [
+    panel,
+    selectedRepo,
+    selectedBranch,
+    onMemberBranch,
+    reviewMode,
+    openFile?.path,
+    branchDiff?.parent,
+    scope,
+    view.prs,
+    prSel,
+    slice,
+    ciLog,
+  ]);
 
   const hints = useMemo(
     () =>
@@ -975,8 +1230,11 @@ export function Cockpit(props: CockpitProps): ReactNode {
         showPatch,
         zoomed,
         killPending: !!pendingKill,
+        reviewMode,
+        onMember: onMemberBranch,
+        stackReview: stackReviewSupported,
       }),
-    [panel, scope, showPatch, zoomed, pendingKill],
+    [panel, scope, showPatch, zoomed, pendingKill, reviewMode, onMemberBranch, stackReviewSupported],
   );
 
   const headerTrailing = (
@@ -994,16 +1252,45 @@ export function Cockpit(props: CockpitProps): ReactNode {
     </text>
   );
 
+  // The rich (full-screen) diff shows the member branch's scoped slice diff, or —
+  // when a non-member stack branch is selected — that branch's single-repo
+  // diff-vs-parent.
+  const diffViewRepos = onMemberBranch
+    ? (diff?.repos ?? [])
+    : branchDiff
+      ? [
+          {
+            repo: branchDiff.repo,
+            branch: branchDiff.branch,
+            stat: branchDiff.stat,
+            patch: branchDiff.patch,
+            err: branchDiff.err,
+          },
+        ]
+      : [];
+
+  const cockpitSection =
+    panel === "stack" && selectedBranch
+      ? `${selectedRepo} ${glyph.arrow} ${selectedBranch}` +
+        (reviewMode === "tree"
+          ? ` ${glyph.arrow} files`
+          : reviewMode === "file"
+            ? ` ${glyph.arrow} ${openFile?.path?.split("/").pop() ?? "file"}`
+            : "")
+      : breadcrumbSection(panel, zoomed);
+
   if (diffOpen) {
     return (
       <DiffView
         enabled={enabled}
-        repos={diff?.repos ?? []}
-        scope={scope}
+        repos={diffViewRepos}
+        scope={onMemberBranch ? scope : "parent"}
         mode={diffMode}
         width={props.width}
         height={props.height}
-        onCycleScope={() => setScopeIdx((i) => (i + 1) % SCOPES.length)}
+        onCycleScope={
+          onMemberBranch ? () => setScopeIdx((i) => (i + 1) % SCOPES.length) : () => {}
+        }
         onToggleMode={() => setDiffMode((m) => (m === "unified" ? "split" : "unified"))}
         onClose={() => setDiffOpen(false)}
         onQuit={props.onQuit}
@@ -1014,11 +1301,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* header */}
-      <Breadcrumb
-        slice={slice}
-        section={breadcrumbSection(panel, zoomed)}
-        trailing={headerTrailing}
-      />
+      <Breadcrumb slice={slice} section={cockpitSection} trailing={headerTrailing} />
       <Divider color={theme.hairline} />
       {/* body */}
       <box flexDirection="row" flexGrow={1}>
@@ -1033,7 +1316,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
             <StackSection
               view={view}
               focused={panel === "stack"}
-              repoSel={repoSel}
+              rows={stackRows}
+              sel={stackSel}
               flexGrow={1}
             />
             <Divider width={dividerW} />
@@ -1069,12 +1353,20 @@ export function Cockpit(props: CockpitProps): ReactNode {
               horizontalScrollbarOptions={{ visible: false }}
             >
               {panel === "stack" ? (
-                <DiffRight
-                  diff={diff}
-                  repo={selectedRepo}
-                  scope={scope}
-                  showPatch={showPatch}
-                />
+                reviewMode === "file" ? (
+                  <FileView file={openFile} error={fileError} loading={fileLoading} />
+                ) : reviewMode === "tree" ? (
+                  <FileTree rows={treeRows} sel={treeSel} loading={treeLoading} />
+                ) : onMemberBranch ? (
+                  <DiffRight
+                    diff={diff}
+                    repo={selectedRepo}
+                    scope={scope}
+                    showPatch={showPatch}
+                  />
+                ) : (
+                  <BranchDiffRight bd={branchDiff} repo={selectedRepo} showPatch={showPatch} />
+                )
               ) : panel === "prs" ? (
                 ciLog ? (
                   <CiLogRight state={ciLog} />
