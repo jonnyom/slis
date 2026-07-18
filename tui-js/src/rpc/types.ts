@@ -122,8 +122,8 @@ export interface PrComment {
   author: string;
   body: string;
   url: string;
-  kind: number; // 0 issue · 1 review · 2 inline
-  context: string; // review state, or path:line for inline comments
+  kind?: number; // 0 issue · 1 review · 2 inline (omitted by the sidecar when 0)
+  context?: string; // review state, or path:line for inline comments (omitted when empty)
 }
 
 export interface RepoComments {
