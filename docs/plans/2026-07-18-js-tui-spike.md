@@ -330,3 +330,47 @@ Jonny's direction: the JS TUI is a FULL REPLACEMENT, not an experiment.
    matching one beside `slis`; the cask installs both binaries and strips
    quarantine off both. See the updated **Distribution** section for the
    mechanism and how it was validated.
+
+## Post-parity roadmap (mandated 2026-07-18 pm)
+
+Order after the overlays wave: usability first, then the three features.
+
+### U — Usability wave (technical-audience UX)
+Jonny: "Claude Code works because it's easy to think about. Match that
+simplicity." One usability-review agent walks every flow (fake + real
+workspace), files findings ranked by friction; fixes land as a wave.
+Lenses: (1) familiarity — lazygit/vim/Claude Code idioms, deviations must
+earn their place; (2) review ergonomics — ≤3 keystrokes from launch to
+"seen the whole diff that needs me"; (3) problem-first — every red/amber
+state actionable from where it's shown; (4) predictability — same key,
+same meaning, everywhere; every screen answers where-am-I / what-can-I-press
+/ how-do-I-get-back.
+
+### F1 — Agent picker for terminal tabs
+Open a *chosen* agent (claude, codex, aider, …) in an embedded PTY tab, not
+just the default. `workspace.yaml` gains an `agents:` list (name + argv;
+default claude). Browser/cockpit agent-launch key opens a picker overlay when
+more than one agent is configured; selection runs in the slice's tmux session
+(persistence unchanged). Config read is Go-side (config pkg + `ls`/`hello`
+RPC exposure or a new `agents` method); launch is the existing term-tab path.
+
+### F2 — Inline review comments that feed the agent
+GitHub-review-style: while reading a slice diff, comment on a file:line/hunk;
+comments accumulate into a review batch; submitting the batch delivers it to
+the slice's agent as an instruction ("change this"). Sketch: `c` in DiffView →
+text-input overlay → comment stored (slice, repo, file, line, hunk excerpt,
+body) in the slis data dir; `C` (or a review overlay) lists pending comments;
+submit composes a structured prompt and (a) if the slice session is
+waiting-input, injects via tmux send-keys, else (b) starts/queues the agent
+with the prompt (`claude -p` in the session). Mutation goes through a new CLI
+twin (`slis review add/send`) — the sidecar stays read-only. JSON shapes into
+docs/AGENT.md.
+
+### F3 — Stack-at-a-glance + per-branch code navigation/review
+The cockpit stack panel becomes a real review surface: selecting ANY branch in
+the lineage scopes the right pane to *that branch vs its stack parent* (today
+the diff is slice-branch-centric). Add per-branch file-tree navigation and
+file viewing at the branch's revision (`git show <branch>:<path>` via a new
+read-only RPC — `tree`/`file` methods), so a whole stack can be reviewed
+bottom-up without leaving slis. Pairs with F2: comments attach to the branch
+being reviewed.
