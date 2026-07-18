@@ -1,0 +1,28 @@
+internal/rpcserver/rpcserver_test.go
+  s_197478f89af866::t_3004a0864bfdfc 160-189
+tui-js/src/rpc/types.ts
+  s_197478f89af866::t_3bcd902be9a2b7 23-34
+tui-js/src/app.tsx
+  s_197478f89af866::t_ea56bb13885255 129-133,139,150-153
+internal/rpcserver/types.go
+  s_197478f89af866::t_6c7b32d755e6e4 75-87
+  s_197478f89af866::t_ff907224165e39 72-74
+internal/rpcserver/methods.go
+  s_197478f89af866::t_f10ccb24780e50 15-16,18-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d6209a6b0b0187ed6f43371163a8ba7f275b521b",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
