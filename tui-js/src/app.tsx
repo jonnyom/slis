@@ -25,6 +25,8 @@ import { TerminalLayer, type TabEntry } from "./term/tabs";
 import { tmuxAvailable, type TermMember } from "./term/tmux";
 import type { TermSessionOpts } from "./term/session";
 import { availableEditors } from "./editor/detect";
+import { bulkLoadPlan, type BulkPhase } from "./state/bulkload";
+import { BulkLoadOverlay } from "./components/bulkload";
 
 export function App(): ReactNode {
   const renderer = useRenderer();
@@ -54,6 +56,25 @@ export function App(): ReactNode {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [termMode, setTermMode] = useState(false);
 
+  const bulkPhaseRef = useRef<BulkPhase>("unprompted");
+  const loadedRef = useRef<Set<string>>(new Set());
+  const [bulkPromptCount, setBulkPromptCount] = useState<number | null>(null);
+
+  const loadSlice = useCallback(
+    (name: string) => {
+      loadedRef.current.add(name);
+      client.prStack(name).then(
+        (prs) => setPrStacks((m) => ({ ...m, [name]: prs })),
+        () => {},
+      );
+      client.show(name).then(
+        (show) => setShows((m) => ({ ...m, [name]: show })),
+        () => {},
+      );
+    },
+    [client],
+  );
+
   const refresh = useCallback(() => {
     // ls first so the browser paints fast; the sidecar caps subprocess work at
     // 4 in flight, so the expensive fan-out (conflicts + per-slice PR/stack)
@@ -66,18 +87,34 @@ export function App(): ReactNode {
     client.ls().then((res) => {
       setLs(res);
       client.conflicts().then(setConflicts, () => {});
-      for (const s of res.slices) {
-        client.prStack(s.name).then(
-          (prs) => setPrStacks((m) => ({ ...m, [s.name]: prs })),
-          () => {},
-        );
-        client.show(s.name).then(
-          (show) => setShows((m) => ({ ...m, [s.name]: show })),
-          () => {},
-        );
+      const plan = bulkLoadPlan(res.slices.length, bulkPhaseRef.current);
+      if (plan.prompt) {
+        setBulkPromptCount(res.slices.length);
+        return;
+      }
+      setBulkPromptCount(null);
+      if (plan.fanOut) {
+        loadedRef.current = new Set(res.slices.map((s) => s.name));
+        for (const s of res.slices) loadSlice(s.name);
       }
     }, () => {});
-  }, [client]);
+  }, [client, loadSlice]);
+
+  const applyBulkChoice = useCallback(
+    (phase: BulkPhase) => {
+      bulkPhaseRef.current = phase;
+      setBulkPromptCount(null);
+      refresh();
+    },
+    [refresh],
+  );
+
+  const onFocusSlice = useCallback(
+    (name: string) => {
+      if (bulkPhaseRef.current === "lazy" && !loadedRef.current.has(name)) loadSlice(name);
+    },
+    [loadSlice],
+  );
 
   // Initial load + subscriptions.
   useEffect(() => {
@@ -132,10 +169,14 @@ export function App(): ReactNode {
     [views, current],
   );
 
-  const onEnter = useCallback((slice: string) => {
-    setCurrent(slice);
-    setView("cockpit");
-  }, []);
+  const onEnter = useCallback(
+    (slice: string) => {
+      if (bulkPhaseRef.current === "lazy" && !loadedRef.current.has(slice)) loadSlice(slice);
+      setCurrent(slice);
+      setView("cockpit");
+    },
+    [loadSlice],
+  );
 
   // ── embedded terminal tabs ────────────────────────────────────────────────
 
@@ -211,7 +252,8 @@ export function App(): ReactNode {
     );
   }
 
-  const overlayEnabled = !overlays.active && !procsOpen;
+  const bulkPromptOpen = bulkPromptCount !== null;
+  const overlayEnabled = !overlays.active && !procsOpen && !bulkPromptOpen;
 
   return (
     <box width="100%" height="100%">
@@ -229,6 +271,7 @@ export function App(): ReactNode {
           height={height}
           onEnter={onEnter}
           onOpenTerm={openTerm}
+          onFocusSlice={onFocusSlice}
           onRefresh={refresh}
           onToggleProcs={() => setProcsOpen(true)}
           onQuit={quit}
@@ -274,6 +317,14 @@ export function App(): ReactNode {
           client={client}
           enabled={procsOpen}
           onClose={() => setProcsOpen(false)}
+        />
+      ) : null}
+      {bulkPromptOpen ? (
+        <BulkLoadOverlay
+          count={bulkPromptCount ?? 0}
+          enabled={bulkPromptOpen && !termMode}
+          onLoadAll={() => applyBulkChoice("all")}
+          onLazy={() => applyBulkChoice("lazy")}
         />
       ) : null}
     </box>

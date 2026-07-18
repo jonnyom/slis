@@ -1,6 +1,16 @@
 import { expect, test } from "bun:test";
-import { styleLine } from "./render";
+import { classifyPatchLine, styleLine } from "./render";
 import { wordDiff } from "./words";
+
+test("classifyPatchLine tags add/del/hunk/meta/context", () => {
+  expect(classifyPatchLine("@@ -1,3 +1,5 @@")).toBe("hunk");
+  expect(classifyPatchLine("diff --git a/x b/x")).toBe("meta");
+  expect(classifyPatchLine("+++ b/x")).toBe("meta");
+  expect(classifyPatchLine("--- a/x")).toBe("meta");
+  expect(classifyPatchLine("+  added")).toBe("add");
+  expect(classifyPatchLine("-  removed")).toBe("del");
+  expect(classifyPatchLine("   context")).toBe("context");
+});
 
 test("cells reassemble to the original content", () => {
   const cells = styleLine("const b = 3;", "ts");

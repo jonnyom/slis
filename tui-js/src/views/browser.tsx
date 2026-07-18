@@ -1,16 +1,10 @@
-// Browser view: the top-level slice picker.
-//
-//   ┌ pulse bar ────────────────────────────────────────────┐
-//   │ States rail (filters 1-8) │ preview (repos/PR/overview │
-//   │ Slices list               │  · session tail · diff)    │
-//   └ footer hints ─────────────────────────────────────────┘
-
 import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   CaptureResult,
   ConflictsResult,
+  DiffRepo,
   DiffResult,
   LsResult,
   PrStackEntry,
@@ -19,16 +13,36 @@ import type {
 import {
   attentionRank,
   FILTERS,
+  isPhantom,
   needsRestack,
+  needsYou,
   workState,
   type SliceView,
 } from "../state/derive";
-import { clusterByStack, nextAttentionIndex, type StackLeader } from "../state/cluster";
+import {
+  buildRows,
+  clampFocus,
+  clusterByStack,
+  firstSelectable,
+  lastSelectable,
+  missingSliceNames,
+  nextAttentionRow,
+  stepSelectable,
+  type BrowserRow,
+  type StackLeader,
+} from "../state/cluster";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
+import { clampScroll, maxScroll } from "../util/scroll";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
-import { color, glyph } from "../theme";
-import { Panel } from "../components/panel";
+import { attention, diffColor, glyph, theme } from "../theme";
+import { classifyPatchLine, type PatchLineKind } from "../diff/render";
+import { parseUnifiedDiff } from "../diff/parse";
+import { StatStrip } from "../components/statstrip";
+import { Eyebrow } from "../components/eyebrow";
+import { Divider } from "../components/divider";
+import { HintBar, type Hint } from "../components/hintbar";
+import { StatusGlyph } from "../components/statusglyph";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 
@@ -45,13 +59,22 @@ export interface BrowserProps {
   height: number;
   onEnter: (slice: string) => void;
   onOpenTerm: (slice: string, launchAgent: boolean) => void;
+  onFocusSlice: (slice: string) => void;
   onRefresh: () => void;
   onToggleProcs: () => void;
   onQuit: () => void;
 }
 
-// Slices that share a changed file with `slice` — the stack-actions pre-merge
-// heads-up (same signal the conflict radar shows).
+const PATCH_TAIL_CAP = 200;
+
+const FILTER_COLOR: Record<string, string> = {
+  "2": theme.attn,
+  "4": theme.good,
+  "6": theme.attn,
+  "7": theme.good,
+  "8": theme.attn,
+};
+
 function conflictPartners(conflicts: ConflictsResult | null, slice: string): string[] {
   const set = new Set<string>();
   for (const o of conflicts?.overlaps ?? []) {
@@ -61,19 +84,20 @@ function conflictPartners(conflicts: ConflictsResult | null, slice: string): str
   return [...set];
 }
 
-function glyphFor(view: SliceView): { g: string; c: string; bold: boolean } {
-  const ws = workState(view);
-  if (ws === "needs-you") {
-    if (view.status === "waiting-input")
-      return { g: glyph.waiting, c: color.wait, bold: true };
-    if (view.status === "done") return { g: glyph.done, c: color.done, bold: true };
-    return { g: glyph.inReview, c: color.missing, bold: true }; // changes requested
+function patchLineColor(kind: PatchLineKind): string {
+  switch (kind) {
+    case "add":
+      return diffColor.add;
+    case "del":
+      return diffColor.del;
+    case "hunk":
+      return diffColor.hunk;
+    case "meta":
+      return theme.textFaint;
+    case "context":
+    default:
+      return theme.textDim;
   }
-  if (ws === "ready") return { g: glyph.ready, c: color.ready, bold: true };
-  if (ws === "in-review") return { g: glyph.inReview, c: color.synced, bold: false };
-  if (view.slice.active) return { g: glyph.live, c: color.live, bold: true };
-  if (view.status === "running") return { g: glyph.running, c: color.fg, bold: false };
-  return { g: glyph.idle, c: color.dim, bold: false };
 }
 
 const SliceRow = memo(function SliceRow({
@@ -87,176 +111,329 @@ const SliceRow = memo(function SliceRow({
   listFocused: boolean;
   selected: boolean;
 }): ReactNode {
-  const { g, c, bold } = glyphFor(view);
-  const marker = focused && listFocused ? glyph.focusBar : " ";
-  const nameColor = focused ? color.white : color.fg;
+  const a = attention(view);
+  const focusRow = focused && listFocused;
+  let nameColor: string = theme.text;
+  let nameBold = false;
+  if (a.level === 3) {
+    nameColor = a.color;
+    nameBold = true;
+  } else if (a.level === 0) {
+    nameColor = theme.textDim;
+  }
+  if (focusRow) {
+    nameColor = theme.textBright;
+    nameBold = true;
+  }
   return (
-    <text wrapMode="none">
-      <span fg={color.cursorBar}>{marker}</span>
-      <span fg={selected ? color.ready : color.dim}>{selected ? glyph.selected : " "}</span>
-      <span fg={c} attributes={bold ? BOLD : 0}>
-        {g}
-      </span>
-      <span fg={nameColor} attributes={focused ? BOLD : 0}>
-        {" "}
-        {view.slice.name}
-      </span>
-      {view.slice.active ? <span fg={color.live}> ●</span> : null}
-      {view.slice.stale ? <span fg={color.wait}> ⚠</span> : null}
-    </text>
+    <box width="100%" backgroundColor={focusRow ? theme.surfaceAlt : undefined} flexDirection="row">
+      <text wrapMode="none">
+        <span fg={theme.focus} attributes={BOLD}>
+          {focusRow ? glyph.focusBar : " "}
+        </span>
+        <span fg={selected ? theme.good : theme.textFaint}>
+          {selected ? glyph.selected : " "}
+        </span>
+        <StatusGlyph view={view} />
+        <span fg={nameColor} attributes={nameBold ? BOLD : 0}>
+          {" "}
+          {view.slice.name}
+        </span>
+        {view.slice.active ? <span fg={theme.good}> {glyph.live}</span> : null}
+        {view.slice.stale ? <span fg={theme.attn}> {glyph.dirty}</span> : null}
+      </text>
+    </box>
   );
 });
+
+function MissingRow({ name }: { name: string }): ReactNode {
+  return (
+    <box width="100%" flexDirection="row">
+      <text wrapMode="none">
+        <span fg={theme.textFaint}>{"   "}</span>
+        <span fg={theme.textFaint} attributes={DIM}>
+          {name}
+        </span>
+        <span fg={theme.bad}> missing</span>
+      </text>
+    </box>
+  );
+}
 
 function StackHeader({ leader }: { leader: StackLeader }): ReactNode {
   const root = leader.root === "" ? "(stack)" : leader.root;
   return (
-    <text wrapMode="none" fg={color.stackHeader} attributes={DIM}>
+    <text wrapMode="none" fg={theme.textFaint} attributes={DIM}>
       {`  stack: ${root} → … (${leader.count} slices)`}
     </text>
   );
 }
 
-function PulseBar({
-  count,
-  views,
-  ls,
-  version,
-  search,
-  selectedCount,
-}: {
-  count: number;
-  views: SliceView[];
-  ls: LsResult;
-  version: string;
-  search: string | null;
-  selectedCount: number;
-}): ReactNode {
-  const active = views.find((v) => v.slice.active);
-  const needYou = views.filter(
-    (v) => v.status === "waiting-input" || v.status === "done",
-  ).length;
-  const ready = views.filter((v) => workState(v) === "ready").length;
-  const restack = views.filter((v) => needsRestack(v)).length;
-  const hidden = ls.skipped?.length ?? 0;
-  const repoErrors = ls.repo_errors?.length ?? 0;
-  const missing = new Set((ls.missing ?? []).map((m) => m.slice)).size;
-  const candidates = ls.candidates?.length ?? 0;
-  return (
-    <text wrapMode="none">
-      <span fg={color.title} attributes={BOLD}>
-        slis
-      </span>
-      <span fg={color.dim}> · {count} slices</span>
-      {selectedCount > 0 ? (
-        <span fg={color.ready}>
-          {"  "}
-          {glyph.selected} {selectedCount} selected
-        </span>
-      ) : null}
-      {active ? (
-        <span fg={color.live}>
-          {"  "}
-          {glyph.live} live: {active.slice.name}
-        </span>
-      ) : null}
-      {needYou > 0 ? (
-        <span fg={color.wait}>
-          {"  "}
-          {glyph.waiting} {needYou} need you
-        </span>
-      ) : null}
-      {ready > 0 ? (
-        <span fg={color.ready}>
-          {"  "}
-          {glyph.ready} {ready} ready
-        </span>
-      ) : null}
-      {restack > 0 ? (
-        <span fg={color.restack}>
-          {"  "}
-          {glyph.restack} {restack} need restack
-        </span>
-      ) : null}
-      {hidden > 0 || repoErrors > 0 ? (
-        <span fg={color.restack}>
-          {"  "}⚠ {hidden > 0 ? `${hidden} hidden` : ""}
-          {hidden > 0 && repoErrors > 0 ? ", " : ""}
-          {repoErrors > 0 ? `${repoErrors} repo err` : ""} — doctor
-        </span>
-      ) : null}
-      {missing > 0 ? (
-        <span fg={color.missing}>
-          {"  "}⚠ {missing} missing
-        </span>
-      ) : null}
-      {candidates > 0 ? (
-        <span fg={color.candidate}>
-          {"  "}＋{candidates} new — press i
-        </span>
-      ) : null}
-      {search !== null ? (
-        <span fg={color.candidate}>
-          {"  "}/ {search === "" ? "…" : search}
-        </span>
-      ) : null}
-      <span fg={color.dim}>  v{version}</span>
-    </text>
-  );
-}
-
-function StatesRail({
+function FilterRail({
   views,
   filterIndex,
   focused,
-  height,
+  search,
+  searching,
 }: {
   views: SliceView[];
   filterIndex: number;
   focused: boolean;
-  height: number;
+  search: string;
+  searching: boolean;
 }): ReactNode {
   return (
-    <Panel title="States" focused={focused} height={height}>
+    <box flexDirection="column">
+      <Eyebrow label="Filters" focused={focused} />
       {FILTERS.map((f, i) => {
         const n = views.filter(f.match).length;
         const active = i === filterIndex;
-        const label = f.label.padEnd(13);
+        const countColor = FILTER_COLOR[f.key] ?? theme.textDim;
         return (
-          <text key={f.key} wrapMode="none" attributes={active ? BOLD : 0}>
-            <span fg={active ? color.title : color.dim}>
-              {active ? glyph.filterMarker + " " : "  "}
+          <text key={f.key} wrapMode="none">
+            <span fg={active ? theme.focus : theme.textFaint}>
+              {active ? `${glyph.filterMarker} ` : "  "}
             </span>
-            <span fg={active ? color.white : color.fg}>{label}</span>
-            <span fg={color.dim}>{String(n).padStart(2)}</span>
+            <span fg={active ? theme.textBright : theme.textDim} attributes={active ? BOLD : 0}>
+              {f.label.padEnd(13)}
+            </span>
+            <span fg={n > 0 ? countColor : theme.textFaint}>{String(n).padStart(2)}</span>
           </text>
         );
       })}
-    </Panel>
+      {searching || search !== "" ? (
+        <text wrapMode="none" fg={theme.focus}>
+          {"  / "}
+          <span fg={theme.text}>{search === "" ? "…" : search}</span>
+        </text>
+      ) : null}
+    </box>
   );
 }
 
-function repoPrLine(prs: PrStackEntry[] | undefined, repo: string): ReactNode {
+function prBadge(prs: PrStackEntry[] | undefined, repo: string): ReactNode {
   const pr = prs?.find((p) => p.repo === repo);
-  if (!pr || pr.number === undefined) return <span fg={color.dim}> (no PR)</span>;
+  if (!pr || pr.number === undefined) {
+    return <span fg={theme.textFaint}>{"  no PR"}</span>;
+  }
+  const state = (pr.state ?? "").toLowerCase();
   const stateColor =
-    pr.state === "MERGED"
-      ? color.merged
-      : pr.state === "OPEN"
-        ? color.synced
-        : color.dim;
+    pr.state === "MERGED" ? theme.merged : pr.state === "OPEN" ? theme.good : theme.textDim;
+  const ci =
+    pr.ci === "pass"
+      ? { g: glyph.ciPass, c: theme.good, t: "" }
+      : pr.ci === "fail"
+        ? { g: glyph.ciFail, c: theme.bad, t: (pr.ci_fail ?? 0) > 0 ? `·${pr.ci_fail}` : "" }
+        : pr.ci === "pending"
+          ? { g: glyph.ciPending, c: theme.attn, t: "" }
+          : null;
   const review =
     pr.review_decision === "APPROVED"
-      ? { t: " ✓ approved", c: color.synced }
+      ? { g: glyph.inReview, c: theme.good, t: "" }
       : pr.review_decision === "CHANGES_REQUESTED"
-        ? { t: " ✗ changes", c: color.missing }
-        : { t: "", c: color.dim };
+        ? { g: glyph.changes, c: theme.bad, t: " changes" }
+        : null;
   return (
     <span>
-      <span fg={color.dim}> #{pr.number} </span>
-      <span fg={stateColor}>{(pr.state ?? "").toLowerCase()}</span>
-      {review.t ? <span fg={review.c}>{review.t}</span> : null}
+      <span fg={theme.textFaint}>{`  #${pr.number} `}</span>
+      <span fg={stateColor}>{state}</span>
+      {ci ? (
+        <span fg={ci.c}>
+          {" "}
+          {ci.g}
+          {ci.t}
+        </span>
+      ) : null}
+      {review ? (
+        <span fg={review.c}>
+          {" "}
+          {review.g}
+          {review.t}
+        </span>
+      ) : null}
     </span>
   );
+}
+
+function repoTotals(r: DiffRepo): { added: number; deleted: number; files: number } {
+  if (r.stat?.files) {
+    const files = r.stat.files;
+    return {
+      added: r.stat.added ?? files.reduce((a, f) => a + Math.max(f.added, 0), 0),
+      deleted: r.stat.deleted ?? files.reduce((a, f) => a + Math.max(f.deleted, 0), 0),
+      files: files.length,
+    };
+  }
+  const parsed = r.patch ? parseUnifiedDiff(r.patch) : [];
+  return {
+    added: parsed.reduce((a, f) => a + f.added, 0),
+    deleted: parsed.reduce((a, f) => a + f.deleted, 0),
+    files: parsed.length,
+  };
+}
+
+function previewLines(
+  view: SliceView,
+  diff: DiffResult | null,
+  capture: CaptureResult | null,
+  conflicts: ConflictsResult | null,
+): ReactNode[] {
+  const lines: ReactNode[] = [];
+  const push = (n: ReactNode) => lines.push(n);
+  const blank = () => push(<text key={`b${lines.length}`}> </text>);
+
+  push(<Eyebrow key="e-state" label="State" bar={false} />);
+  const overlaps = (conflicts?.overlaps ?? []).filter((o) => o.slices.includes(view.slice.name));
+  const stateSpans: ReactNode[] = [];
+  if (view.slice.active)
+    stateSpans.push(
+      <span key="live" fg={theme.good}>
+        {glyph.live} live{"   "}
+      </span>,
+    );
+  if (view.status === "waiting-input")
+    stateSpans.push(
+      <span key="wait" fg={theme.attn}>
+        {glyph.waiting} needs you{"   "}
+      </span>,
+    );
+  if (workState(view) === "ready")
+    stateSpans.push(
+      <span key="ready" fg={theme.good}>
+        {glyph.ready} ready to clear{"   "}
+      </span>,
+    );
+  if (view.slice.stale)
+    stateSpans.push(
+      <span key="stale" fg={theme.attn}>
+        {glyph.dirty} primary behind tip{"   "}
+      </span>,
+    );
+  if (overlaps.length > 0)
+    stateSpans.push(
+      <span key="ov" fg={theme.attn}>
+        {glyph.dirty} overlaps {overlaps.length}
+      </span>,
+    );
+  if (stateSpans.length === 0)
+    stateSpans.push(
+      <span key="idle" fg={theme.textDim}>
+        idle
+      </span>,
+    );
+  push(
+    <text key="state" wrapMode="none">
+      {"  "}
+      {stateSpans}
+    </text>,
+  );
+  if (isPhantom(view))
+    push(
+      <text key="phantom" wrapMode="none" fg={theme.bad}>
+        {"  "}
+        {glyph.dirty} doubled-prefix branch (phantom) — diff/PR won't match · run{" "}
+        <span fg={theme.textBright}>slis doctor --fix</span>
+      </text>,
+    );
+  blank();
+
+  push(<Eyebrow key="e-repos" label="Repos" bar={false} />);
+  for (const m of view.slice.members) {
+    push(
+      <text key={`repo-${m.repo}`} wrapMode="none">
+        {"  "}
+        <span fg={theme.focus} attributes={BOLD}>
+          {m.repo}
+        </span>
+        <span fg={theme.text}>{"  " + m.branch}</span>
+        {prBadge(view.prs, m.repo)}
+      </text>,
+    );
+  }
+  blank();
+
+  push(<Eyebrow key="e-changes" label="Changes" trailing="vs working tree" bar={false} />);
+  if (diff === null) {
+    push(
+      <text key="diff-loading" wrapMode="none" fg={theme.textDim} attributes={DIM}>
+        {"  loading…"}
+      </text>,
+    );
+  } else if (diff.repos.length === 0) {
+    push(
+      <text key="diff-none" wrapMode="none" fg={theme.textDim} attributes={DIM}>
+        {"  no working-tree changes"}
+      </text>,
+    );
+  } else {
+    for (const r of diff.repos) {
+      if (r.err) {
+        push(
+          <text key={`d-${r.repo}`} wrapMode="none">
+            <span fg={theme.textFaint}>{glyph.filterMarker} </span>
+            <span fg={theme.focus}>{r.repo}</span>
+            <span fg={theme.bad}> diff unavailable</span>
+          </text>,
+        );
+        continue;
+      }
+      const t = repoTotals(r);
+      push(
+        <text key={`d-${r.repo}`} wrapMode="none">
+          <span fg={theme.textFaint}>{glyph.filterMarker} </span>
+          <span fg={theme.focus}>{r.repo}</span>
+          <span fg={diffColor.add}> +{t.added}</span>
+          <span fg={diffColor.del}> -{t.deleted}</span>
+          <span fg={theme.textDim}> · {t.files} files</span>
+        </text>,
+      );
+      if (r.patch) {
+        const patchLines = r.patch.split("\n");
+        const capped = patchLines.slice(0, PATCH_TAIL_CAP);
+        capped.forEach((raw, i) => {
+          const line = stripSgr(raw);
+          push(
+            <text
+              key={`p-${r.repo}-${i}`}
+              wrapMode="none"
+              fg={patchLineColor(classifyPatchLine(line))}
+            >
+              {line === "" ? " " : line}
+            </text>,
+          );
+        });
+        if (patchLines.length > PATCH_TAIL_CAP)
+          push(
+            <text key={`p-more-${r.repo}`} wrapMode="none" fg={theme.textFaint} attributes={DIM}>
+              {`  … ${patchLines.length - PATCH_TAIL_CAP} more lines — open cockpit (enter) for the full diff`}
+            </text>,
+          );
+      }
+    }
+  }
+  blank();
+
+  push(<Eyebrow key="e-session" label="Session" trailing="live tail" bar={false} />);
+  const capLines = (capture?.lines ?? []).map(stripSgr).filter((l) => l.trim() !== "");
+  if (capLines.length === 0) {
+    push(
+      <text key="sess-none" wrapMode="none" fg={theme.textDim} attributes={DIM}>
+        {"  no recent session output"}
+      </text>,
+    );
+  } else {
+    capLines.forEach((l, i) =>
+      push(
+        <text key={`sess-${i}`} wrapMode="none" fg={theme.textDim}>
+          {"  "}
+          <span fg={theme.textFaint}>{glyph.arrow} </span>
+          {l}
+        </text>,
+      ),
+    );
+  }
+
+  return lines;
 }
 
 function Preview({
@@ -264,125 +441,110 @@ function Preview({
   view,
   conflicts,
   height,
+  scrollEnabled,
 }: {
   client: RpcClient;
   view: SliceView | undefined;
   conflicts: ConflictsResult | null;
   height: number;
+  scrollEnabled: boolean;
 }): ReactNode {
   const [capture, setCapture] = useState<CaptureResult | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [scroll, setScroll] = useState(0);
   const slice = view?.slice.name;
 
   useEffect(() => {
+    setScroll(0);
     if (!slice) return;
     let live = true;
     setCapture(null);
     setDiff(null);
     client.capture({ slice, lines: 8 }).then((r) => live && setCapture(r), () => {});
     client
-      .diff({ slice, scope: "working", format: "stat" })
+      .diff({ slice, scope: "working", format: "patch" })
       .then((r) => live && setDiff(r), () => {});
     return () => {
       live = false;
     };
   }, [client, slice]);
 
+  const lines = useMemo(
+    () => (view ? previewLines(view, diff, capture, conflicts) : []),
+    [view, diff, capture, conflicts],
+  );
+
+  const viewport = Math.max(3, height - 4);
+  const start = clampScroll(scroll, lines.length, viewport);
+  const halfPage = Math.max(1, Math.floor(viewport / 2));
+
+  useKeyboard((key: KeyEvent) => {
+    if (!scrollEnabled || !view) return;
+    const name = key.name;
+    if (key.ctrl && name === "d")
+      setScroll((s) => clampScroll(s + halfPage, lines.length, viewport));
+    else if (key.ctrl && name === "u")
+      setScroll((s) => clampScroll(s - halfPage, lines.length, viewport));
+    else if (name === "pagedown")
+      setScroll((s) => clampScroll(s + viewport, lines.length, viewport));
+    else if (name === "pageup")
+      setScroll((s) => clampScroll(s - viewport, lines.length, viewport));
+  });
+
   if (!view) {
     return (
-      <Panel title="Preview" flexGrow={1}>
-        <text fg={color.dim} attributes={DIM}>
-          No slice selected.
+      <box flexDirection="column" flexGrow={1} paddingLeft={2}>
+        <text fg={theme.textDim} attributes={DIM}>
+          Pick a slice to preview it.
         </text>
-      </Panel>
+      </box>
     );
   }
 
-  const overlaps = (conflicts?.overlaps ?? []).filter((o) =>
-    o.slices.includes(view.slice.name),
-  );
+  const shown = lines.slice(start, start + viewport);
+  const overflow = maxScroll(lines.length, viewport);
 
   return (
-    <Panel title={view.slice.name} flexGrow={1} height={height}>
-      {/* Tags */}
+    <box flexDirection="column" flexGrow={1} paddingLeft={2} overflow="hidden">
       <text wrapMode="none">
-        {view.slice.active ? <span fg={color.live}>{glyph.live} live  </span> : null}
-        {view.slice.stale ? (
-          <span fg={color.wait}>⚠ primary behind tip  </span>
-        ) : null}
-        {workState(view) === "ready" ? (
-          <span fg={color.ready}>{glyph.ready} ready to clear  </span>
-        ) : null}
-        {view.status === "waiting-input" ? (
-          <span fg={color.wait}>{glyph.waiting} needs you  </span>
-        ) : null}
-        {overlaps.length > 0 ? (
-          <span fg={color.wait}>⚠ overlaps {overlaps.length}</span>
-        ) : null}
-        {!view.slice.active &&
-        !view.slice.stale &&
-        view.status !== "waiting-input" &&
-        overlaps.length === 0 ? (
-          <span fg={color.dim}>idle</span>
-        ) : null}
+        <span fg={theme.textBright} attributes={BOLD}>
+          {view.slice.name}
+        </span>
+        {overflow > 0 ? <span fg={theme.textFaint}>{`   ${start}/${overflow}`}</span> : null}
       </text>
-      <text> </text>
-      {/* Per-repo branch + PR */}
-      {view.slice.members.map((m) => (
-        <text key={m.repo} wrapMode="none">
-          <span fg={color.repoHeader} attributes={BOLD}>
-            {m.repo}
-          </span>
-          <span fg={color.fg}>  {m.branch}</span>
-          {repoPrLine(view.prs, m.repo)}
+      <Divider width={Math.max(10, height)} />
+      {start > 0 ? (
+        <text wrapMode="none" fg={theme.textFaint} attributes={DIM}>
+          {`  ↑ ${start} more above`}
         </text>
-      ))}
-      <text> </text>
-      {/* Diff stat */}
-      {diff && diff.repos.length > 0 ? (
-        <>
-          <text fg={color.dim} attributes={DIM} wrapMode="none">
-            ── recent changes ──
-          </text>
-          {diff.repos.map((r) => {
-            const files = r.stat?.files ?? [];
-            const added = files.reduce((a, f) => a + Math.max(f.added, 0), 0);
-            const deleted = files.reduce((a, f) => a + Math.max(f.deleted, 0), 0);
-            return (
-              <text key={r.repo} wrapMode="none">
-                <span fg={color.dim}>{glyph.filterMarker} </span>
-                <span fg={color.repoHeader}>{r.repo}</span>
-                <span fg={color.synced}> +{added}</span>
-                <span fg={color.missing}> -{deleted}</span>
-                <span fg={color.dim}> · {files.length} files</span>
-              </text>
-            );
-          })}
-        </>
       ) : null}
-      {/* Session capture tail */}
-      {capture && capture.lines.length > 0 ? (
-        <>
-          <text> </text>
-          <text fg={color.dim} attributes={DIM} wrapMode="none">
-            ── recent session output (live) ──
-          </text>
-          {capture.lines.map((l, i) => {
-            const s = stripSgr(l);
-            return (
-              <text key={i} fg={color.dim} wrapMode="none">
-                {s === "" ? " " : s}
-              </text>
-            );
-          })}
-        </>
+      {shown}
+      {start + viewport < lines.length ? (
+        <text wrapMode="none" fg={theme.textFaint} attributes={DIM}>
+          {`  ↓ ${lines.length - start - viewport} more below`}
+        </text>
       ) : null}
-    </Panel>
+    </box>
   );
 }
 
+const LIST_HINTS: Hint[] = [
+  { key: "enter", label: "open" },
+  { key: "a", label: "term" },
+  { key: "w", label: "swap" },
+  { key: "space", label: "select" },
+  { key: "/", label: "search" },
+];
+
+const RAIL_HINTS: Hint[] = [
+  { key: "j/k", label: "filter" },
+  { key: "tab", label: "to list" },
+  { key: "1-8", label: "jump" },
+  { key: "enter", label: "open" },
+];
+
 export function Browser(props: BrowserProps): ReactNode {
-  const { views, enabled, overlays } = props;
+  const { views, enabled, overlays, onFocusSlice } = props;
   const [filterIndex, setFilterIndex] = useState(0);
   const [focusIndex, setFocusIndex] = useState(0);
   const [hubFocus, setHubFocus] = useState<"rail" | "list">("list");
@@ -402,19 +564,24 @@ export function Browser(props: BrowserProps): ReactNode {
     return list;
   }, [views, filter, search]);
 
-  // Cluster stack-sibling slices adjacently under a header (mirrors the Go
-  // browser). `visible` is the clustered order that focus navigates.
-  const { visible, leaders } = useMemo(() => {
+  const { ordered, leaders } = useMemo(() => {
     const c = clusterByStack(filtered);
-    return { visible: c.ordered, leaders: c.leaders };
+    return { ordered: c.ordered, leaders: c.leaders };
   }, [filtered]);
 
-  // Keep focus in range as the visible set changes.
-  useEffect(() => {
-    setFocusIndex((i) => Math.max(0, Math.min(i, Math.max(0, visible.length - 1))));
-  }, [visible.length]);
+  const missing = useMemo(() => missingSliceNames(props.ls.missing), [props.ls.missing]);
+  const rows: BrowserRow[] = useMemo(() => buildRows(ordered, missing), [ordered, missing]);
 
-  const focusedSlice = visible[focusIndex];
+  useEffect(() => {
+    setFocusIndex((i) => clampFocus(rows, i));
+  }, [rows]);
+
+  const focusRow = rows[focusIndex];
+  const focusedSlice = focusRow?.kind === "slice" ? focusRow.view : undefined;
+
+  useEffect(() => {
+    if (focusedSlice) onFocusSlice(focusedSlice.slice.name);
+  }, [focusedSlice, onFocusSlice]);
 
   const targetsFor = (): string[] => {
     if (selected.size > 0) return [...selected];
@@ -425,7 +592,6 @@ export function Browser(props: BrowserProps): ReactNode {
     if (!enabled) return;
     const name = key.name;
 
-    // Incremental search mode captures printable input.
     if (searching) {
       if (name === "escape") {
         setSearch("");
@@ -460,25 +626,27 @@ export function Browser(props: BrowserProps): ReactNode {
       setHubFocus("list");
       return;
     }
+    if (key.ctrl && (name === "d" || name === "u")) return;
+    if (name === "pagedown" || name === "pageup") return;
     if (name === "j" || name === "down") {
       if (hubFocus === "rail") setFilterIndex((i) => Math.min(FILTERS.length - 1, i + 1));
-      else setFocusIndex((i) => Math.min(visible.length - 1, i + 1));
+      else setFocusIndex((i) => stepSelectable(rows, i, 1));
       return;
     }
     if (name === "k" || name === "up") {
       if (hubFocus === "rail") setFilterIndex((i) => Math.max(0, i - 1));
-      else setFocusIndex((i) => Math.max(0, i - 1));
+      else setFocusIndex((i) => stepSelectable(rows, i, -1));
       return;
     }
-    if (name === "g") return setFocusIndex(0);
-    if (name === "G") return setFocusIndex(Math.max(0, visible.length - 1));
+    if (name === "g") return setFocusIndex(firstSelectable(rows));
+    if (name === "G") return setFocusIndex(lastSelectable(rows));
     if (name === "n") {
-      const next = nextAttentionIndex(visible, focusIndex, 1);
+      const next = nextAttentionRow(rows, focusIndex, 1);
       if (next !== null) setFocusIndex(next);
       return;
     }
     if (name === "N") {
-      const prev = nextAttentionIndex(visible, focusIndex, -1);
+      const prev = nextAttentionRow(rows, focusIndex, -1);
       if (prev !== null) setFocusIndex(prev);
       return;
     }
@@ -491,7 +659,12 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
     if (name === "A") {
-      setSelected((s) => toggleAllVisible(s, visible.map((v) => v.slice.name)));
+      setSelected((s) =>
+        toggleAllVisible(
+          s,
+          rows.flatMap((r) => (r.kind === "slice" ? [r.view.slice.name] : [])),
+        ),
+      );
       return;
     }
     if (name === "w") {
@@ -520,7 +693,7 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) overlays.yankPrStack(focusedSlice.slice.name);
       return;
     }
-    if (name === "d") {
+    if (name === "d" && !key.ctrl) {
       const targets = targetsFor();
       if (targets.length === 0) return;
       const live = targets.filter((t) => views.find((v) => v.slice.name === t)?.slice.active);
@@ -538,74 +711,95 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
     if (name === "e" || name === "o") {
-      // Browser is slice-level (no per-repo selection): both open the whole slice.
       if (focusedSlice) overlays.editor(focusedSlice.slice.name);
       return;
     }
   });
 
-  const leftW = Math.max(20, Math.min(30, Math.floor(props.width / 4)));
-  const bodyH = props.height - 2; // pulse bar + footer
-  const railH = FILTERS.length + 2;
-  const listH = bodyH - railH;
+  const leftW = Math.max(22, Math.min(32, Math.floor(props.width / 4)));
+  const bodyH = props.height - 2;
+  const sliceCount = rows.filter((r) => r.kind === "slice").length;
+  const workspaceEmpty = views.length === 0 && missing.length === 0;
+
+  const counts = {
+    needsYou: views.filter(needsYou).length,
+    live: views.filter((v) => v.slice.active).length,
+    ready: views.filter((v) => workState(v) === "ready").length,
+    restack: views.filter(needsRestack).length,
+    errors:
+      (props.ls.repo_errors?.length ?? 0) + (props.ls.skipped?.length ?? 0) + missing.length,
+  };
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      <PulseBar
-        count={views.length}
-        views={views}
-        ls={props.ls}
-        version={props.version}
-        search={searching ? search : null}
-        selectedCount={selected.size}
-      />
+      <StatStrip counts={counts} total={views.length} version={`v${props.version}`} />
       <box flexDirection="row" flexGrow={1}>
-        <box flexDirection="column" width={leftW}>
-          <StatesRail
+        <box
+          flexDirection="column"
+          width={leftW}
+          border={["right"]}
+          borderColor={theme.hairline}
+          paddingRight={1}
+          height={bodyH}
+        >
+          <FilterRail
             views={views}
             filterIndex={filterIndex}
             focused={hubFocus === "rail"}
-            height={railH}
+            search={search}
+            searching={searching}
           />
-          <Panel
-            title={`Slices ${visible.length}`}
-            focused={hubFocus === "list"}
-            height={Math.max(3, listH)}
-          >
-            {visible.length === 0 ? (
-              <text fg={color.dim} attributes={DIM}>
-                (no slices in this filter)
+          <box marginTop={1} flexDirection="column" flexGrow={1} overflow="hidden">
+            <Eyebrow label="Slices" focused={hubFocus === "list"} trailing={String(sliceCount)} />
+            {workspaceEmpty ? (
+              <>
+                <text fg={theme.textDim}>No slices yet.</text>
+                <text wrapMode="none" fg={theme.textDim} attributes={DIM}>
+                  Press <span fg={theme.focus}>c</span> to create a feature slice,
+                </text>
+                <text wrapMode="none" fg={theme.textDim} attributes={DIM}>
+                  or <span fg={theme.focus}>i</span> to import worktrees.
+                </text>
+              </>
+            ) : sliceCount === 0 && missing.length === 0 ? (
+              <text wrapMode="none" fg={theme.textDim} attributes={DIM}>
+                {`Nothing matches "${filter.label}" — you're all caught up.`}
               </text>
             ) : (
-              visible.map((v, i) => {
-                const leader = leaders.get(v.slice.name);
+              rows.map((row, i) => {
+                if (row.kind === "missing")
+                  return <MissingRow key={`m-${row.name}`} name={row.name} />;
+                const leader = leaders.get(row.view.slice.name);
                 return (
-                  <box key={v.slice.name} flexDirection="column">
+                  <box key={row.view.slice.name} flexDirection="column">
                     {leader ? <StackHeader leader={leader} /> : null}
                     <SliceRow
-                      view={v}
+                      view={row.view}
                       focused={i === focusIndex}
                       listFocused={hubFocus === "list"}
-                      selected={selected.has(v.slice.name)}
+                      selected={selected.has(row.view.slice.name)}
                     />
                   </box>
                 );
               })
             )}
-          </Panel>
+          </box>
         </box>
         <Preview
           client={props.client}
           view={focusedSlice}
           conflicts={props.conflicts}
           height={bodyH}
+          scrollEnabled={enabled && !searching}
         />
       </box>
-      <text wrapMode="none" fg={color.dim} attributes={DIM}>
-        {searching
-          ? "type to filter · enter keep · esc clear"
-          : "enter open · n/N todo · a/C term · e editor · w live · space/A sel · m/u group · R stack · c new · i import · P procs · / search · d clear · r refresh · ? help · q quit"}
-      </text>
+      {searching ? (
+        <text wrapMode="none" fg={theme.textDim} attributes={DIM}>
+          type to filter · enter keep · esc clear
+        </text>
+      ) : (
+        <HintBar hints={hubFocus === "rail" ? RAIL_HINTS : LIST_HINTS} width={props.width - 1} />
+      )}
     </box>
   );
 }

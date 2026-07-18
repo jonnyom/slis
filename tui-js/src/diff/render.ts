@@ -7,6 +7,30 @@
 import { tokenizeLine, type Lang, type TokenKind } from "./tokenize";
 import type { WordSegment } from "./words";
 
+export type PatchLineKind = "add" | "del" | "hunk" | "meta" | "context";
+
+export function classifyPatchLine(line: string): PatchLineKind {
+  if (line.startsWith("@@")) return "hunk";
+  if (
+    line.startsWith("+++") ||
+    line.startsWith("---") ||
+    line.startsWith("diff ") ||
+    line.startsWith("index ") ||
+    line.startsWith("new file") ||
+    line.startsWith("deleted file") ||
+    line.startsWith("old mode") ||
+    line.startsWith("new mode") ||
+    line.startsWith("similarity ") ||
+    line.startsWith("rename ") ||
+    line.startsWith("copy ") ||
+    line.startsWith("Binary ")
+  )
+    return "meta";
+  if (line.startsWith("+")) return "add";
+  if (line.startsWith("-")) return "del";
+  return "context";
+}
+
 export interface Cell {
   text: string;
   kind: TokenKind;

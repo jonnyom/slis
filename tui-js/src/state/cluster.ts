@@ -92,3 +92,89 @@ export function nextAttentionIndex(
   const np = (p + dir + idxs.length) % idxs.length;
   return idxs[np]!;
 }
+
+export type BrowserRow =
+  | { kind: "slice"; view: SliceView }
+  | { kind: "missing"; name: string };
+
+export function missingSliceNames(
+  missing: { slice: string }[] | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of missing ?? []) {
+    if (!seen.has(m.slice)) {
+      seen.add(m.slice);
+      out.push(m.slice);
+    }
+  }
+  return out;
+}
+
+export function buildRows(ordered: SliceView[], missing: string[]): BrowserRow[] {
+  const rows: BrowserRow[] = ordered.map((view) => ({ kind: "slice", view }));
+  for (const name of missing) rows.push({ kind: "missing", name });
+  return rows;
+}
+
+export function selectableIndices(rows: BrowserRow[]): number[] {
+  const out: number[] = [];
+  rows.forEach((r, i) => {
+    if (r.kind === "slice") out.push(i);
+  });
+  return out;
+}
+
+export function firstSelectable(rows: BrowserRow[]): number {
+  return selectableIndices(rows)[0] ?? 0;
+}
+
+export function lastSelectable(rows: BrowserRow[]): number {
+  const s = selectableIndices(rows);
+  return s.length ? s[s.length - 1]! : 0;
+}
+
+export function stepSelectable(
+  rows: BrowserRow[],
+  current: number,
+  dir: 1 | -1,
+): number {
+  const sel = selectableIndices(rows);
+  if (sel.length === 0) return current;
+  const pos = sel.indexOf(current);
+  if (pos < 0) {
+    if (dir === 1) return sel.find((i) => i > current) ?? sel[sel.length - 1]!;
+    const below = sel.filter((i) => i < current);
+    return below.length ? below[below.length - 1]! : sel[0]!;
+  }
+  const np = Math.max(0, Math.min(sel.length - 1, pos + dir));
+  return sel[np]!;
+}
+
+export function clampFocus(rows: BrowserRow[], current: number): number {
+  const sel = selectableIndices(rows);
+  if (sel.length === 0) return 0;
+  if (rows[current]?.kind === "slice") return current;
+  const below = sel.filter((i) => i <= current);
+  return below.length ? below[below.length - 1]! : sel[0]!;
+}
+
+export function attentionRowIndices(rows: BrowserRow[]): number[] {
+  const out: number[] = [];
+  rows.forEach((r, i) => {
+    if (r.kind === "slice" && attentionRank(r.view) < 99) out.push(i);
+  });
+  return out;
+}
+
+export function nextAttentionRow(
+  rows: BrowserRow[],
+  current: number,
+  dir: 1 | -1,
+): number | null {
+  const idxs = attentionRowIndices(rows);
+  if (idxs.length === 0) return null;
+  const p = idxs.indexOf(current);
+  if (p < 0) return dir === 1 ? idxs[0]! : idxs[idxs.length - 1]!;
+  return idxs[(p + dir + idxs.length) % idxs.length]!;
+}
