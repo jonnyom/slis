@@ -46,6 +46,7 @@ export interface CockpitProps {
   height: number;
   onBack: () => void;
   onSwap: (slice: string) => void;
+  onOpenTerm: (slice: string, launchAgent: boolean) => void;
   onToggleHelp: () => void;
   onQuit: () => void;
 }
@@ -481,6 +482,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (name === "?") return props.onToggleHelp();
     if (name === "escape" || name === "h") return props.onBack();
     if (name === "w") return props.onSwap(slice);
+    if (name === "a") return props.onOpenTerm(slice, false);
+    if (name === "C") return props.onOpenTerm(slice, true);
     if (name === "tab") {
       setPanel((p) => PANEL_ORDER[(PANEL_ORDER.indexOf(p) + 1) % PANEL_ORDER.length]!);
       return;
@@ -540,13 +543,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const footer = useMemo(() => {
     switch (panel) {
       case "stack":
-        return `tab panel · j/k repo · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · ^d/^u scroll · w swap · esc back`;
+        return `tab panel · j/k repo · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · ^d/^u scroll · w swap · a/C term · esc back`;
       case "prs":
-        return "tab panel · j/k pr · w swap · esc back";
+        return "tab panel · j/k pr · w swap · a/C term · esc back";
       case "session":
-        return "tab panel · w swap · esc back";
+        return "tab panel · w swap · a/C term · esc back";
       case "procs":
-        return "tab panel · j/k proc · w swap · esc back";
+        return "tab panel · j/k proc · w swap · a/C term · esc back";
     }
   }, [panel, scope, showPatch]);
 

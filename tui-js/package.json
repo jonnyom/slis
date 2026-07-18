@@ -7,11 +7,13 @@
   "scripts": {
     "start": "bun run src/index.tsx",
     "start:fake": "SLIS_FAKE=1 bun run src/index.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "term:e2e": "bun run src/term/e2e.ts"
   },
   "dependencies": {
     "@opentui/core": "0.4.5",
     "@opentui/react": "0.4.5",
+    "ghostty-opentui": "1.5.0",
     "react": "19.2.7"
   },
   "devDependencies": {

@@ -13,6 +13,8 @@ const BROWSER_BINDINGS: Binding[] = [
   ["1–8", "jump to filter"],
   ["g / G", "first / last slice"],
   ["enter / l", "open slice cockpit"],
+  ["a", "open session terminal tab"],
+  ["C", "launch agent + open terminal tab"],
   ["w", "swap slice in / out (live)"],
   ["r", "refresh workspace"],
   ["? ", "toggle this help"],
@@ -27,6 +29,7 @@ const COCKPIT_BINDINGS: Binding[] = [
   ["t", "toggle stat / patch"],
   ["ctrl+d / ctrl+u", "scroll right pane"],
   ["g / G", "top / bottom of right pane"],
+  ["a / C", "open terminal tab (C also launches agent)"],
   ["w", "swap slice in / out (live)"],
   ["esc / h", "back to browser"],
   ["q", "quit"],
@@ -76,7 +79,7 @@ export function Help({ view }: { view: "browser" | "cockpit" }): ReactNode {
       <Legend />
       <text> </text>
       <text fg={color.dim} attributes={DIM} wrapMode="none">
-        tmux detach is C-b d (not Ctrl-D) · ? / esc to close
+        in a terminal tab: ctrl+q returns here · tmux detach is C-b d · ? / esc to close
       </text>
     </Overlay>
   );
