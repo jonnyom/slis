@@ -1,0 +1,59 @@
+internal/review/compose.go
+  s_470615ee13fe83::t_ff00f35ec4337e 1-40
+skills/slis/SKILL.md
+  s_470615ee13fe83::t_91b63dfba42ade 65
+  s_470615ee13fe83::t_201b20f1291a43 87-90
+internal/tmuxctl/tmux.go
+  s_470615ee13fe83::t_38b0efb24ec89e 217-242
+internal/config/paths.go
+  s_470615ee13fe83::t_be7aefc7c31960 70
+  s_470615ee13fe83::t_5c2bd755b7bc08 26-28
+internal/review/send_test.go
+  s_470615ee13fe83::t_d0ceda01ca7db5 1-103
+internal/rpcserver/rpcserver_test.go
+  s_470615ee13fe83::t_3519bea2f7cafa 19
+  s_470615ee13fe83::t_d6e7528b084896 477-516
+internal/cli/review.go
+  s_470615ee13fe83::t_c54f326144ce29 1-256
+internal/review/store_test.go
+  s_470615ee13fe83::t_9dc06453a979b6 1-177
+internal/cli/review_test.go
+  s_470615ee13fe83::t_fc264f29b87489 1-90
+internal/rpcserver/server.go
+  s_470615ee13fe83::t_5c019c800e442e 154-155
+docs/AGENT.md
+  s_470615ee13fe83::t_56207045195b81 248
+  s_470615ee13fe83::t_4db2e6903007e7 13
+  s_470615ee13fe83::t_950e8c3fc8b82b 186-211
+  s_470615ee13fe83::t_7737ee15bf6608 247
+internal/review/store.go
+  s_470615ee13fe83::t_c54499b141df7f 21
+  s_470615ee13fe83::t_381ef6584bbde0 1-20,22-120,124-242
+  s_470615ee13fe83::t_ac6f480f424f3d 121-123
+internal/review/send.go
+  s_470615ee13fe83::t_94f49eca081bd1 1-49
+internal/review/compose_test.go
+  s_470615ee13fe83::t_0fb77fa4a29301 1-41
+internal/rpcserver/methods.go
+  s_470615ee13fe83::t_877e91dc38f665 274-303
+  s_470615ee13fe83::t_80230baab5aed0 12
+docs/plans/2026-07-18-js-tui-spike.md
+  s_470615ee13fe83::t_740b8ebe05f627 76
+  s_470615ee13fe83::t_09f03aaab8afcc 370-379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bed203412ade1ab1abe9cf5292fed9f9fbef5059",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
