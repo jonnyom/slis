@@ -1,0 +1,54 @@
+tui-js/src/state/selection.ts
+  s_197478f89af866::t_a7980eeb4dc4bb 1-33
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_a7980eeb4dc4bb 19-26,28,30,50-54
+  s_197478f89af866::t_a9aab47c61260e 49
+tui-js/src/overlays/overlays.tsx
+  s_197478f89af866::t_a7980eeb4dc4bb 1-355
+tui-js/src/overlays/textinput.test.ts
+  s_197478f89af866::t_a7980eeb4dc4bb 1-31
+tui-js/src/rpc/mutate.ts
+  s_197478f89af866::t_a7980eeb4dc4bb 2-5,9-12,19,21-22,26-29,38-46,54-163
+tui-js/src/term/e2e.ts
+  s_197478f89af866::t_db9fdb77acd3f4 86,102
+tui-js/src/rpc/mutate.test.ts
+  s_197478f89af866::t_a7980eeb4dc4bb 1-23
+tui-js/src/overlays/textinput.ts
+  s_197478f89af866::t_a7980eeb4dc4bb 1-28
+tui-js/src/views/browser.tsx
+  s_197478f89af866::t_5920062c55e3ab 546
+  s_197478f89af866::t_a7980eeb4dc4bb 9,26-28,42,52-62,82,87,95,113-114,119-120,134-139,164-168,352,356-358,362,370,379-384,387-400,402,405-413,439-446,448-479,499-505,530,544-545
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_794b93dce17118 563,569
+  s_197478f89af866::t_6ac23325310e97 669,671,673,675
+  s_197478f89af866::t_531125eda22241 606
+  s_197478f89af866::t_a7980eeb4dc4bb 26,61,448,531-546,602-605,607-619,666
+  s_197478f89af866::t_807332a79ee57d 547-548
+tui-js/src/app.tsx
+  s_197478f89af866::t_8f19a3f6b3f1be 198
+  s_197478f89af866::t_8024a9cb2fe87c 46
+  s_197478f89af866::t_4bc4d0ac9141a7 159-162
+  s_197478f89af866::t_ef2f238bb0149b 217,230,255-256,259-260
+  s_197478f89af866::t_a7980eeb4dc4bb 2,4,6,21,104,211,225,250
+  s_197478f89af866::t_4b08243a553699 173
+tui-js/src/overlays/useOverlays.tsx
+  s_197478f89af866::t_a7980eeb4dc4bb 1-318
+tui-js/src/state/selection.test.ts
+  s_197478f89af866::t_a7980eeb4dc4bb 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3328c6487d148dd071a79b9189e3e09771325077",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
