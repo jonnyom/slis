@@ -1,0 +1,22 @@
+{
+  "name": "slis-tui-js",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenTUI front-end for slis, driven by the `slis rpc` Go sidecar.",
+  "scripts": {
+    "start": "bun run src/index.tsx",
+    "start:fake": "SLIS_FAKE=1 bun run src/index.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opentui/core": "0.4.5",
+    "@opentui/react": "0.4.5",
+    "react": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.4",
+    "@types/react": "19.2.17",
+    "typescript": "5.9.3"
+  }
+}
