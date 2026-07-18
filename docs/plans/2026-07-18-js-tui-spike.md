@@ -166,3 +166,91 @@ Honest reading:
 
 Verdict: the "must not be slower" bar is met — cold start and time-to-usable
 both favor the JS TUI on a real workspace.
+
+### Compiled single-binary cold start (`bun build --compile`, 3 runs, median)
+
+Same headless-PTY method, driving the standalone `slis-ui` binary (real
+sidecar, real workspace). Poll granularity 20 ms.
+
+| metric | JS compiled (`slis-ui`) |
+|---|---|
+| first paint | 571 ms (514–640) |
+| data ready | 10993 ms (10993–11118) |
+
+First paint is slower than the `bun run` path's 173 ms because the standalone
+binary extracts its embedded native assets to a cache on first launch; data
+ready matches the `bun run` number (both dominated by the sidecar git/gh
+fan-out, which the compile does not touch).
+
+### Input latency + idle CPU (2026-07-18, same laptop/workspace)
+
+Method: app warmed to data-ready in the headless PTY. **Latency** = 20
+alternating `j`/`k` keypresses (selection always moves, never clamps),
+wall-clock from the write to the first *changed* painted frame, median.
+**Idle CPU** = accumulated process-tree CPU-time over a fixed window ÷ window
+(Go tree = the `slis` process; JS tree = the Bun app + the `slis rpc` sidecar
+it spawns). One run each.
+
+| metric | Go TUI | JS (bun run) | JS compiled |
+|---|---|---|---|
+| input latency, median | 15.0 ms | 2.6 ms | 3.3 ms |
+| input latency, range | 1.3–18.6 ms | 1.3–14.9 ms | 2.5–35.3 ms |
+| idle CPU, 5 s settle | 2.7 % | 18.0 % | 17.3 % |
+| idle CPU, 25 s settle | 1.6 % | 1.2 % | — |
+
+Honest reading:
+- **Latency: parity.** All three medians sit far under one 16 ms (60 fps)
+  frame; the spread is a few ms with rare ~35 ms outliers on the JS side.
+  Imperceptible either way — the "must not feel slower" bar is met on input.
+- **Idle CPU is a measurement trap, and the 5 s row is misleading on its own.**
+  At a 5 s settle the JS stack looks 6–7× hungrier (18 % vs 2.7 %) — but that
+  window still overlaps the JS app's *lazy* PR/stack enrichment (the sidecar
+  spawning gh/git; process-tree size 3–5, live children present). The Go TUI
+  front-loads all enrichment before data-ready, so it is already quiet by then.
+  Let enrichment quiesce (25 s settle, tree back to just app+sidecar) and both
+  fall to ~1–1.6 % — **steady-state idle CPU is at parity.** The JS 18 % was
+  work-in-flight, not resting cost. (This is the same trade the cold-start
+  section calls out: the JS app pays enrichment cost *later* rather than up
+  front, which is exactly why its first paint wins.)
+
+Updated verdict: input latency and steady-state idle CPU both meet the "must
+not be slower" bar; cold start and time-to-usable favor the JS TUI. Nothing in
+these numbers blocks replacing the Go TUI.
+
+## Distribution
+
+**`bun build --compile` works today — one self-contained binary.**
+`bun build --compile ./src/index.tsx --outfile slis-ui` produces a **79 MB**
+standalone executable that paints a real slice list with no `node_modules`
+present. Both native libraries embed cleanly:
+- OpenTUI's Zig core (`libopentui.dylib` / `.so`) — the prebuilt
+  `@opentui/core-<platform>` package already resolves it on Bun via
+  `import("./libopentui.dylib", { with: { type: "file" } })`, which
+  `bun build --compile` recognises and bundles into the binary. No patching.
+- ghostty's VT parser (`ghostty-opentui.node`, a Node-API addon) — Bun embeds
+  the statically-required `.node` addon into the binary; it loads at runtime
+  with no external file. No dlopen path fix was needed (the opencode
+  `{ type: "file" }` + dlopen dance was not required here).
+
+Per-platform builds are still required (the binary carries one platform's
+native libs), so release packaging would compile `slis-ui` per target the same
+way GoReleaser cross-builds `slis`.
+
+**Launcher: `slis ui`** (`internal/cli/ui.go`). Execs the JS front-end via
+`syscall.Exec` (clean handover, the JS app owns the terminal): it prefers a
+compiled `slis-ui` sitting next to the running `slis` binary, else falls back
+to `bun run src/index.tsx` when `SLIS_TUI_DIR` points at `tui-js/` (dev mode).
+It passes `SLIS_BIN=<path-to-slis>` through so the JS RPC client always finds
+the sidecar. Bare `slis` still launches the Go (Bubble Tea) TUI unchanged.
+Pure resolution logic is unit-tested (`ui_test.go`); the three paths (sibling
+binary, bun dev, error) were also exercised end-to-end in a PTY.
+
+**CI** (`.github/workflows/ci.yml`): a `tui-js` job on ubuntu runs
+`oven-sh/setup-bun`, `bun install --frozen-lockfile`, `bun x tsc --noEmit`, and
+`bun test` (92 tests). The Go build/test/lint job is unchanged. The terminal
+embed e2e (`src/term/e2e.ts`) is **gated off by default** behind
+`if: vars.RUN_TUI_E2E == 'true'` (with its tmux install): it drives fixed
+sleeps against a live PTY + tmux and is timing-flaky (observed ~1 failure in 4
+runs even on a fast laptop; a headless runner would be worse), so gating it
+keeps green CI meaningful. Set the `RUN_TUI_E2E` repo variable to `true` to run
+it on demand.

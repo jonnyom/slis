@@ -26,7 +26,15 @@ bun run start:fake
 
 # Type-check:
 bun run typecheck
+
+# Single-binary build (embeds the OpenTUI + ghostty native libs):
+bun build --compile ./src/index.tsx --outfile slis-ui
 ```
+
+Once built, `slis ui` launches this front-end: it runs a compiled `slis-ui`
+sitting next to the `slis` binary, or falls back to `bun run src/index.tsx`
+when `SLIS_TUI_DIR` points at this directory. Bare `slis` still launches the
+Go (Bubble Tea) TUI.
 
 > First paint against a real workspace waits for `ls`, which is a cold
 > multi-repo scan (≈10s for a 21-slice workspace here) — the "loading
