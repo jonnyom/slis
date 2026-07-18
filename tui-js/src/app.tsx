@@ -22,6 +22,10 @@ import { Help } from "./components/help";
 import { Overlay } from "./components/overlay";
 import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { BOLD, DIM } from "./components/ui";
+import { TermManager } from "./term/manager";
+import { TerminalLayer, type TabEntry } from "./term/tabs";
+import { tmuxAvailable, type TermMember } from "./term/tmux";
+import type { TermSessionOpts } from "./term/session";
 
 type Overlay =
   | { kind: "help" }
@@ -108,6 +112,14 @@ export function App(): ReactNode {
   const [current, setCurrent] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
 
+  // Embedded terminal session tabs.
+  const managerRef = useRef<TermManager | null>(null);
+  if (!managerRef.current) managerRef.current = new TermManager();
+  const manager = managerRef.current;
+  const [tabs, setTabs] = useState<TabEntry[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [termMode, setTermMode] = useState(false);
+
   const refresh = useCallback(() => {
     // ls first so the browser paints fast; the sidecar caps subprocess work at
     // 4 in flight, so the expensive fan-out (conflicts + per-slice PR/stack)
@@ -150,10 +162,11 @@ export function App(): ReactNode {
   }, [client, refresh]);
 
   const quit = useCallback(() => {
+    manager.detachAll(); // drop every tmux client — sessions keep running
     client.close();
     renderer.destroy();
     process.exit(0);
-  }, [client, renderer]);
+  }, [client, renderer, manager]);
 
   const runSwap = useCallback(
     async (slice: string, active: boolean) => {
@@ -234,6 +247,69 @@ export function App(): ReactNode {
     setView("cockpit");
   }, []);
 
+  // ── embedded terminal tabs ────────────────────────────────────────────────
+
+  // Build the attach options for a slice from live workspace data. Defaults to
+  // the Go-TUI harness defaults (claude / root layout); slis rpc does not yet
+  // expose the sessions config, so a custom agent/layout would need a new field.
+  const buildTermOpts = useCallback(
+    (slice: string, launchAgent: boolean): TermSessionOpts | null => {
+      const v = views.find((x) => x.slice.name === slice);
+      if (!v) return null;
+      const wsRoot = hello?.workspaceRoot ?? "";
+      const members: TermMember[] = v.slice.members.map((m) => ({
+        repo: m.repo,
+        branch: m.branch,
+        worktreePath: m.worktree_path,
+      }));
+      return {
+        slice,
+        members,
+        active: v.slice.active,
+        wsRoot,
+        sessionOpts: { root: wsRoot, layout: "" },
+        launchAgent,
+        agent: "claude",
+        harness: "claude",
+      };
+    },
+    [views, hello],
+  );
+
+  const openTerm = useCallback(
+    (slice: string, launchAgent: boolean) => {
+      if (!tmuxAvailable()) {
+        setOverlay({
+          kind: "result",
+          title: "Terminal unavailable",
+          body: "tmux is not on PATH — install tmux to use session tabs.",
+          ok: false,
+        });
+        return;
+      }
+      setTabs((prev) => {
+        if (prev.some((t) => t.slice === slice)) return prev; // reuse open tab
+        const opts = buildTermOpts(slice, launchAgent);
+        return opts ? [...prev, { slice, opts }] : prev;
+      });
+      setActiveTab(slice);
+      setTermMode(true);
+    },
+    [buildTermOpts],
+  );
+
+  const closeTab = useCallback((slice: string) => {
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.slice !== slice);
+      setActiveTab((cur) => {
+        if (cur !== slice) return cur;
+        return next.length > 0 ? next[next.length - 1]!.slice : null;
+      });
+      if (next.length === 0) setTermMode(false);
+      return next;
+    });
+  }, []);
+
   if (!ls) {
     return (
       <box width="100%" height="100%" alignItems="center" justifyContent="center">
@@ -250,7 +326,7 @@ export function App(): ReactNode {
     <box width="100%" height="100%">
       {view === "browser" || !currentView ? (
         <Browser
-          enabled={overlayEnabled && view === "browser"}
+          enabled={overlayEnabled && !termMode && view === "browser"}
           client={client}
           version={hello?.version ?? "?"}
           workspaceRoot={hello?.workspaceRoot ?? ""}
@@ -261,6 +337,7 @@ export function App(): ReactNode {
           height={height}
           onEnter={onEnter}
           onSwap={onSwap}
+          onOpenTerm={openTerm}
           onRefresh={refresh}
           onToggleHelp={() => setOverlay({ kind: "help" })}
           onToggleProcs={() => setOverlay({ kind: "procs" })}
@@ -268,18 +345,31 @@ export function App(): ReactNode {
         />
       ) : (
         <Cockpit
-          enabled={overlayEnabled}
+          enabled={overlayEnabled && !termMode}
           client={client}
           view={currentView}
           width={width}
           height={height}
           onBack={() => setView("browser")}
           onSwap={onSwap}
+          onOpenTerm={openTerm}
           onToggleHelp={() => setOverlay({ kind: "help" })}
           onToggleProcs={() => setOverlay({ kind: "procs" })}
           onQuit={quit}
         />
       )}
+
+      <TerminalLayer
+        tabs={tabs}
+        active={activeTab}
+        focused={termMode}
+        statuses={statuses}
+        width={width}
+        height={height}
+        manager={manager}
+        onBack={() => setTermMode(false)}
+        onExit={closeTab}
+      />
 
       {!connected ? (
         <box position="absolute" top={0} left={0} width="100%">

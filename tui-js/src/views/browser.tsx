@@ -39,6 +39,7 @@ export interface BrowserProps {
   height: number;
   onEnter: (slice: string) => void;
   onSwap: (slice: string) => void;
+  onOpenTerm: (slice: string, launchAgent: boolean) => void;
   onRefresh: () => void;
   onToggleHelp: () => void;
   onToggleProcs: () => void;
@@ -376,6 +377,14 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) props.onSwap(focusedSlice.slice.name);
       return;
     }
+    if (name === "a") {
+      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, false);
+      return;
+    }
+    if (name === "C") {
+      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, true);
+      return;
+    }
   });
 
   const leftW = Math.max(20, Math.min(30, Math.floor(props.width / 4)));
@@ -423,8 +432,8 @@ export function Browser(props: BrowserProps): ReactNode {
         />
       </box>
       <text wrapMode="none" fg={color.dim} attributes={DIM}>
-        tab rail/list · j/k move · 1-8 filter · enter open · w live · P procs · r
-        refresh · ? help · q quit
+        tab rail/list · j/k move · 1-8 filter · enter open · a/C term · w live · P
+        procs · r refresh · ? help · q quit
       </text>
     </box>
   );
