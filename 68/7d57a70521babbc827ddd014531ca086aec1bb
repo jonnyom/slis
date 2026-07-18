@@ -1,0 +1,79 @@
+internal/cli/cirerun.go
+  s_197478f89af866::t_0b5d4f07ebaa05 1-97
+internal/report/report.go
+  s_197478f89af866::t_3d2d880bcf55b5 128-129,139-159
+  s_197478f89af866::t_3f706096726e25 430-431
+internal/rpcserver/server.go
+  s_197478f89af866::t_33db73219f19af 150-151
+internal/report/report_test.go
+  s_197478f89af866::t_cd39b0030b1b2a 1-46
+tui-js/src/overlays/overlays.tsx
+  s_197478f89af866::t_fd90ee43b65b59 130-151
+tui-js/src/state/derive.ts
+  s_197478f89af866::t_4ee0a9328815fa 2-4
+internal/rpcserver/types.go
+  s_197478f89af866::t_01c5da7f700ccb 108-129
+internal/forge/forge.go
+  s_197478f89af866::t_d5a5c39cc53ff1 536-548
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_33a46db50c82d8 53-55
+docs/plans/2026-07-18-js-tui-spike.md
+  s_197478f89af866::t_d6252f7f772eb0 29-33
+  s_197478f89af866::t_1a196fe76829ad 73-74
+internal/rpcserver/rpcserver_test.go
+  s_197478f89af866::t_cefac416f4d7cb 301-346
+tui-js/src/overlays/useOverlays.tsx
+  s_197478f89af866::t_4d196392560b3b 161-162
+  s_197478f89af866::t_21f71fe2bd1065 55
+  s_197478f89af866::t_d280e755b3f72f 229-233
+  s_197478f89af866::t_75b3cb466bf855 15,19,37
+  s_197478f89af866::t_b5c78b87675d56 74-75
+  s_197478f89af866::t_b9dbde70e7bf8b 306-307
+docs/AGENT.md
+  s_197478f89af866::t_32d6c97d83432d 223
+  s_197478f89af866::t_5ff8efc62fc751 111-112,118-121
+tui-js/src/rpc/types.ts
+  s_197478f89af866::t_1002f36ae90391 261
+  s_197478f89af866::t_223c0f55113c01 129-147
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_15cc47b3d382ee 752
+  s_197478f89af866::t_b3204d95faabcb 20,23
+  s_197478f89af866::t_f6437978c8ee86 850-854
+  s_197478f89af866::t_a27585a8954ecf 760
+  s_197478f89af866::t_9cc763ff1d0d9c 517
+  s_197478f89af866::t_a0b939c8d7c94d 59-68
+  s_197478f89af866::t_7699b1d5613d6d 551-556
+  s_197478f89af866::t_01ce87175db14a 674-678
+  s_197478f89af866::t_f7d254c512605e 598-617
+  s_197478f89af866::t_1972697f04f53d 744-746
+  s_197478f89af866::t_f1dd36aef4bc1c 200,211
+  s_197478f89af866::t_ecb4085afc1263 380-420
+tui-js/src/rpc/mutate.ts
+  s_197478f89af866::t_5c2d8beff079ce 83-95
+tui-js/src/rpc/client.ts
+  s_197478f89af866::t_c4e8a1ac53a010 275-277
+  s_197478f89af866::t_1d40a0d395ca1c 10
+internal/cli/prstack.go
+  s_197478f89af866::t_36443d86cebfa3 87
+internal/cli/cirerun_test.go
+  s_197478f89af866::t_2b608dcd2cbe46 1-52
+internal/rpcserver/methods.go
+  s_197478f89af866::t_f753f3c6371673 8
+  s_197478f89af866::t_919529c1708643 162-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "687d57a70521babbc827ddd014531ca086aec1bb",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
