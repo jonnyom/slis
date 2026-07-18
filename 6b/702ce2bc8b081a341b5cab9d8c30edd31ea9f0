@@ -1,0 +1,40 @@
+tui-js/src/pr/comments.test.ts
+  s_197478f89af866::t_520663a9d2ac2a 1-53,60-83
+  s_197478f89af866::t_0fa850ee378f18 56-59
+  s_197478f89af866::t_6c40e553d80bb1 54-55
+tui-js/src/pr/comments.ts
+  s_197478f89af866::t_c7f6256b246474 1-109
+internal/rpcserver/methods.go
+  s_197478f89af866::t_5c419019e92df7 26
+tui-js/src/editor/detect.ts
+  s_197478f89af866::t_bb5f0190680828 1-25
+tui-js/src/state/cluster.ts
+  s_197478f89af866::t_d59193be049b47 1-94
+tui-js/src/rpc/mutate.ts
+  s_197478f89af866::t_d9dcaa935caca0 113-127
+  s_197478f89af866::t_c2187093e53860 51-56
+internal/rpcserver/types.go
+  s_197478f89af866::t_5107f04580d08a 88-90
+tui-js/src/editor/detect.test.ts
+  s_197478f89af866::t_06813709674744 1-26
+tui-js/src/rpc/types.ts
+  s_197478f89af866::t_7bf6ad835c0d06 35-37
+tui-js/src/state/cluster.test.ts
+  s_197478f89af866::t_b863b0e4265971 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6b702ce2bc8b081a341b5cab9d8c30edd31ea9f0",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
