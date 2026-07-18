@@ -1,0 +1,25 @@
+tui-js/src/views/cockpit.hints.test.ts
+  s_470615ee13fe83::t_7f08108c6dd582 1-104
+tui-js/src/app.tsx
+  s_470615ee13fe83::t_0c6973c63f995e 290
+tui-js/src/views/cockpit.hints.ts
+  s_470615ee13fe83::t_301b89f3192353 1-96
+tui-js/src/views/cockpit.tsx
+  s_470615ee13fe83::t_654e8e127d4f97 1,3-17,41,43-46,65-71,74-77,80-95,98,100-101,114,122,140,167,169,173,178,180,182-188,203-205,207,212,214,217,219-221,239,250,252-257,284,286,300,310-316,318,321,323-327,332,342-348,350,360-364,366,680,693,792-801,842,844-848,855-856,898-903,922-923,926,929,932-933,935,937,939,941-965,987-992,996-1003,1007,1009-1014,1017,1069
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "52967910b8cb040270fa9924e7a3908d13bf99a5",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
