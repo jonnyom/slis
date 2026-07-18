@@ -20,6 +20,18 @@ export type ReviewDecision =
 export interface HelloResult {
   version: string;
   workspaceRoot: string;
+  sessions: SessionsConfig;
+}
+
+// Resolved session config from workspace.yaml (see internal/rpcserver hello):
+// harness/agent already have the "claude" defaults applied; layout is raw ("" →
+// the front-end picks root-vs-repos); autostart has the legacy autostart_claude
+// alias merged in.
+export interface SessionsConfig {
+  harness: string;
+  agent: string;
+  layout: string;
+  autostart: boolean;
 }
 
 // ── ls ─────────────────────────────────────────────────────────────────────

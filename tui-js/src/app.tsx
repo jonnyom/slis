@@ -126,14 +126,17 @@ export function App(): ReactNode {
 
   // ── embedded terminal tabs ────────────────────────────────────────────────
 
-  // Build the attach options for a slice from live workspace data. Defaults to
-  // the Go-TUI harness defaults (claude / root layout); slis rpc does not yet
-  // expose the sessions config, so a custom agent/layout would need a new field.
+  // Build the attach options for a slice from live workspace data. The harness,
+  // agent and layout come from the workspace's sessions config (surfaced by the
+  // `hello` RPC); an older sidecar without that field falls back to the Go-TUI
+  // defaults. Autostart is OR'd into launchAgent so a plain attach launches the
+  // agent when configured, mirroring the Go TUI's attach.
   const buildTermOpts = useCallback(
     (slice: string, launchAgent: boolean): TermSessionOpts | null => {
       const v = views.find((x) => x.slice.name === slice);
       if (!v) return null;
       const wsRoot = hello?.workspaceRoot ?? "";
+      const sessions = hello?.sessions;
       const members: TermMember[] = v.slice.members.map((m) => ({
         repo: m.repo,
         branch: m.branch,
@@ -144,10 +147,10 @@ export function App(): ReactNode {
         members,
         active: v.slice.active,
         wsRoot,
-        sessionOpts: { root: wsRoot, layout: "" },
-        launchAgent,
-        agent: "claude",
-        harness: "claude",
+        sessionOpts: { root: wsRoot, layout: sessions?.layout ?? "" },
+        launchAgent: launchAgent || (sessions?.autostart ?? false),
+        agent: sessions?.agent || "claude",
+        harness: sessions?.harness || "claude",
       };
     },
     [views, hello],

@@ -12,9 +12,19 @@ import (
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
-// hello reports the server version and the workspace root.
+// hello reports the server version, the workspace root, and the resolved session
+// config the front-end needs to launch session tabs.
 func (s *Server) hello() (interface{}, *rpcError) {
-	return helloResult{Version: s.version, WorkspaceRoot: s.ws.Root}, nil
+	return helloResult{
+		Version:       s.version,
+		WorkspaceRoot: s.ws.Root,
+		Sessions: sessionsResult{
+			Harness:   s.ws.Sessions.HarnessName(),
+			Agent:     s.ws.Sessions.AgentCommand(),
+			Layout:    s.ws.Sessions.Layout,
+			Autostart: s.ws.Sessions.Autostart,
+		},
+	}, nil
 }
 
 // ls returns the same payload as `slis ls --json` (stack-annotated).

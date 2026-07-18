@@ -157,6 +157,36 @@ func TestHello(t *testing.T) {
 	if hr.WorkspaceRoot != ws.Root {
 		t.Errorf("workspaceRoot = %q, want %q", hr.WorkspaceRoot, ws.Root)
 	}
+	// Unconfigured sessions resolve to the Go-TUI defaults.
+	if hr.Sessions.Harness != "claude" || hr.Sessions.Agent != "claude" {
+		t.Errorf("default sessions = %+v, want harness/agent claude", hr.Sessions)
+	}
+	if hr.Sessions.Layout != "" || hr.Sessions.Autostart {
+		t.Errorf("default sessions = %+v, want empty layout and autostart false", hr.Sessions)
+	}
+}
+
+func TestHelloResolvesSessionsConfig(t *testing.T) {
+	ws := makeWorkspace(t)
+	ws.Sessions = config.Sessions{Harness: "codex", Layout: "repos", Autostart: true}
+	h := newHarness(t, ws)
+
+	resp := h.call(1, "hello", "")
+	var hr helloResult
+	decodeResult(t, resp, &hr)
+
+	if hr.Sessions.Harness != "codex" {
+		t.Errorf("harness = %q, want codex", hr.Sessions.Harness)
+	}
+	if hr.Sessions.Agent != "codex" {
+		t.Errorf("agent = %q, want codex (resolved from harness)", hr.Sessions.Agent)
+	}
+	if hr.Sessions.Layout != "repos" {
+		t.Errorf("layout = %q, want repos", hr.Sessions.Layout)
+	}
+	if !hr.Sessions.Autostart {
+		t.Errorf("autostart = false, want true")
+	}
 }
 
 func TestLsMatchesReportBuilder(t *testing.T) {

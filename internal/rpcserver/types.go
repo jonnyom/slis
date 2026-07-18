@@ -69,8 +69,22 @@ type notification struct {
 
 // helloResult is the `hello` method's result.
 type helloResult struct {
-	Version       string `json:"version"`
-	WorkspaceRoot string `json:"workspaceRoot"`
+	Version       string         `json:"version"`
+	WorkspaceRoot string         `json:"workspaceRoot"`
+	Sessions      sessionsResult `json:"sessions"`
+}
+
+// sessionsResult surfaces the workspace's session config so the JS front-end can
+// build session-launch options (harness/agent/layout/autostart) instead of
+// hardcoding the Go-TUI defaults. Harness and Agent are the resolved values
+// (config helpers apply the "claude" defaults); Layout is raw ("" means the
+// front-end applies its own root-vs-repos default); Autostart already has the
+// legacy autostart_claude alias merged in on load.
+type sessionsResult struct {
+	Harness   string `json:"harness"`
+	Agent     string `json:"agent"`
+	Layout    string `json:"layout"`
+	Autostart bool   `json:"autostart"`
 }
 
 // sliceParams is the shared param shape for methods that name a slice.
