@@ -14,7 +14,6 @@ import type {
   LsResult,
   PrStackEntry,
   RpcClient,
-  SessionStatus,
 } from "../rpc/types";
 import {
   attentionRank,

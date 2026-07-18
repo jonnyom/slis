@@ -378,7 +378,13 @@ function SessionRight({ lines }: { lines: string[] }): ReactNode {
   );
 }
 
-function ProcsRight({ procs }: { procs: ProcsResult | null }): ReactNode {
+function ProcsRight({
+  procs,
+  procSel,
+}: {
+  procs: ProcsResult | null;
+  procSel: number;
+}): ReactNode {
   const slice = procs?.slices[0];
   if (!procs) return <text fg={color.dim} attributes={DIM}>sampling…</text>;
   if (!slice || slice.procs.length === 0)
@@ -390,21 +396,27 @@ function ProcsRight({ procs }: { procs: ProcsResult | null }): ReactNode {
   return (
     <>
       <text wrapMode="none">
-        <span fg={color.dim}>{"PID".padEnd(8)}</span>
+        <span fg={color.dim}>{"  PID".padEnd(9)}</span>
         <span fg={color.dim}>{"CPU%".padStart(6)}</span>
         <span fg={color.dim}>{"MEM MB".padStart(9)}</span>
         <span fg={color.dim}>  CMD</span>
       </text>
-      {slice.procs.map((p) => (
-        <text key={p.pid} wrapMode="none">
-          <span fg={color.fg}>{String(p.pid).padEnd(8)}</span>
-          <span fg={p.cpu > 50 ? color.restack : color.fg}>
-            {p.cpu.toFixed(1).padStart(6)}
-          </span>
-          <span fg={color.fg}>{p.mem.toFixed(1).padStart(9)}</span>
-          <span fg={color.fg}>  {p.cmd}</span>
-        </text>
-      ))}
+      {slice.procs.map((p, i) => {
+        const selected = i === procSel;
+        return (
+          <text key={p.pid} wrapMode="none" attributes={selected ? BOLD : 0}>
+            <span fg={color.cursorBar}>{selected ? glyph.focusBar + " " : "  "}</span>
+            <span fg={selected ? color.white : color.fg}>
+              {String(p.pid).padEnd(7)}
+            </span>
+            <span fg={p.cpu > 50 ? color.restack : color.fg}>
+              {p.cpu.toFixed(1).padStart(6)}
+            </span>
+            <span fg={color.fg}>{p.mem.toFixed(1).padStart(9)}</span>
+            <span fg={color.fg}>  {p.cmd}</span>
+          </text>
+        );
+      })}
     </>
   );
 }
@@ -500,6 +512,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
   useEffect(() => {
     setPrSel((i) => Math.max(0, Math.min(i, (view.prs?.length ?? 1) - 1)));
   }, [view.prs?.length]);
+  const procCount = procs?.slices[0]?.procs.length ?? 0;
+  useEffect(() => {
+    setProcSel((i) => Math.max(0, Math.min(i, Math.max(0, procCount - 1))));
+  }, [procCount]);
 
   const leftW = Math.min(38, Math.floor(props.width / 2));
   const bodyH = props.height - 2; // header + footer
@@ -603,7 +619,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
               ) : panel === "session" ? (
                 <SessionRight lines={captureLines} />
               ) : (
-                <ProcsRight procs={procs} />
+                <ProcsRight procs={procs} procSel={procSel} />
               )}
             </scrollbox>
           </box>
