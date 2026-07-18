@@ -23,6 +23,9 @@ type Paths struct {
 	WorkspacesDir string
 	// Comments is the path to the persisted PR-comment cache (survives slice removal).
 	Comments string
+	// Reviews is the path to the pending inline-review-comment store (fed to a
+	// slice's agent by `slis review send`).
+	Reviews string
 }
 
 // stateBase returns the base directory for XDG state, honouring XDG_STATE_HOME
@@ -64,6 +67,7 @@ func StatePaths() Paths {
 		Prefs:         filepath.Join(stateDir, "prefs.json"),
 		WorkspacesDir: filepath.Join(stateDir, "workspaces"),
 		Comments:      filepath.Join(stateDir, "comments.json"),
+		Reviews:       filepath.Join(stateDir, "reviews.json"),
 	}
 }
 

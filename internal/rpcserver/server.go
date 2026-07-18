@@ -151,6 +151,8 @@ func (s *Server) dispatch(ctx context.Context, req request) (interface{}, *rpcEr
 		return s.gated(func() (interface{}, *rpcError) { return s.ciLog(req.Params) })
 	case "comments":
 		return s.comments(req.Params)
+	case "reviews":
+		return s.reviews(req.Params)
 	case "conflicts":
 		return s.gated(s.conflicts)
 	case "diff":

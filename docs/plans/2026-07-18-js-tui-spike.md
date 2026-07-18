@@ -73,6 +73,7 @@ the RPC result is byte-for-byte that shape — same structs, same marshalling.
 | `prStack` | `{ "slice": string }` | same as `slis pr-stack <slice> --json` (now carries the `ci`/`ci_pass`/`ci_fail`/`ci_pending` rollup per row) |
 | `ciLog` | `{ "slice": string, "repo"?: string }` | `{ "repos": [ { "repo": string, "branch": string, "log"?: string, "error"?: string } ] }` — failing-CI log excerpt per repo (`forge.FailedLog`); `repo` filters to one member. Read-only. |
 | `comments` | `{ "slice": string }` | same as `slis comments <slice> --json` |
+| `reviews` | `{ "slice"?: string }` | same as `slis review list [slice] --json` — pending inline-review comments (all slices when omitted). Read-only; add/send stay CLI-only (`slis review add/send`). |
 | `conflicts` | — | same as `slis conflicts --json` |
 | `diff` | `{ "slice": string, "scope": "working"\|"parent"\|"trunk", "format": "stat"\|"patch"\|"both" }` | `{ "repos": [ { "repo": string, "branch": string, "stat": SliceStat?, "patch": string? } ] }` |
 | `capture` | `{ "slice": string, "lines": int }` | `{ "lines": [string] }` (safeterm-stripped) |
@@ -365,6 +366,16 @@ waiting-input, injects via tmux send-keys, else (b) starts/queues the agent
 with the prompt (`claude -p` in the session). Mutation goes through a new CLI
 twin (`slis review add/send`) — the sidecar stays read-only. JSON shapes into
 docs/AGENT.md.
+
+**Backend DONE (2026-07-18).** `internal/review` (per-slice pending-comment
+store — single atomic JSON file at `<state>/reviews.json`; `ComposePrompt`
+deterministic agent prompt; `Send` = compose + tmux bracketed-paste inject via
+`tmuxctl.SendPrompt`, `ErrNoSession` when no session, never auto-starts an
+agent). CLI: `slis review add/list/rm/send/clear` (`list --json`; `send` clears
+on success unless `--keep`). RPC: read-only `reviews` method. `docs/AGENT.md`
+(JSON shape + send flow + mutation table) and `skills/slis/SKILL.md` updated.
+Remaining: the TUI wiring (`c` in DiffView → comment overlay; `C` → review
+overlay → send).
 
 ### F3 — Stack-at-a-glance + per-branch code navigation/review
 The cockpit stack panel becomes a real review surface: selecting ANY branch in

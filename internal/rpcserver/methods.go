@@ -9,6 +9,7 @@ import (
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/report"
+	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/internal/safeterm"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
@@ -268,6 +269,36 @@ func (s *Server) procs(raw json.RawMessage) (interface{}, *rpcError) {
 		out = append(out, sliceProcsResult{Slice: name, Procs: procs, TotalCPU: total})
 	}
 	return procsResult{Slices: out}, nil
+}
+
+// reviews returns the pending inline-review comments — the same shape as `slis
+// review list [slice] --json`. With a slice named it filters to that slice;
+// otherwise every slice's pending comments. Strictly read-only: adding and
+// sending review comments stay CLI-only (`slis review add/send`) so this sidecar
+// never mutates.
+func (s *Server) reviews(raw json.RawMessage) (interface{}, *rpcError) {
+	var p optionalSliceParams
+	if rerr := decodeParams(raw, &p); rerr != nil {
+		return nil, rerr
+	}
+	store := review.Open(s.sp.Reviews)
+
+	var (
+		comments []review.Comment
+		err      error
+	)
+	if p.Slice != "" {
+		comments, err = store.List(p.Slice)
+	} else {
+		comments, err = store.ListAll()
+	}
+	if err != nil {
+		return nil, serverErr(err.Error(), "")
+	}
+	if comments == nil {
+		comments = []review.Comment{}
+	}
+	return comments, nil
 }
 
 // decodeParams unmarshals a request's params into v. Absent/null params are left

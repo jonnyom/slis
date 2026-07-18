@@ -16,6 +16,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/report"
+	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/testutil"
 )
 
@@ -471,5 +472,45 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func TestReviewsReadsPendingComments(t *testing.T) {
+	ws := makeWorkspace(t)
+	h := newHarness(t, ws)
+
+	store := review.Open(h.sp.Reviews)
+	if _, err := store.Add(review.Comment{Slice: "checkout", Repo: "web", File: "a.go", Line: 10, Body: "fix this"}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := store.Add(review.Comment{Slice: "other", Repo: "ops", File: "b.go", Line: 3, Body: "and this"}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// No slice → all pending comments.
+	var all []review.Comment
+	decodeResult(t, h.call(1, "reviews", ""), &all)
+	if len(all) != 2 {
+		t.Fatalf("reviews (all) = %d, want 2", len(all))
+	}
+
+	// Filtered to one slice.
+	var one []review.Comment
+	decodeResult(t, h.call(2, "reviews", `{"slice":"checkout"}`), &one)
+	if len(one) != 1 || one[0].Slice != "checkout" || one[0].Body != "fix this" {
+		t.Errorf("reviews (checkout) = %+v, want the one checkout comment", one)
+	}
+}
+
+func TestReviewsEmptyIsArray(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	resp := h.call(1, "reviews", "")
+	var got []review.Comment
+	decodeResult(t, resp, &got)
+	if got == nil {
+		t.Error("reviews returned null, want []")
+	}
+	if len(got) != 0 {
+		t.Errorf("reviews = %v, want empty", got)
 	}
 }

@@ -214,6 +214,32 @@ func SendKeys(slice, keys string) error {
 	return nil
 }
 
+// SendPrompt injects a (possibly multiline) prompt into the slice session's
+// active pane and submits it with a single Enter. It loads the text into a
+// dedicated tmux buffer and pastes it with bracketed-paste (`paste-buffer -p`),
+// so newlines in the prompt are delivered as one pasted block rather than being
+// interpreted as separate Enter presses (which `send-keys` newlines would be) —
+// the newline-safe path for feeding an agent like Claude a review batch. `-d`
+// discards the buffer afterwards so it never clobbers the user's tmux buffers.
+// No-op-safe: an absent session surfaces as a paste-buffer error.
+func SendPrompt(slice, prompt string) error {
+	name := SessionName(slice)
+	const buf = "slis-review"
+
+	load := exec.Command("tmux", "load-buffer", "-b", buf, "-")
+	load.Stdin = strings.NewReader(prompt)
+	if out, err := load.CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux load-buffer: %w: %s", err, out)
+	}
+	if out, err := exec.Command("tmux", "paste-buffer", "-d", "-p", "-b", buf, "-t", name).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux paste-buffer: %w: %s", err, out)
+	}
+	if out, err := exec.Command("tmux", "send-keys", "-t", name, "Enter").CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux send-keys: %w: %s", err, out)
+	}
+	return nil
+}
+
 // ActivePaneCommand returns the foreground command of the session's active pane
 // (e.g. "zsh", "node", "claude"), or "" if it can't be determined.
 func ActivePaneCommand(slice string) string {

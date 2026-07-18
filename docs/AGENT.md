@@ -10,7 +10,7 @@ mutate-vs-read classification, and how errors surface. The
 - **Branch on the JSON data, not the exit code.** Today every failure exits `1`
   (see [Errors](#errors--exit-codes)); the data is the contract.
 - **Every read command emits `--json`:** `ls show status pr pr-stack summary
-  conflicts comments doctor candidates`. Prefer it over parsing tables.
+  conflicts comments doctor candidates review list`. Prefer it over parsing tables.
 - **Worktree ingestion is opt-in.** A worktree becomes a slice only when it is
   *managed*: under `<root>/.slis/worktrees/**` or recorded in the registry
   (`$XDG_STATE_HOME/slis/registry.yaml`). Other worktrees are **candidates** —
@@ -183,6 +183,32 @@ isn't lost.
 `kind`: `0` issue · `1` review · `2` inline. `context`: review state, or
 `path:line` for inline comments.
 
+### `slis review list [slice] --json` → array
+Pending inline-review comments (GitHub-review-style feedback awaiting delivery to
+a slice's agent). With a slice arg → that slice's pending comments; without → all
+slices'. Empty is `[]`. Deterministic order (slice, repo, file, line, id).
+```jsonc
+[{ "id": "1ebcd07cf3c4", "slice": "checkout", "repo": "web",
+   "branch": "jonny/checkout", "file": "pay.go", "line": 42,
+   "hunk": "func Pay() {}", "body": "rename this variable",
+   "created_at": "2026-07-18T13:42:38Z" }]
+```
+`line` is a 1-based line in the new (post-change) file; `branch` is the slice
+member's branch (filled at add time); `hunk` is an optional diff excerpt for
+context (absent when empty). Add/remove/deliver with the mutating twins:
+`slis review add <slice> --repo R --file F --line N --body B [--hunk H]`,
+`slis review rm <slice> <id>`, `slis review clear <slice>`, and
+`slis review send <slice> [--keep]`. **Send flow:** `send` composes every pending
+comment for the slice into one structured prompt (`Code review feedback on slice
+<name> — address each item:` then a numbered item per comment with repo,
+file:line, fenced hunk, and the instruction) and injects it into the slice's
+**running tmux session** via bracketed paste + Enter, then clears the pending
+batch (keep it with `--keep`). If the slice has no session, `send` makes **no
+change** and exits non-zero with guidance to start one (`slis focus <slice>`,
+launch the agent, re-run) — it never auto-starts an agent. The read-only RPC
+sidecar exposes the same array as the `reviews` method (`{ "slice"?: string }`);
+adding and sending stay CLI-only so the sidecar never mutates.
+
 ## Session status
 
 The headline automation signal: *which slice's Claude is waiting for input.*
@@ -218,8 +244,8 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 
 | Class | Commands | Notes for agents |
 |---|---|---|
-| **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). |
+| **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit review list` | Safe anytime. `doctor --fix` is the exception (it mutates). |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus review add/rm/send/clear` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store (a JSON file, never git); `review send` injects a prompt into the slice's existing tmux session (no git change) and clears the pending batch on success — it never starts an agent, and does nothing when there's no session. |
 | **remote / destructive** | `submit merge sync fix-ci ci-rerun` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits; `ci-rerun <slice>` re-triggers each repo's failed CI runs (`gh run rerun --failed`) — the one CI write. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before
