@@ -1,0 +1,36 @@
+tui-js/src/overlays/overlays.tsx
+  s_197478f89af866::t_938904a256bacd 25-33,49-53,57,64-97
+  s_197478f89af866::t_4cd3b0a2dce044 8
+  s_197478f89af866::t_c0ed5ea2e3fe08 98-101
+tui-js/src/app.tsx
+  s_197478f89af866::t_ca2385f8065294 27
+  s_197478f89af866::t_9678fa2b2d371e 105-117
+tui-js/src/overlays/useOverlays.tsx
+  s_197478f89af866::t_a12b2ba366283c 330-338
+  s_197478f89af866::t_8d841d578be9eb 96-101
+  s_197478f89af866::t_9912ffa573da77 161-217,223,339-340
+  s_197478f89af866::t_9c0b52f9af4e3b 120
+  s_197478f89af866::t_b4e56c6865b4e8 373
+  s_197478f89af866::t_2b24b38feac51d 268-269
+  s_197478f89af866::t_e147f0474b286f 55,61
+  s_197478f89af866::t_f24d9a4f71db7c 82
+  s_197478f89af866::t_1cfd5930ecf918 11-12,15,20-22,42
+  s_197478f89af866::t_36e0f8916249dd 384-392
+  s_197478f89af866::t_f0eac52035f065 231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d8bd3ed7414a746e2b7161988d7a1805f8b382da",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
