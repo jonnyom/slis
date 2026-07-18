@@ -1,0 +1,74 @@
+tui-js/src/proc/history.ts
+  s_197478f89af866::t_78a245c9f7c089 1-47
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_255d0cab27b0a8 500-524,530-537,541-543,554-558
+  s_197478f89af866::t_ebce2744ec96bd 453-456,465-470
+  s_197478f89af866::t_77cdc96d0e9736 64
+  s_197478f89af866::t_2ede0d405f7a5b 31-44
+  s_197478f89af866::t_70cd6dc46681b6 540
+  s_197478f89af866::t_e0c62bd3ea00d3 583-592
+  s_197478f89af866::t_44884b2130e29c 383-384,386-388,390-391,393-395,397-399,409-411,413-438
+  s_197478f89af866::t_9f38dc216fcabc 623
+  s_197478f89af866::t_9fd1569b9d0ed8 665
+  s_197478f89af866::t_20e2b1678300ec 696-703
+  s_197478f89af866::t_a43c94b1b75931 251-252,273-274,276
+tui-js/src/app.tsx
+  s_197478f89af866::t_22190942e3efbf 204-205
+  s_197478f89af866::t_18c47e174fdabd 266,279
+  s_197478f89af866::t_cedf9c4db83922 306-312
+  s_197478f89af866::t_b22a2ca826814b 23,31
+tui-js/src/proc/sort.ts
+  s_197478f89af866::t_b6b04f0872b921 1-34
+tui-js/package.json
+  s_197478f89af866::t_d07125ba788f6b 10
+tui-js/src/proc/tree.ts
+  s_197478f89af866::t_dfd5175f1484dc 1-68,75-156
+  s_197478f89af866::t_bd6363180a3f5c 69-74
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_2562abe22dad38 17,29-32,36
+tui-js/src/views/browser.tsx
+  s_197478f89af866::t_80c4bb75d47686 44
+  s_197478f89af866::t_ef8f9a1e829c0e 348
+  s_197478f89af866::t_7db51da51449eb 426-427
+tui-js/src/proc/tree.test.ts
+  s_197478f89af866::t_767fa32415cb03 1-98
+tui-js/src/proc/monitor.ts
+  s_197478f89af866::t_b042c4b2bd0000 1-50
+tui-js/src/proc/ring.ts
+  s_197478f89af866::t_86053b18080127 1-42
+tui-js/src/proc/sort.test.ts
+  s_197478f89af866::t_f37ef658dc19e7 1-41
+tui-js/src/components/procview.tsx
+  s_197478f89af866::t_a6891a402215c2 1-197
+tui-js/src/proc/sparkline.test.ts
+  s_197478f89af866::t_8d6bf2d3290539 1-31
+tui-js/src/proc/sparkline.ts
+  s_197478f89af866::t_4b15b24a17125e 1-7,9,11-22,26-38
+  s_197478f89af866::t_9acd6dab9e5e83 8,10,23-25
+tui-js/src/proc/ring.test.ts
+  s_197478f89af866::t_17f0c3dd30548f 1-33
+tui-js/src/proc/kill.test.ts
+  s_197478f89af866::t_43840e3a2e07fe 1-49
+tui-js/src/components/procoverlay.tsx
+  s_197478f89af866::t_54d351887c9112 1-172
+tui-js/src/proc/history.test.ts
+  s_197478f89af866::t_50aa87c3251ba4 1-34
+tui-js/src/proc/kill.ts
+  s_197478f89af866::t_b7081e11cd11b2 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bf4d288c5a5948a7dde8642a4e5273542032825b",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
