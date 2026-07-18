@@ -1,0 +1,19 @@
+docs/plans/2026-07-18-js-tui-spike.md
+  s_197478f89af866::t_1de23191a27474 260-273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e78d81b123d73b3bd3340defdec1de1f20e0172c",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
