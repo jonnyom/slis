@@ -213,6 +213,32 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 	return results, nil
 }
 
+// BranchAgainstParent computes the committed diff of branch vs parent using
+// merge-base (three-dot) semantics (`git diff parent...branch`), so it shows
+// only the commits branch adds on top of parent — that branch's own change, not
+// the whole downstack. It is a pure ref-to-ref read: no working tree, no
+// untracked files. repoDir MUST be the repo's primary checkout (the repo rule);
+// refs are shared across a repo's checkouts, so any branch in the stack resolves
+// there regardless of which worktree has it checked out. A git failure is
+// captured in RepoDiff.Err (not returned) so a caller can render it per-repo.
+func BranchAgainstParent(repoDir, parent, branch string, withPatch bool) (RepoDiff, error) {
+	rd := RepoDiff{Base: parent}
+	spec := parent + "..." + branch
+	numstat, err := git.Run(repoDir, "diff", "--numstat", spec)
+	if err != nil {
+		rd.Err = err.Error()
+		return rd, nil
+	}
+	rd.Files = parseNumstat(numstat)
+	if withPatch {
+		patch, _ := git.Run(repoDir, "diff", spec)
+		// Patch embeds repo file contents (and filenames) which can carry terminal
+		// escapes; strip them before this string is rendered.
+		rd.Patch = safeterm.Strip(patch)
+	}
+	return rd, nil
+}
+
 // SliceDirtyDiff returns one RepoDiff per member of sl showing only the
 // worktree's UNCOMMITTED changes — staged + unstaged edits (`git diff HEAD`)
 // plus untracked (never-`git add`-ed) files. It diffs against no base, so a

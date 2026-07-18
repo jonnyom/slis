@@ -50,7 +50,15 @@ describe("breadcrumbSection", () => {
 });
 
 describe("cockpitHints", () => {
-  const base = { scope: "working", showPatch: false, zoomed: false, killPending: false };
+  const base = {
+    scope: "working",
+    showPatch: false,
+    zoomed: false,
+    killPending: false,
+    reviewMode: "diff" as const,
+    onMember: true,
+    stackReview: true,
+  };
 
   test("kill-pending overrides everything with y/n only", () => {
     const hints = cockpitHints("procs", { ...base, killPending: true });
@@ -74,6 +82,23 @@ describe("cockpitHints", () => {
     expect(cockpitHints("stack", { ...base, showPatch: true }).find((h) => h.key === "t")?.label).toBe(
       "stat",
     );
+  });
+
+  test("stack diff hides scope on a non-member branch, hides f without sidecar support", () => {
+    const nonMember = cockpitHints("stack", { ...base, onMember: false });
+    expect(nonMember.some((h) => h.key === "b")).toBe(false);
+    const noReview = cockpitHints("stack", { ...base, stackReview: false });
+    expect(noReview.some((h) => h.key === "f")).toBe(false);
+    expect(cockpitHints("stack", base).some((h) => h.key === "f")).toBe(true);
+  });
+
+  test("tree and file review modes swap in navigation hints", () => {
+    const tree = cockpitHints("stack", { ...base, reviewMode: "tree" }).map((h) => h.label);
+    expect(tree).toContain("open/expand");
+    expect(tree).toContain("collapse");
+    const file = cockpitHints("stack", { ...base, reviewMode: "file" }).map((h) => h.label);
+    expect(file).toContain("scroll");
+    expect(file).toContain("top/end");
   });
 
   test("prs hints surface CI log, fix-ci and open PR", () => {

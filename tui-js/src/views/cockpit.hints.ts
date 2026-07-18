@@ -38,11 +38,19 @@ export function breadcrumbSection(panel: PanelId, zoomed: boolean): string {
   return zoomed ? `${label} › zoom` : label;
 }
 
+// The Stack panel's right-pane sub-mode (F3): the branch diff, the lazy file
+// tree, or a file's content.
+export type ReviewMode = "diff" | "tree" | "file";
+
 export interface CockpitHintState {
   scope: string; // short scope name for the stack panel (working/parent/trunk)
   showPatch: boolean;
   zoomed: boolean;
   killPending: boolean;
+  // Stack-panel review context (F3).
+  reviewMode: ReviewMode;
+  onMember: boolean; // the selected branch is the slice's own (member) branch
+  stackReview: boolean; // the sidecar supports branchDiff/tree/file
 }
 
 // The 4–6 actions relevant to the current focus. `HintBar` always appends
@@ -63,14 +71,27 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
     ];
   switch (panel) {
     case "stack":
+      if (s.reviewMode === "file")
+        return [
+          { key: "esc", label: "tree" },
+          { key: "j/k", label: "scroll" },
+          { key: "^d/u", label: "page" },
+          { key: "g/G", label: "top/end" },
+        ];
+      if (s.reviewMode === "tree")
+        return [
+          { key: "j/k", label: "move" },
+          { key: "l", label: "open/expand" },
+          { key: "h", label: "collapse" },
+          { key: "esc", label: "diff" },
+        ];
       return [
-        { key: "tab", label: "panel" },
-        { key: "j/k", label: "repo" },
+        { key: "j/k", label: "branch" },
+        ...(s.stackReview ? [{ key: "f", label: "files" }] : []),
         { key: "enter", label: "rich diff" },
-        { key: "b", label: `scope: ${s.scope}` },
+        ...(s.onMember ? [{ key: "b", label: `scope: ${s.scope}` }] : []),
         { key: "t", label: s.showPatch ? "stat" : "patch" },
         { key: "w", label: "swap" },
-        { key: "R", label: "stack" },
       ];
     case "prs":
       return [

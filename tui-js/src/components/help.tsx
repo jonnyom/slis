@@ -68,15 +68,25 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     bindings: [
       ["tab", "next panel"],
       ["1–4", "Repos&Stack / PRs / Session / Processes"],
-      ["j / k", "move selection in panel"],
+      ["j / k", "move selection (Stack: any branch in the stack)"],
       ["enter / l", "open rich diff (Stack panel)"],
       ["enter", "zoom right pane full-width (other panels)"],
-      ["b", "cycle diff scope working → parent → trunk"],
+      ["b", "cycle diff scope working → parent → trunk (member branch)"],
       ["t", "toggle stat / patch"],
       ["ctrl+d / ctrl+u", "scroll right pane"],
       ["g / G", "top / bottom of right pane"],
       ["esc / h", "back to browser"],
       ["q", "quit"],
+    ],
+  },
+  {
+    label: "stack review",
+    bindings: [
+      ["j / k", "select any branch → right pane shows its diff vs its stack parent"],
+      ["f", "browse the selected branch's files at that revision"],
+      ["j / k · l / enter", "in the file tree: move · expand dir / open file"],
+      ["h", "in the file tree: collapse dir (or its parent)"],
+      ["esc", "step back: file → tree → diff → browser"],
     ],
   },
   {

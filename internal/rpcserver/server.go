@@ -157,6 +157,12 @@ func (s *Server) dispatch(ctx context.Context, req request) (interface{}, *rpcEr
 		return s.gated(s.conflicts)
 	case "diff":
 		return s.gated(func() (interface{}, *rpcError) { return s.diff(req.Params) })
+	case "branchDiff":
+		return s.gated(func() (interface{}, *rpcError) { return s.branchDiff(req.Params) })
+	case "tree":
+		return s.gated(func() (interface{}, *rpcError) { return s.tree(req.Params) })
+	case "file":
+		return s.gated(func() (interface{}, *rpcError) { return s.file(req.Params) })
 	case "capture":
 		return s.gated(func() (interface{}, *rpcError) { return s.capture(req.Params) })
 	case "procs":

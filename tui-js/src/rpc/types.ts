@@ -223,6 +223,48 @@ export interface DiffResult {
   repos: DiffRepo[];
 }
 
+// ── stack review: branchDiff / tree / file (F3) ──────────────────────────────
+
+// One branch's committed diff against its Graphite stack parent (or trunk when
+// it has none). Mirrors DiffRepo plus `parent` — the ref diffed against.
+export interface BranchDiffResult {
+  repo: string;
+  branch: string;
+  parent: string;
+  stat?: DiffStat | null;
+  patch?: string | null;
+  err?: string;
+}
+
+export type TreeEntryType = "blob" | "tree" | "commit";
+
+// One entry in a branch's tree listing. `name` is the leaf name within the
+// listed directory (for lazy expansion). `size` is the blob byte size; -1 for
+// trees and submodules.
+export interface TreeEntry {
+  name: string;
+  type: TreeEntryType;
+  size: number;
+}
+
+export interface TreeResult {
+  repo: string;
+  branch: string;
+  path: string;
+  entries: TreeEntry[];
+}
+
+// A file's content at a branch's revision. `content` is omitted (and `binary`
+// true) for a binary file; text content is control-stripped server-side.
+export interface FileResult {
+  repo: string;
+  branch: string;
+  path: string;
+  size: number;
+  binary: boolean;
+  content?: string;
+}
+
 // ── capture (spec v0) ──────────────────────────────────────────────────────
 
 export interface CaptureResult {
@@ -274,6 +316,28 @@ export interface RpcClient {
   capture(params: { slice: string; lines: number }): Promise<CaptureResult>;
   procs(slice?: string): Promise<ProcsResult>;
   ciLog(params: { slice: string; repo?: string }): Promise<CiLogResult>;
+
+  // Stack review (F3). An older sidecar answers -32601 (method not found); the
+  // front-end catches that (isMethodNotFound) and hides the feature.
+  branchDiff(params: {
+    slice: string;
+    repo: string;
+    branch: string;
+    format?: DiffFormat;
+  }): Promise<BranchDiffResult>;
+  tree(params: {
+    slice: string;
+    repo: string;
+    branch: string;
+    path?: string;
+  }): Promise<TreeResult>;
+  file(params: {
+    slice: string;
+    repo: string;
+    branch: string;
+    path: string;
+    maxBytes?: number;
+  }): Promise<FileResult>;
 
   /** Subscribe to live session-status changes. Returns an unsubscribe fn. */
   onSessionEvent(handler: (event: SessionEvent) => void): () => void;

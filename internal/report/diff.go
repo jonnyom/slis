@@ -96,6 +96,48 @@ func SliceDiffScoped(sl model.Slice, scope, format string) (DiffResult, error) {
 	return DiffResult{Repos: repos}, nil
 }
 
+// BranchDiffResult is one branch's diff against its stack parent, marshal-ready.
+// It mirrors DiffRepoResult (stat/patch/err by format) and adds Parent — the ref
+// the branch was diffed against — so a caller can title the view `repo › branch
+// › vs <parent>`.
+type BranchDiffResult struct {
+	Repo   string       `json:"repo"`
+	Branch string       `json:"branch"`
+	Parent string       `json:"parent"`
+	Stat   *DiffStatDTO `json:"stat,omitempty"`
+	Patch  *string      `json:"patch,omitempty"`
+	Err    string       `json:"err,omitempty"`
+}
+
+// BranchDiff computes one branch's committed diff against its Graphite stack
+// parent, falling back to the repo trunk when the branch has no recorded parent
+// (or the parent ref is missing). repoDir MUST be the repo's primary checkout.
+// format selects the payload: "stat" (numstat only), "patch" (patch only), or
+// "both".
+func BranchDiff(repoDir, repo, branch, format string) (BranchDiffResult, error) {
+	parent := gtParent(repoDir, branch)
+	if parent == "" || !git.RefExists(repoDir, parent) {
+		parent = git.DetectBase(repoDir)
+	}
+
+	rd, err := diff.BranchAgainstParent(repoDir, parent, branch, format != "stat")
+	if err != nil {
+		return BranchDiffResult{}, err
+	}
+
+	res := BranchDiffResult{Repo: repo, Branch: branch, Parent: parent, Err: rd.Err}
+	if rd.Err == "" {
+		if format != "patch" {
+			res.Stat = statDTO(rd)
+		}
+		if format != "stat" {
+			patch := rd.Patch
+			res.Patch = &patch
+		}
+	}
+	return res, nil
+}
+
 // statDTO converts a diff.RepoDiff's numstat into a DiffStatDTO.
 func statDTO(rd diff.RepoDiff) *DiffStatDTO {
 	files := make([]DiffFileStat, 0, len(rd.Files))

@@ -10,7 +10,8 @@ mutate-vs-read classification, and how errors surface. The
 - **Branch on the JSON data, not the exit code.** Today every failure exits `1`
   (see [Errors](#errors--exit-codes)); the data is the contract.
 - **Every read command emits `--json`:** `ls show status pr pr-stack summary
-  conflicts comments doctor candidates review list`. Prefer it over parsing tables.
+  conflicts comments doctor candidates review list branch-diff tree cat`.
+  Prefer it over parsing tables.
 - **Worktree ingestion is opt-in.** A worktree becomes a slice only when it is
   *managed*: under `<root>/.slis/worktrees/**` or recorded in the registry
   (`$XDG_STATE_HOME/slis/registry.yaml`). Other worktrees are **candidates** —
@@ -209,6 +210,57 @@ launch the agent, re-run) — it never auto-starts an agent. The read-only RPC
 sidecar exposes the same array as the `reviews` method (`{ "slice"?: string }`);
 adding and sending stay CLI-only so the sidecar never mutates.
 
+### `slis branch-diff <slice> <repo> <branch> --json` → object
+The committed diff of one branch against its Graphite stack **parent** (falling
+back to the repo trunk when the branch has no parent), using merge-base
+(three-dot) semantics — so it shows only that branch's own commits, not the whole
+downstack. Read against the repo's **primary** checkout (never a worktree).
+```jsonc
+{ "repo": "web", "branch": "jonny/checkout", "parent": "jonny/checkout-base",
+  "stat": { "files": [{ "path": "src/app.ts", "added": 12, "deleted": 3 }],
+            "added": 12, "deleted": 3 },
+  "patch": "diff --git a/src/app.ts b/src/app.ts\n…" }
+```
+`parent` is the ref diffed against. `stat`/`patch` mirror the per-repo entries of
+the RPC `diff` method. `added`/`deleted` are `-1` for binary files. `err` (with
+`stat`/`patch` omitted) is set when the branch's diff failed.
+
+### `slis tree <slice> <repo> <branch> [path] --json` → object
+One directory level of a branch's tree at `path` (empty = the tree root), for
+lazy expansion — one level per call. `name` is the leaf name (basename) within
+the listed directory. Read against the repo's primary checkout.
+```jsonc
+{ "repo": "web", "branch": "jonny/checkout", "path": "src",
+  "entries": [{ "name": "util", "type": "tree", "size": -1 },
+              { "name": "app.ts", "type": "blob", "size": 512 }] }
+```
+`type` ∈ `blob | tree | commit` (commit = submodule). `size` is the blob byte
+size; `-1` for trees and submodules. Entries are sorted trees-first, then by name.
+
+### `slis cat <slice> <repo> <branch> <path>` → raw bytes | `--json` object
+Prints a file's exact content at a branch's revision (`git show <branch>:<path>`)
+to stdout, verbatim — no cap, no stripping. `--json` instead wraps the metadata
+and control-stripped text content (binary flagged, content omitted), sharing the
+RPC `file` method's cap/binary handling:
+```jsonc
+{ "repo": "web", "branch": "jonny/checkout", "path": "src/app.ts",
+  "size": 512, "binary": false, "content": "export const x = 1\n…" }
+```
+`--json` caps content at 256 KB by default (error kind `file-too-large` over cap);
+`binary: true` omits `content`. A directory path errors (`not-a-file`); a missing
+path errors (`path-not-found`).
+
+#### RPC methods `branchDiff` / `tree` / `file`
+The `slis rpc` sidecar (JS TUI) exposes the same three reads with camelCase names
+and object params, returning the shapes above:
+- `branchDiff` `{ slice, repo, branch, format? }` → the branch-diff object
+  (`format` ∈ `stat | patch | both`, default `both`).
+- `tree` `{ slice, repo, branch, path? }` → the tree object.
+- `file` `{ slice, repo, branch, path, maxBytes? }` → the `--json` file object.
+
+Errors carry `data.kind`: `slice-not-found`, `branch-not-found`, `path-not-found`,
+`file-too-large`, `repo-not-configured` (non-member repo → invalid-params).
+
 ## Session status
 
 The headline automation signal: *which slice's Claude is waiting for input.*
@@ -244,7 +296,7 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 
 | Class | Commands | Notes for agents |
 |---|---|---|
-| **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit review list` | Safe anytime. `doctor --fix` is the exception (it mutates). |
+| **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates branch-diff tree cat edit review list` | Safe anytime. `doctor --fix` is the exception (it mutates). |
 | **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus review add/rm/send/clear` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store (a JSON file, never git); `review send` injects a prompt into the slice's existing tmux session (no git change) and clears the pending batch on success — it never starts an agent, and does nothing when there's no session. |
 | **remote / destructive** | `submit merge sync fix-ci ci-rerun` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits; `ci-rerun <slice>` re-triggers each repo's failed CI runs (`gh run rerun --failed`) — the one CI write. Require explicit intent. |
 

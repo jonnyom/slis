@@ -6,6 +6,7 @@
 // one-shot `slis <cmd>` spawns from the UI, not part of this transport.
 
 import type {
+  BranchDiffResult,
   CaptureResult,
   CiLogResult,
   CommentsResult,
@@ -13,6 +14,7 @@ import type {
   DiffFormat,
   DiffResult,
   DiffScope,
+  FileResult,
   HelloResult,
   LsResult,
   ProcsResult,
@@ -21,7 +23,16 @@ import type {
   ShowResult,
   StatusEntry,
   PrStackEntry,
+  TreeResult,
 } from "./types";
+
+/** JSON-RPC "method not found" code — an older sidecar predating a method. */
+export const METHOD_NOT_FOUND = -32601;
+
+/** True when err is a method-not-found RpcError (feature-detection for the JS TUI). */
+export function isMethodNotFound(err: unknown): boolean {
+  return err instanceof RpcError && err.code === METHOD_NOT_FOUND;
+}
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -274,6 +285,31 @@ export class SlisRpcClient implements RpcClient {
   }
   ciLog(params: { slice: string; repo?: string }): Promise<CiLogResult> {
     return this.call<CiLogResult>("ciLog", params);
+  }
+  branchDiff(params: {
+    slice: string;
+    repo: string;
+    branch: string;
+    format?: DiffFormat;
+  }): Promise<BranchDiffResult> {
+    return this.call<BranchDiffResult>("branchDiff", params);
+  }
+  tree(params: {
+    slice: string;
+    repo: string;
+    branch: string;
+    path?: string;
+  }): Promise<TreeResult> {
+    return this.call<TreeResult>("tree", params);
+  }
+  file(params: {
+    slice: string;
+    repo: string;
+    branch: string;
+    path: string;
+    maxBytes?: number;
+  }): Promise<FileResult> {
+    return this.call<FileResult>("file", params);
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────
