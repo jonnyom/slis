@@ -236,8 +236,58 @@ present. Both native libraries embed cleanly:
   `{ type: "file" }` + dlopen dance was not required here).
 
 Per-platform builds are still required (the binary carries one platform's
-native libs), so release packaging would compile `slis-ui` per target the same
-way GoReleaser cross-builds `slis`.
+native libs), so release packaging compiles `slis-ui` per target the same way
+GoReleaser cross-builds `slis`.
+
+**Release mechanism (implemented 2026-07-18).** GoReleaser ships `slis-ui`
+beside `slis` in every archive, so an installed `slis` finds its sibling and
+bare `slis` launches the JS TUI (`resolveUILaunch` prefers a compiled
+`slis-ui` next to the running binary).
+
+- **Cross-compile from one host works.** `bun build --compile` is
+  platform-aware: `--target=bun-<os>-<arch>` only needs the *target*
+  platform's optional npm packages present. `@opentui/core` uses per-platform
+  optional deps (`@opentui/core-linux-x64`, …) and a host `bun install` fetches
+  only its own — so a naive linux cross-compile on macOS fails with
+  "Could not resolve @opentui/core-linux-x64". Fix:
+  `bun install --frozen-lockfile --cpu '*' --os '*'` installs every platform's
+  optional dep, after which all four `--target` builds succeed from a single
+  runner. (`ghostty-opentui` already ships all platforms' `.node` addons in one
+  package, so only `@opentui/core` needed the `--cpu/--os` widening.)
+- **Wiring.** `scripts/build-slis-ui.sh` (a GoReleaser `before` hook) runs the
+  all-platform install then loops `bun build --compile --target=bun-{darwin,
+  linux}-{x64,arm64}` into `tui-js/dist/<goos>-<goarch>/slis-ui` (GOOS/GOARCH
+  names, not Bun's, so the archive template matches). The `archives.files`
+  entry `src: tui-js/dist/{{ .Os }}-{{ .Arch }}/slis-ui` + `strip_parent: true`
+  drops the matching binary at each archive's root as `slis-ui`. One per
+  (Os, Arch) — the same four targets GoReleaser builds `slis` for — so the
+  templated src resolves to exactly one file per archive. Chosen over
+  GoReleaser Pro's `builder: prebuilt` (paid) and over a per-OS runner matrix
+  (single-host cross-compile is proven to work, so no matrix needed).
+- **Cask.** `homebrew_casks.binaries: [slis, slis-ui]` installs both; the
+  `postflight` `xattr -dr com.apple.quarantine` runs for both (both unsigned).
+- **Release workflow.** `.github/workflows/release.yml` adds `oven-sh/setup-bun`
+  (pinned 1.3.14, matching CI) + a `bun install --frozen-lockfile` lockfile
+  gate in `tui-js` before GoReleaser; the `before` hook does the all-platform
+  install + compile.
+- **Caveat.** Linux `slis-ui` is glibc-linked (dynamic; Bun standalone
+  binaries are not static), unlike the fully-static `CGO_ENABLED=0` Go `slis`.
+  Alpine/musl-only hosts won't run `slis-ui` — the Go CLI still works there.
+  (The `-musl` optional deps are installed but the default `bun-linux-*`
+  targets emit glibc binaries; a musl build would need a separate target.)
+
+**Validated locally (2026-07-18).** `goreleaser check` passes against
+GoReleaser v2.17. A full `goreleaser release --snapshot --clean --skip=publish`
+ran the before hook, cross-compiled all four `slis-ui`, and produced four
+archives each containing `slis` + a platform-matched `slis-ui` at the root
+(darwin archive → Mach-O slis-ui; linux archive → ELF slis-ui) plus a cask with
+`binary "slis"` / `binary "slis-ui"` and the dual quarantine strip. The
+darwin-arm64 `slis-ui` was booted headless (`SLIS_FAKE=1`) and paints. The
+linux-x64 cross-compile was confirmed a real x86-64 ELF embedding `libopentui.so`
++ `linux-x64/ghostty`. **Deferred to a real tag:** the actual multi-arch run on
+GitHub's ubuntu runner (bun downloading each target runtime over the network),
+the tap push (needs `HOMEBREW_TAP_GITHUB_TOKEN`), and `brew install` on a clean
+machine.
 
 **Launcher: `slis ui`** (`internal/cli/ui.go`). Execs the JS front-end via
 `syscall.Exec` (clean handover, the JS app owns the terminal): it prefers a
@@ -274,5 +324,9 @@ Jonny's direction: the JS TUI is a FULL REPLACEMENT, not an experiment.
    slice; Go TUI prompted before this), preview phantom-branch warning +
    colorized diff tail, missing-slice dimmed rows, create-in-progress spinner.
    Audit rigorously, then close every gap.
-3. Release packaging: goreleaser must build + ship `slis-ui` (bun compile)
-   per platform alongside `slis`, brew cask included.
+3. DONE. Release packaging ships `slis-ui` per platform alongside `slis`,
+   brew cask included. A GoReleaser `before` hook (`scripts/build-slis-ui.sh`)
+   cross-compiles `slis-ui` for all four targets; `archives.files` bundles the
+   matching one beside `slis`; the cask installs both binaries and strips
+   quarantine off both. See the updated **Distribution** section for the
+   mechanism and how it was validated.
