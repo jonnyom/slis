@@ -1,0 +1,20 @@
+testutil/repo.go
+  s_470615ee13fe83::t_f48682f4bde17e 37-38
+  s_470615ee13fe83::t_a8073e4cbeb331 33-36,39-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "40df4d86f1e49f6622ca9f74c217c31b858b2a1c",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
