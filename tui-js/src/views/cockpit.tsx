@@ -19,11 +19,14 @@ import {
 import type {
   DiffResult,
   DiffScope,
+  PrComment,
   ProcsResult,
   RpcClient,
 } from "../rpc/types";
 import type { SliceView } from "../state/derive";
 import type { OverlayApi } from "../overlays/useOverlays";
+import { commentBlocks } from "../pr/comments";
+import { sessionName } from "../term/tmux";
 import { color, glyph, sessionBadge, sessionLabel } from "../theme";
 import { Panel } from "../components/panel";
 import { DiffPane } from "../components/diffpane";
@@ -90,6 +93,29 @@ function useCapture(
     };
   }, [client, slice, tick]);
   return lines;
+}
+
+// RepoComments-per-repo for a slice, lazily loaded when the PRs panel is focused.
+type SliceComments = Record<string, { pr: number; url: string; comments: PrComment[] }>;
+
+function useComments(
+  client: RpcClient,
+  slice: string,
+  active: boolean,
+): SliceComments {
+  const [byRepo, setByRepo] = useState<SliceComments>({});
+  useEffect(() => {
+    setByRepo({});
+    if (!active) return;
+    let live = true;
+    client
+      .comments(slice)
+      .then((res) => live && setByRepo(res[slice] ?? {}), () => {});
+    return () => {
+      live = false;
+    };
+  }, [client, slice, active]);
+  return byRepo;
 }
 
 // ── left panels ──────────────────────────────────────────────────────────────
@@ -317,10 +343,67 @@ function DiffRight({
   );
 }
 
-function PrDetailRight({ view, prSel }: { view: SliceView; prSel: number }): ReactNode {
+function CommentsBlock({
+  repo,
+  prNumber,
+  comments,
+  width,
+}: {
+  repo: string;
+  prNumber: number;
+  comments: PrComment[];
+  width: number;
+}): ReactNode {
+  if (comments.length === 0) return null;
+  const blocks = commentBlocks(repo, prNumber, comments, Math.max(20, width - 4));
+  return (
+    <>
+      <text> </text>
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        Comments:
+      </text>
+      {blocks.map((b, i) => (
+        <box key={i} flexDirection="column">
+          <text fg={color.title} attributes={BOLD} wrapMode="none">
+            {b.header}
+          </text>
+          {b.body.map((l, j) => (
+            <text key={j} fg={color.fg} wrapMode="none">
+              {l === "" ? " " : l}
+            </text>
+          ))}
+        </box>
+      ))}
+    </>
+  );
+}
+
+function PrDetailRight({
+  view,
+  prSel,
+  comments,
+  width,
+}: {
+  view: SliceView;
+  prSel: number;
+  comments: SliceComments;
+  width: number;
+}): ReactNode {
   const pr = (view.prs ?? [])[prSel];
   if (!pr) return <text fg={color.dim}>no PR selected</text>;
+  const rc = comments[pr.repo];
   if (pr.number === undefined) {
+    // No live PR — fall back to any cached comments for this repo.
+    if (rc && rc.comments.length > 0) {
+      return (
+        <>
+          <text fg={color.dim} attributes={DIM} wrapMode="none">
+            {pr.repo} · {pr.branch} — no open PR · cached comments
+          </text>
+          <CommentsBlock repo={pr.repo} prNumber={rc.pr} comments={rc.comments} width={width} />
+        </>
+      );
+    }
     return (
       <text fg={color.dim} attributes={DIM}>
         {pr.repo} · {pr.branch} — no PR opened
@@ -359,25 +442,55 @@ function PrDetailRight({ view, prSel }: { view: SliceView; prSel: number }): Rea
       <text fg={color.dim} wrapMode="none">
         {pr.url ?? ""}
       </text>
+      {rc ? (
+        <CommentsBlock repo={pr.repo} prNumber={rc.pr} comments={rc.comments} width={width} />
+      ) : null}
     </>
   );
 }
 
-function SessionRight({ lines }: { lines: string[] }): ReactNode {
-  if (lines.length === 0) {
-    return (
-      <text fg={color.dim} attributes={DIM}>
-        (no session output — attach with the CLI to start one)
-      </text>
-    );
-  }
+function SessionRight({
+  view,
+  lines,
+}: {
+  view: SliceView;
+  lines: string[];
+}): ReactNode {
+  const members = view.slice.members;
   return (
     <>
-      {lines.map((l, i) => (
-        <text key={i} fg={color.fg} wrapMode="none">
-          {l === "" ? " " : l}
+      <text wrapMode="none">
+        <span fg={color.dim}>session: </span>
+        <span fg={color.fg}>{sessionName(view.slice.name)}</span>
+        <span fg={color.dim}> · {members.length} windows</span>
+      </text>
+      <text> </text>
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        repos:
+      </text>
+      {members.map((m) => (
+        <text key={m.repo} wrapMode="none">
+          <span fg={color.repoHeader}>{"  " + m.repo}</span>
+          <span fg={color.dim}>{"  " + m.worktree_path}</span>
         </text>
       ))}
+      <text> </text>
+      {lines.length === 0 ? (
+        <text fg={color.dim} attributes={DIM}>
+          (no session output — attach with a/C to start one)
+        </text>
+      ) : (
+        <>
+          <text fg={color.dim} attributes={DIM} wrapMode="none">
+            ─── session output (live) ───
+          </text>
+          {lines.map((l, i) => (
+            <text key={i} fg={color.fg} wrapMode="none">
+              {l === "" ? " " : l}
+            </text>
+          ))}
+        </>
+      )}
     </>
   );
 }
@@ -462,12 +575,14 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffMode, setDiffMode] = useState<DiffMode>("unified");
+  const [zoomed, setZoomed] = useState(false);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
   const scope = SCOPES[scopeIdx]!;
   const selectedRepo = view.slice.members[repoSel]?.repo ?? "";
 
   const monitor = useProcMonitor(client, slice, panel === "procs");
+  const comments = useComments(client, slice, panel === "prs");
   const sliceProcs = monitor.result?.slices[0]?.procs ?? [];
   const procRows = useMemo(
     () => flattenTree(buildProcTree(sliceProcs, procSort), collapsed),
@@ -566,15 +681,25 @@ export function Cockpit(props: CockpitProps): ReactNode {
     // On the Processes tree, h/← collapse and l/→ expand (esc still goes back).
     if (panel === "procs" && (name === "h" || name === "left")) return toggleCollapse(false);
     if (panel === "procs" && (name === "l" || name === "right")) return toggleCollapse(true);
-    if (name === "escape" || name === "h") return props.onBack();
+    if (name === "escape" || name === "h") {
+      if (zoomed) return setZoomed(false); // unzoom before leaving the cockpit
+      return props.onBack();
+    }
     if (name === "w") return overlays.swap(slice, view.slice.active);
     if (name === "a") return props.onOpenTerm(slice, false);
     if (name === "C") return props.onOpenTerm(slice, true);
+    if (name === "e") return overlays.editor(slice);
+    if (name === "o") return overlays.editor(slice, selectedRepo);
     if (
       panel === "stack" &&
       (name === "return" || name === "enter" || name === "l" || name === "right")
     ) {
       setDiffOpen(true);
+      return;
+    }
+    // Enter on any other panel zooms the right pane full-width (enter/esc restores).
+    if (name === "return" || name === "enter") {
+      setZoomed((z) => !z);
       return;
     }
     if (name === "tab") {
@@ -664,18 +789,19 @@ export function Cockpit(props: CockpitProps): ReactNode {
   }, [panel, selectedRepo, view.prs, prSel, slice]);
 
   const footer = useMemo(() => {
-    const common = "w swap · R stack · s/S summary · y/Y yank · d clear · esc back";
+    if (zoomed) return "enter/esc unzoom · j/k move · ctrl+d/u scroll · a/C term · w swap";
+    const common = "w swap · e/o editor · R stack · s/S summary · y/Y yank · d clear · esc back";
     switch (panel) {
       case "stack":
         return `tab panel · j/k repo · enter rich diff · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · a/C term · ${common}`;
       case "prs":
-        return `tab panel · j/k pr · O open PR · a/C term · ${common}`;
+        return `tab panel · j/k pr · enter zoom · O open PR · a/C term · ${common}`;
       case "session":
-        return `tab panel · a/C term · ${common}`;
+        return `tab panel · enter zoom · a/C term · ${common}`;
       case "procs":
-        return "tab panel · j/k proc · h/l fold · s sort · x/X kill · a/C term · w swap · d clear · esc back";
+        return "tab panel · j/k proc · enter zoom · h/l fold · s sort · x/X kill · a/C term · w swap · e/o editor · d clear · esc back";
     }
-  }, [panel, scope, showPatch]);
+  }, [panel, scope, showPatch, zoomed]);
 
   if (diffOpen) {
     return (
@@ -718,22 +844,24 @@ export function Cockpit(props: CockpitProps): ReactNode {
       </box>
       {/* body */}
       <box flexDirection="row" flexGrow={1}>
-        <box flexDirection="column" width={leftW}>
-          <StackPanel
-            view={view}
-            focused={panel === "stack"}
-            repoSel={repoSel}
-            height={stackH}
-          />
-          <PrsPanel view={view} focused={panel === "prs"} prSel={prSel} height={prsH} />
-          <SessionPanel
-            view={view}
-            focused={panel === "session"}
-            lastLine={lastLine}
-            height={sessionH}
-          />
-          <ProcsPanel procs={monitor.result} focused={panel === "procs"} height={procsH} />
-        </box>
+        {zoomed ? null : (
+          <box flexDirection="column" width={leftW}>
+            <StackPanel
+              view={view}
+              focused={panel === "stack"}
+              repoSel={repoSel}
+              height={stackH}
+            />
+            <PrsPanel view={view} focused={panel === "prs"} prSel={prSel} height={prsH} />
+            <SessionPanel
+              view={view}
+              focused={panel === "session"}
+              lastLine={lastLine}
+              height={sessionH}
+            />
+            <ProcsPanel procs={monitor.result} focused={panel === "procs"} height={procsH} />
+          </box>
+        )}
         <box flexGrow={1} flexDirection="column">
           <box
             border
@@ -759,9 +887,14 @@ export function Cockpit(props: CockpitProps): ReactNode {
                   showPatch={showPatch}
                 />
               ) : panel === "prs" ? (
-                <PrDetailRight view={view} prSel={prSel} />
+                <PrDetailRight
+                  view={view}
+                  prSel={prSel}
+                  comments={comments}
+                  width={props.width - leftW}
+                />
               ) : panel === "session" ? (
-                <SessionRight lines={captureLines} />
+                <SessionRight view={view} lines={captureLines} />
               ) : (
                 <ProcsRight
                   monitor={monitor}
