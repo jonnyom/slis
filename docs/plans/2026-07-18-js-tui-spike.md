@@ -261,9 +261,14 @@ it on demand.
 ## Next phase (mandated 2026-07-18, not yet done)
 
 Jonny's direction: the JS TUI is a FULL REPLACEMENT, not an experiment.
-1. Bare `slis` must launch the JS TUI by default (reuse `resolveUILaunch` from
-   internal/cli/ui.go in the root command; Go TUI stays reachable as an
-   escape hatch during transition, e.g. SLIS_TUI=go).
+1. DONE. Bare `slis` now launches the JS TUI by default: the root command
+   (`internal/cli/root.go`) reuses `resolveUILaunch`/`execJSUI` from
+   `internal/cli/ui.go` and the pure `chooseDefaultUI` decision helper.
+   `SLIS_TUI=go` forces the legacy Go (Bubble Tea) TUI; if the JS front-end
+   can't be resolved (no sibling `slis-ui`, no `SLIS_TUI_DIR`), bare `slis`
+   prints a one-line stderr notice and falls back to the Go TUI rather than
+   erroring, so users without the JS binary aren't bricked. `slis ui` keeps
+   its explicit hard-error behavior. Decision covered by `ui_test.go`.
 2. Full feature parity audit vs internal/tui — known suspects: bulk-load
    strategy for >25 slices (app.tsx refresh() fans out prStack+show for every
    slice; Go TUI prompted before this), preview phantom-branch warning +

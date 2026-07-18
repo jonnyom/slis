@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -53,5 +54,42 @@ func TestResolveUILaunchErrorsWhenNothingAvailable(t *testing.T) {
 	_, err := resolveUILaunch(binPath, "", noSibling)
 	if err == nil {
 		t.Fatal("expected an error when no compiled binary and no SLIS_TUI_DIR")
+	}
+}
+
+func TestChooseDefaultUIForcesGoWhenEnvIsGo(t *testing.T) {
+	launchJS, notice := chooseDefaultUI("go", nil)
+	if launchJS {
+		t.Error("launchJS = true, want false when SLIS_TUI=go")
+	}
+	if notice != "" {
+		t.Errorf("notice = %q, want empty (explicit override is not a fallback)", notice)
+	}
+}
+
+func TestChooseDefaultUIForcesGoEvenWhenJSResolves(t *testing.T) {
+	launchJS, _ := chooseDefaultUI("go", nil)
+	if launchJS {
+		t.Error("SLIS_TUI=go must win even when the JS UI resolves")
+	}
+}
+
+func TestChooseDefaultUIPrefersJSWhenResolvable(t *testing.T) {
+	launchJS, notice := chooseDefaultUI("", nil)
+	if !launchJS {
+		t.Error("launchJS = false, want true when JS resolves and no override")
+	}
+	if notice != "" {
+		t.Errorf("notice = %q, want empty on the happy path", notice)
+	}
+}
+
+func TestChooseDefaultUIFallsBackToGoWhenJSUnresolvable(t *testing.T) {
+	launchJS, notice := chooseDefaultUI("", errors.New("no slis-ui"))
+	if launchJS {
+		t.Error("launchJS = true, want false when the JS UI cannot be resolved")
+	}
+	if notice == "" {
+		t.Error("expected a one-line stderr notice on the Go fallback")
 	}
 }
