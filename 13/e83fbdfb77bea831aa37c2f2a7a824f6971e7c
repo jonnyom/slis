@@ -1,0 +1,23 @@
+tui-js/tsconfig.json
+  s_197478f89af866::t_b375b1d9ee7b42 13-14
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_1c31207727b59d 381-387,399,404-419
+  s_197478f89af866::t_0c968b496eb102 622
+  s_197478f89af866::t_5d38ea6cd7f88f 515-518
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "13e83fbdfb77bea831aa37c2f2a7a824f6971e7c",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
