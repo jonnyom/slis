@@ -1,0 +1,30 @@
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_6cba42df139876 684-687,691-692,700-702,704
+  s_197478f89af866::t_34f2e1c49afa2d 98-120
+  s_197478f89af866::t_bb4a19d0710889 22,28
+  s_197478f89af866::t_3518180c6486c8 890-895,897
+  s_197478f89af866::t_bf19d566a4f907 464
+  s_197478f89af866::t_00b28dac9b0b6a 29
+  s_197478f89af866::t_0f1271df935d02 792-793,798,800,802,804
+  s_197478f89af866::t_c57b41fe777bf8 847-864
+  s_197478f89af866::t_2fdd90008d6986 452-459,462-463,465-474,477-493
+  s_197478f89af866::t_599161c060d8aa 346-391,394,396-406,445-447
+  s_197478f89af866::t_3eaf9760337f07 578,585
+  s_197478f89af866::t_d106c6fa9fce66 703
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c0357906be7af4a77ddaf34ea86f9e05398b2de5",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
