@@ -6,11 +6,11 @@
 
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
-import { glyph, theme } from "../theme";
+import { resultStatusStyle, theme, type ResultStatus } from "../theme";
 import { HintBar, type Hint } from "./hintbar";
 import { Scrim } from "./scrim";
 
-export type CardStatus = "success" | "failure";
+export type CardStatus = ResultStatus;
 
 export function Card({
   title,
@@ -32,10 +32,9 @@ export function Card({
   const { width: termWidth } = useTerminalDimensions();
   const clamped = width === undefined ? undefined : Math.min(width, termWidth - 2);
 
-  const statusColor =
-    status === "success" ? theme.good : status === "failure" ? theme.bad : undefined;
-  const statusGlyph =
-    status === "success" ? glyph.inReview : status === "failure" ? glyph.changes : "";
+  const statusStyle = status ? resultStatusStyle(status) : undefined;
+  const statusColor = statusStyle?.color;
+  const statusGlyph = statusStyle?.glyph ?? "";
   const titleColor = statusColor ?? theme.focus;
   const titleText = statusColor ? `${statusGlyph} ${title}` : title;
 
@@ -77,7 +76,7 @@ export function Card({
         )}
         {hints && hints.length > 0 ? (
           <box marginTop={1}>
-            <HintBar hints={hints} width={clamped ? clamped - 2 : undefined} />
+            <HintBar hints={hints} width={clamped ? clamped - 4 : undefined} />
           </box>
         ) : null}
       </box>

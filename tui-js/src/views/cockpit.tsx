@@ -109,6 +109,10 @@ export interface CockpitProps {
   overlays: OverlayApi;
   width: number;
   height: number;
+  // Entry focus when opened from the browser (M4): which panel to land on and
+  // whether to auto-open the focused PR's failing-CI log.
+  initialPanel?: PanelId;
+  openCiLog?: boolean;
   onBack: () => void;
   onOpenTerm: (slice: string, launchAgent: boolean) => void;
   onToggleProcs: () => void;
@@ -219,7 +223,7 @@ function StackSection({
                     </span>
                     {node.trunk ? <span fg={color.synced}> [trunk]</span> : null}
                     {node.needs_restack ? (
-                      <span fg={color.restack}> {glyph.dirty} restack</span>
+                      <span fg={color.restack}> {glyph.restack} restack</span>
                     ) : null}
                   </text>
                 );
@@ -663,7 +667,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const { view, client, enabled, overlays } = props;
   const slice = view.slice.name;
 
-  const [panel, setPanel] = useState<PanelId>("stack");
+  const [panel, setPanel] = useState<PanelId>(props.initialPanel ?? "stack");
   const [repoSel, setRepoSel] = useState(0);
   const [prSel, setPrSel] = useState(0);
   const [procSel, setProcSel] = useState(0);
@@ -776,6 +780,31 @@ export function Cockpit(props: CockpitProps): ReactNode {
         ),
     );
   };
+
+  // M4 — when entered from a red-CI browser slice (openCiLog), land on the first
+  // failing PR and open its CI log without a keystroke. Waits for view.prs to
+  // load, then runs exactly once.
+  const autoCiOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!props.openCiLog || autoCiOpenedRef.current) return;
+    const prs = view.prs ?? [];
+    const failing = prs.findIndex(
+      (p) => p.number !== undefined && (p.ci === "fail" || (p.ci_fail ?? 0) > 0),
+    );
+    const target = failing >= 0 ? failing : prs.findIndex((p) => p.number !== undefined);
+    if (target < 0) return; // PRs not loaded yet — retry when view.prs arrives
+    autoCiOpenedRef.current = true;
+    setPrSel(target);
+    const repo = prs[target]!.repo;
+    setCiLog({ repo, loading: true, result: null });
+    client.ciLog({ slice, repo }).then(
+      (r) => setCiLog((c) => (c && c.repo === repo ? { repo, loading: false, result: r } : c)),
+      () =>
+        setCiLog((c) =>
+          c && c.repo === repo ? { repo, loading: false, result: { repos: [] } } : c,
+        ),
+    );
+  }, [props.openCiLog, view.prs, client, slice]);
 
   const yankDiff = () => {
     const build = diff

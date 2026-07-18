@@ -122,10 +122,14 @@ export function AllSlicesProcOverlay({
         height="80%"
         backgroundColor={color.overlayBg}
       >
-        <text wrapMode="none" fg={color.dim} attributes={DIM}>
-          {`sort: ${SORT_LABEL[sort]} · s cycle · j/k move · x kill · X kill tree · P/esc close`}
-        </text>
-        <ProcTableHeader spark />
+        <box width="100%" height={1} overflow="hidden">
+          <text wrapMode="none" fg={color.dim} attributes={DIM}>
+            {`sort: ${SORT_LABEL[sort]} · s cycle · j/k move · x kill · X kill tree · P/esc close`}
+          </text>
+        </box>
+        <box width="100%" height={1} overflow="hidden">
+          <ProcTableHeader spark />
+        </box>
         <scrollbox flexGrow={1} scrollbarOptions={{ visible: true }}>
           {selectable.length === 0 ? (
             <text fg={color.dim} attributes={DIM}>

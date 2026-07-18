@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import type { AgentSpec, Candidate, ConflictsResult } from "../rpc/types";
 import { agentCmdline } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
-import { glyph, theme } from "../theme";
+import { glyph, theme, type ResultStatus } from "../theme";
 import { Card } from "../components/card";
 import { Spinner } from "../components/spinner";
 import { BOLD } from "../components/ui";
@@ -145,17 +145,17 @@ export function WorkingOverlay({ text }: { text: string }): ReactNode {
 export function ResultOverlay({
   title,
   body,
-  ok,
+  status,
 }: {
   title: string;
   body: string;
-  ok: boolean;
+  status: ResultStatus;
 }): ReactNode {
   const lines = body.split("\n").slice(0, 16);
   return (
     <Card
       title={title}
-      status={ok ? "success" : "failure"}
+      status={status}
       width={78}
       hints={[
         { key: "enter", label: "close" },
@@ -193,12 +193,12 @@ export function StackActionsOverlay({
       ]}
     >
       {conflictWith.length > 0 ? (
-        <text fg={theme.attn} wrapMode="none">
-          {glyph.dirty} {target} shares changed files with: {conflictWith.join(", ")} (may be
+        <text fg={theme.attn} wrapMode="word">
+          {glyph.overlap} {target} shares changed files with: {conflictWith.join(", ")} (may be
           stale; committed changes only)
         </text>
       ) : null}
-      <text fg={theme.textDim} wrapMode="none">
+      <text fg={theme.textDim} wrapMode="word">
         restack runs across all targets; submit / merge / sync act on the first target.
       </text>
     </Card>
@@ -406,11 +406,11 @@ export function ConflictRadarOverlay({
         </text>
       ) : null}
       {incomplete.length > 0 ? (
-        <text fg={theme.attn} wrapMode="none">
+        <text fg={theme.attn} wrapMode="word">
           radar incomplete (diff unavailable) for: {incomplete.join(", ")}
         </text>
       ) : null}
-      <text fg={theme.textDim} wrapMode="none">
+      <text fg={theme.textDim} wrapMode="word">
         File overlap is a heads-up, not a guaranteed merge conflict. Committed changes only.
       </text>
     </Card>

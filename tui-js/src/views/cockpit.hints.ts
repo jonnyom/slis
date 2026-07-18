@@ -8,6 +8,13 @@ export type PanelId = "stack" | "prs" | "session" | "procs";
 
 export const PANEL_ORDER: PanelId[] = ["stack", "prs", "session", "procs"];
 
+// How the cockpit should open when entered from the browser (M4). Lets a red-CI
+// slice jump straight to the PRs panel with its failing-CI log already loaded.
+export interface CockpitEntry {
+  panel?: PanelId;
+  ciLog?: boolean;
+}
+
 // Breadcrumb segment shown after the slice name (spec §3.2 mockup: `Stack`,
 // not the eyebrow's louder `REPOS & STACK`).
 export const SECTION_LABEL: Record<PanelId, string> = {
