@@ -1,6 +1,10 @@
 package rpcserver
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/jonnyom/slis/internal/git"
+)
 
 // JSON-RPC 2.0 error codes. The negative -320xx range is reserved by the spec;
 // -32000 is the generic slis server error, carrying a data.kind for known error
@@ -172,6 +176,44 @@ type sliceProcsResult struct {
 // procsResult is the `procs` method's result: one entry per slice sampled.
 type procsResult struct {
 	Slices []sliceProcsResult `json:"slices"`
+}
+
+// branchParams selects one repo's branch within a slice for the branchDiff
+// method. Format is optional (default "both").
+type branchParams struct {
+	Slice  string `json:"slice"`
+	Repo   string `json:"repo"`
+	Branch string `json:"branch"`
+	Format string `json:"format"`
+}
+
+// treeParams names one repo's branch within a slice and, optionally, a directory
+// path to list one level under (empty = the tree root).
+type treeParams struct {
+	Slice  string `json:"slice"`
+	Repo   string `json:"repo"`
+	Branch string `json:"branch"`
+	Path   string `json:"path"`
+}
+
+// treeResult is the `tree` method's result: one directory level of a branch's
+// tree at Path (basenames, lazily expanded one level per call).
+type treeResult struct {
+	Repo    string          `json:"repo"`
+	Branch  string          `json:"branch"`
+	Path    string          `json:"path"`
+	Entries []git.TreeEntry `json:"entries"`
+}
+
+// fileParams names one repo's branch and a file path within a slice, plus an
+// optional byte cap (default report.DefaultFileCap). The result is a
+// report.FileContent.
+type fileParams struct {
+	Slice    string `json:"slice"`
+	Repo     string `json:"repo"`
+	Branch   string `json:"branch"`
+	Path     string `json:"path"`
+	MaxBytes int    `json:"maxBytes"`
 }
 
 // sessionEventParams is the payload of a sessionEvent notification.

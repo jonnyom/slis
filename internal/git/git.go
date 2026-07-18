@@ -75,3 +75,19 @@ func RunCtx(ctx context.Context, dir string, args ...string) (string, error) {
 	}
 	return strings.TrimRight(out.String(), "\n"), nil
 }
+
+// RunRaw executes `git -C dir <args...>` and returns stdout as raw, untrimmed
+// bytes. Unlike Run it neither trims trailing newlines nor coerces to a string,
+// so it is safe for binary blob content (e.g. `git show <rev>:<path>`).
+func RunRaw(dir string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancel()
+	full := append([]string{"-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, errb.String())
+	}
+	return out.Bytes(), nil
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jonnyom/slis/internal/forge"
+	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/report"
@@ -211,6 +212,114 @@ func (s *Server) ciLog(raw json.RawMessage) (interface{}, *rpcError) {
 		out = append(out, entry)
 	}
 	return ciLogResult{Repos: out}, nil
+}
+
+// memberPrimary validates that repo is a member of the named slice and returns
+// its PRIMARY checkout path (never a worktree — the repo rule). The stack-review
+// reads (branchDiff/tree/file) all run there: they are pure ref-scoped reads, so
+// any branch in the stack resolves regardless of which worktree has it out.
+func (s *Server) memberPrimary(sliceName, repo string) (string, *rpcError) {
+	sl, err := report.FindSliceIn(s.ws, s.sp, sliceName)
+	if err != nil {
+		return "", serverErr(err.Error(), "slice-not-found")
+	}
+	if _, ok := sl.Members[repo]; !ok {
+		return "", invalidParams(fmt.Sprintf("repo %q is not a member of slice %q", repo, sliceName))
+	}
+	rc, ok := s.ws.Repos[repo]
+	if !ok || rc.Primary == "" {
+		return "", serverErr(fmt.Sprintf("no primary checkout configured for repo %q", repo), "repo-not-configured")
+	}
+	return rc.Primary, nil
+}
+
+// branchDiff computes one branch's diff against its Graphite stack parent (or
+// the repo trunk when the branch has no parent). Read-only; runs in the repo's
+// primary checkout.
+func (s *Server) branchDiff(raw json.RawMessage) (interface{}, *rpcError) {
+	var p branchParams
+	if rerr := decodeParams(raw, &p); rerr != nil {
+		return nil, rerr
+	}
+	if p.Slice == "" || p.Repo == "" || p.Branch == "" {
+		return nil, invalidParams("slice, repo and branch are required")
+	}
+	format := p.Format
+	if format == "" {
+		format = "both"
+	}
+	if !validDiffFormats[format] {
+		return nil, invalidParams("format must be stat|patch|both")
+	}
+	primary, rerr := s.memberPrimary(p.Slice, p.Repo)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if !git.RefExists(primary, p.Branch) {
+		return nil, serverErr(fmt.Sprintf("branch %q not found in repo %q", p.Branch, p.Repo), "branch-not-found")
+	}
+	res, err := report.BranchDiff(primary, p.Repo, p.Branch, format)
+	if err != nil {
+		return nil, serverErr(err.Error(), "")
+	}
+	return res, nil
+}
+
+// tree lists one directory level of a branch's tree (lazy expansion). Read-only;
+// runs in the repo's primary checkout.
+func (s *Server) tree(raw json.RawMessage) (interface{}, *rpcError) {
+	var p treeParams
+	if rerr := decodeParams(raw, &p); rerr != nil {
+		return nil, rerr
+	}
+	if p.Slice == "" || p.Repo == "" || p.Branch == "" {
+		return nil, invalidParams("slice, repo and branch are required")
+	}
+	primary, rerr := s.memberPrimary(p.Slice, p.Repo)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if !git.RefExists(primary, p.Branch) {
+		return nil, serverErr(fmt.Sprintf("branch %q not found in repo %q", p.Branch, p.Repo), "branch-not-found")
+	}
+	entries, err := git.LsTree(primary, p.Branch, p.Path)
+	if err != nil {
+		return nil, serverErr(err.Error(), "path-not-found")
+	}
+	if entries == nil {
+		entries = []git.TreeEntry{}
+	}
+	return treeResult{Repo: p.Repo, Branch: p.Branch, Path: p.Path, Entries: entries}, nil
+}
+
+// file returns a file's content at a branch's revision (`git show <branch>:<path>`).
+// Binary files are flagged with their content omitted; text over the byte cap
+// errors with kind "file-too-large". Read-only; runs in the repo's primary
+// checkout.
+func (s *Server) file(raw json.RawMessage) (interface{}, *rpcError) {
+	var p fileParams
+	if rerr := decodeParams(raw, &p); rerr != nil {
+		return nil, rerr
+	}
+	if p.Slice == "" || p.Repo == "" || p.Branch == "" || p.Path == "" {
+		return nil, invalidParams("slice, repo, branch and path are required")
+	}
+	primary, rerr := s.memberPrimary(p.Slice, p.Repo)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if !git.RefExists(primary, p.Branch) {
+		return nil, serverErr(fmt.Sprintf("branch %q not found in repo %q", p.Branch, p.Repo), "branch-not-found")
+	}
+
+	fc, ferr := report.FileAtRevision(primary, p.Repo, p.Branch, p.Path, p.MaxBytes)
+	if ferr != nil {
+		if ferr.Kind == "not-a-file" {
+			return nil, invalidParams(ferr.Error())
+		}
+		return nil, serverErr(ferr.Error(), ferr.Kind)
+	}
+	return fc, nil
 }
 
 // capture returns the safeterm-stripped tail of a slice's tmux session. A
