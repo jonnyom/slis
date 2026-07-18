@@ -20,7 +20,7 @@ import {
   type SbsRowR,
   type UnifiedRow,
 } from "../diff/rows";
-import { color, colorForKind, diffColor, statusColor } from "../theme";
+import { color, colorForKind, diffColor, glyph, statusColor } from "../theme";
 import { BOLD, DIM } from "./ui";
 
 export type DiffMode = "unified" | "split";
@@ -375,7 +375,7 @@ function FileListScroller({
                 const selected = idx === sel;
                 return (
                   <text key={f.path} id={`file-${idx}`} wrapMode="none">
-                    <span fg={color.cursorBar}>{selected ? "▎" : " "}</span>
+                    <span fg={color.cursorBar}>{selected ? glyph.focusBar : " "}</span>
                     <span fg={statusColor(f.status)} attributes={BOLD}>
                       {statusGlyph(f.status)}{" "}
                     </span>

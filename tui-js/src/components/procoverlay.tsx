@@ -119,7 +119,7 @@ export function AllSlicesProcOverlay({
         padding={1}
         width="90%"
         height="80%"
-        backgroundColor="#101010"
+        backgroundColor={color.overlayBg}
       >
         <text wrapMode="none" fg={color.dim} attributes={DIM}>
           {`sort: ${SORT_LABEL[sort]} · s cycle · j/k move · x kill · X kill tree · P/esc close`}

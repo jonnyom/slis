@@ -5,7 +5,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { Candidate, ConflictsResult } from "../rpc/types";
-import { color } from "../theme";
+import { color, glyph } from "../theme";
 import { Overlay } from "../components/overlay";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
@@ -224,7 +224,7 @@ export function CandidatesOverlay({
           const dir = c.path.replace(/\/[^/]*$/, "");
           return (
             <text key={c.path} wrapMode="none">
-              <span fg={color.cursorBar}>{focused ? "▎ " : "  "}</span>
+              <span fg={color.cursorBar}>{focused ? glyph.focusBar + " " : "  "}</span>
               <span fg={focused ? color.white : color.fg} attributes={focused ? BOLD : 0}>
                 {c.slice}
               </span>

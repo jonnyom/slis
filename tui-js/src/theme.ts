@@ -25,6 +25,7 @@ export const color = {
   border: "#585858", // 240 — unfocused panel border
   borderFocus: "#5fafff", // 75  — focused panel border
   boxBorder: "#5f5fd7", // 62  — help / empty-state box border
+  overlayBg: "#101010", // near-black wash behind floating modal cards
   dim: "#808080", // 244 — dim headers / faint rows
   stackHeader: "#949494", // 246 — stack-cluster group header
   diffHeader: "#808080", // 244 — diff file/hunk header

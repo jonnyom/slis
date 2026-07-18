@@ -169,11 +169,12 @@ function PrsPanel({
   height: number;
 }): ReactNode {
   const prs = view.prs ?? [];
+  const loading = view.prs === undefined;
   return (
     <Panel title="PRs" index={2} focused={focused} height={height}>
       {prs.length === 0 ? (
         <text fg={color.dim} attributes={DIM}>
-          loading…
+          {loading ? "loading…" : "no branches"}
         </text>
       ) : (
         prs.map((pr, i) => {

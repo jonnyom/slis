@@ -1,6 +1,7 @@
 // A centered modal card floating over the current view. Uses absolute
 // positioning so it overlaps whatever is behind it.
 
+import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import { color } from "../theme";
 import { BOLD } from "./ui";
@@ -14,6 +15,10 @@ export function Overlay({
   children: ReactNode;
   width?: number;
 }): ReactNode {
+  // Clamp the card to the terminal so a wide overlay (e.g. the 86-col summary)
+  // never overflows a narrow screen (80x24). Leave a two-cell margin.
+  const { width: termWidth } = useTerminalDimensions();
+  const clamped = width === undefined ? undefined : Math.min(width, termWidth - 2);
   return (
     <box
       position="absolute"
@@ -32,8 +37,9 @@ export function Overlay({
         titleColor={color.title}
         flexDirection="column"
         padding={1}
-        width={width}
-        backgroundColor="#101010"
+        width={clamped}
+        overflow="hidden"
+        backgroundColor={color.overlayBg}
       >
         {children}
       </box>
