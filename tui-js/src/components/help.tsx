@@ -90,6 +90,13 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     ],
   },
   {
+    label: "review",
+    bindings: [
+      ["c", "comment on the selected line / hunk (rich diff or file view)"],
+      ["C", "pending-review overlay: list comments · x delete · s send to agent"],
+    ],
+  },
+  {
     label: "act",
     bindings: [
       ["e / o", "editor: whole slice / selected repo"],
@@ -115,7 +122,7 @@ const COCKPIT_GROUPS: BindingGroup[] = [
       ["s", "cycle process sort cpu → mem → pid"],
       ["x / X", "kill process / kill subtree (SIGTERM)"],
       ["P", "processes across all slices"],
-      ["a / C", "open terminal tab (C also launches agent)"],
+      ["a", "open terminal tab (launches the agent when autostart is set)"],
       ["S", "force AI summary (s: summary outside Processes panel)"],
     ],
   },
@@ -125,6 +132,8 @@ const DIFF_BINDINGS: Binding[] = [
   ["j / k", "next / prev file"],
   ["enter / l", "jump to the selected file's first hunk"],
   ["[ / ]  ·  p / n", "prev / next hunk"],
+  ["c", "comment on the selected hunk (feeds the agent)"],
+  ["C", "pending-review overlay (list / delete / send)"],
   ["t", "toggle unified / side-by-side"],
   ["b", "cycle diff scope"],
   ["ctrl+d / ctrl+u", "scroll diff"],

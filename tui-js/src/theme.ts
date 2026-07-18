@@ -136,6 +136,7 @@ export const glyph = {
   filterMarker: "▸",
   arrow: "›",
   new: "＋",
+  comment: "✎",
 } as const;
 
 // ── Result-overlay outcome styling (D2) ──────────────────────────────────────

@@ -96,9 +96,11 @@ describe("cockpitHints", () => {
     const tree = cockpitHints("stack", { ...base, reviewMode: "tree" }).map((h) => h.label);
     expect(tree).toContain("open/expand");
     expect(tree).toContain("collapse");
-    const file = cockpitHints("stack", { ...base, reviewMode: "file" }).map((h) => h.label);
-    expect(file).toContain("scroll");
-    expect(file).toContain("top/end");
+    const file = cockpitHints("stack", { ...base, reviewMode: "file" });
+    const fileLabels = file.map((h) => h.label);
+    expect(fileLabels).toContain("line");
+    expect(fileLabels).toContain("comment");
+    expect(file.some((h) => h.key === "C" && h.label === "review")).toBe(true);
   });
 
   test("prs hints surface CI log, fix-ci and open PR", () => {

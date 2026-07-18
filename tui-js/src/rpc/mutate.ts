@@ -4,6 +4,8 @@
 // shared runner: every mutation, clipboard write and URL open funnels through
 // `spawnCapture`, so busy-state / error-surfacing has one code path.
 
+import { fakeReviewAdd, fakeReviewRm, fakeReviewSend } from "./fakereviews";
+
 const BIN = process.env["SLIS_BIN"] ?? "slis";
 
 // Captured mutations get a generous wall-clock ceiling so a child that blocks on
@@ -185,6 +187,70 @@ export function ciRerunSlice(slice: string): Promise<MutateResult> {
 // Point the agent harness at a slice's failing CI to fix it (`slis fix-ci`).
 export function fixCiSlice(slice: string): Promise<MutateResult> {
   return run(["fix-ci", slice]);
+}
+
+// ── inline review (F2) — the sidecar stays read-only, so add/rm/send are
+// one-shot `slis review …` spawns. Under SLIS_FAKE they drive the shared
+// in-memory fake store instead, so the whole loop runs headlessly. ────────────
+
+export interface ReviewAddInput {
+  slice: string;
+  repo: string;
+  branch?: string;
+  file: string;
+  line: number;
+  hunk?: string;
+  body: string;
+}
+
+export function reviewAdd(input: ReviewAddInput): Promise<MutateResult> {
+  if (fake()) {
+    const c = fakeReviewAdd(input);
+    return Promise.resolve({
+      code: 0,
+      stdout: `added review comment ${c.id} on ${c.repo} ${c.file}:${c.line}`,
+      stderr: "",
+    });
+  }
+  const args = [
+    "review",
+    "add",
+    input.slice,
+    "--repo",
+    input.repo,
+    "--file",
+    input.file,
+    "--line",
+    String(input.line),
+    "--body",
+    input.body,
+  ];
+  if (input.hunk) args.push("--hunk", input.hunk);
+  return spawnCapture([BIN, ...args]);
+}
+
+export function reviewRm(slice: string, id: string): Promise<MutateResult> {
+  if (fake()) {
+    const ok = fakeReviewRm(slice, id);
+    return Promise.resolve(
+      ok
+        ? { code: 0, stdout: `removed review comment ${id}`, stderr: "" }
+        : { code: 1, stdout: "", stderr: `no pending review comment ${id} on slice ${slice}` },
+    );
+  }
+  return spawnCapture([BIN, "review", "rm", slice, id]);
+}
+
+export function reviewSend(slice: string): Promise<MutateResult> {
+  if (fake()) {
+    const n = fakeReviewSend(slice);
+    return Promise.resolve(
+      n > 0
+        ? { code: 0, stdout: `delivered ${n} review comment(s) to slice "${slice}"`, stderr: "" }
+        : { code: 1, stdout: "", stderr: `no pending review comments for slice "${slice}"` },
+    );
+  }
+  return spawnCapture([BIN, "review", "send", slice]);
 }
 
 // ── grouping ─────────────────────────────────────────────────────────────────

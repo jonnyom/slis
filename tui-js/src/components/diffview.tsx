@@ -10,8 +10,9 @@
 import { useKeyboard } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { DiffRepo, DiffScope } from "../rpc/types";
+import type { DiffRepo, DiffScope, ReviewComment } from "../rpc/types";
 import { parseUnifiedDiff, statusGlyph, type FileDiff } from "../diff/parse";
+import { hunkComment, linesWithComments } from "../review/context";
 import { langForPath } from "../diff/tokenize";
 import {
   buildFileRows,
@@ -41,7 +42,21 @@ interface RepoGroup {
 
 interface FlatFile {
   repo: string;
+  branch: string;
   file: FileDiff;
+}
+
+// A one-column left gutter carrying the pending-comment marker (✎), so a line
+// that already has review feedback is obvious at a glance. Always one column
+// wide (blank when unmarked) so it never shifts the diff's own alignment.
+function CommentMark({ marked }: { marked: boolean }): ReactNode {
+  return marked ? (
+    <span fg={color.candidate} attributes={BOLD}>
+      {glyph.comment}
+    </span>
+  ) : (
+    <span> </span>
+  );
 }
 
 function gutter(n: number | undefined): string {
@@ -74,9 +89,16 @@ function CellSpans({ cells, lineType }: { cells: Cell[]; lineType: string }): Re
   );
 }
 
-function UnifiedLine({ row }: { row: Extract<UnifiedRow, { kind: "line" }> }): ReactNode {
+function UnifiedLine({
+  row,
+  marked,
+}: {
+  row: Extract<UnifiedRow, { kind: "line" }>;
+  marked: boolean;
+}): ReactNode {
   return (
     <text wrapMode="none">
+      <CommentMark marked={marked} />
       <span fg={diffColor.gutter}>
         {gutter(row.oldNumber)} {gutter(row.newNumber)}{" "}
       </span>
@@ -110,9 +132,22 @@ function SbsCell({ side, half }: { side: SbsSide; half: number }): ReactNode {
   );
 }
 
-function SbsLine({ row, half }: { row: Extract<SbsRowR, { kind: "line" }>; half: number }): ReactNode {
+function SbsLine({
+  row,
+  half,
+  marked,
+}: {
+  row: Extract<SbsRowR, { kind: "line" }>;
+  half: number;
+  marked: boolean;
+}): ReactNode {
   return (
     <box flexDirection="row">
+      <box width={1} flexShrink={0}>
+        <text wrapMode="none">
+          <CommentMark marked={marked} />
+        </text>
+      </box>
       <SbsCell side={row.left} half={half} />
       <box width={1} flexShrink={0}>
         <text fg={color.border}>│</text>
@@ -124,6 +159,16 @@ function SbsLine({ row, half }: { row: Extract<SbsRowR, { kind: "line" }>; half:
 
 // ── diff view ──────────────────────────────────────────────────────────────────
 
+// The context DiffView hands up when the user comments on the selected hunk. The
+// caller (cockpit) adds the slice and opens the composer overlay.
+export interface DiffCommentTarget {
+  repo: string;
+  branch: string;
+  file: string;
+  line: number;
+  hunk: string;
+}
+
 export interface DiffViewProps {
   enabled: boolean;
   repos: DiffRepo[];
@@ -131,10 +176,15 @@ export interface DiffViewProps {
   mode: DiffMode;
   width: number;
   height: number;
+  // Pending review comments for the slice (F2) — drives the ✎ gutter markers.
+  comments: ReviewComment[];
   onCycleScope: () => void;
   onToggleMode: () => void;
   onClose: () => void;
   onQuit: () => void;
+  // c → comment on the selected hunk; C → open the pending-review overlay.
+  onComment: (target: DiffCommentTarget) => void;
+  onReview: () => void;
 }
 
 export function DiffView(props: DiffViewProps): ReactNode {
@@ -158,7 +208,8 @@ export function DiffView(props: DiffViewProps): ReactNode {
 
   const flat: FlatFile[] = useMemo(() => {
     const out: FlatFile[] = [];
-    for (const g of groups) for (const file of g.files) out.push({ repo: g.repo, file });
+    for (const g of groups)
+      for (const file of g.files) out.push({ repo: g.repo, branch: g.branch, file });
     return out;
   }, [groups]);
 
@@ -177,6 +228,26 @@ export function DiffView(props: DiffViewProps): ReactNode {
 
   const hunkOffsets = mode === "split" ? built?.sbsHunkOffsets : built?.unifiedHunkOffsets;
   const hunkCount = hunkOffsets?.length ?? 0;
+
+  // New-file lines of the selected file that carry a pending comment (F2).
+  const markedLines = useMemo(
+    () => (selected ? linesWithComments(props.comments, selected.repo, selected.file.path) : new Set<number>()),
+    [props.comments, selected],
+  );
+
+  // Compose a comment target from the currently selected file + hunk.
+  const commentOnHunk = () => {
+    if (!selected) return;
+    const hc = hunkComment(selected.file, hunkSel);
+    if (!hc) return;
+    props.onComment({
+      repo: selected.repo,
+      branch: selected.branch,
+      file: selected.file.path,
+      line: hc.line,
+      hunk: hc.hunk,
+    });
+  };
 
   // Reset scroll + hunk cursor whenever the selected file or view mode changes.
   const fileKey = selected ? `${selected.repo}:${selected.file.path}` : "";
@@ -202,6 +273,8 @@ export function DiffView(props: DiffViewProps): ReactNode {
     const name = normalizeKeyName(key);
     if (name === "q") return props.onQuit();
     if (name === "escape" || name === "h") return props.onClose();
+    if (name === "c") return commentOnHunk();
+    if (name === "C") return props.onReview();
     if (name === "t") return props.onToggleMode();
     if (name === "b") return props.onCycleScope();
     if (name === "j" || name === "down")
@@ -259,7 +332,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           <span fg={color.candidate}>{mode === "split" ? "side-by-side" : "unified"}</span>
         </text>
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          [esc] back  [t] view  [b] scope
+          [c] comment  [C] review  [esc] back
         </text>
       </box>
 
@@ -304,20 +377,25 @@ export function DiffView(props: DiffViewProps): ReactNode {
                 built.sideBySide.map((row, i) =>
                   row.kind === "hunk" ? (
                     <text key={i} fg={diffColor.hunk} wrapMode="none">
-                      {row.header}
+                      {"  " + row.header}
                     </text>
                   ) : (
-                    <SbsLine key={i} row={row} half={half} />
+                    <SbsLine
+                      key={i}
+                      row={row}
+                      half={half}
+                      marked={markedLines.has(row.right.newNumber ?? row.left.newNumber ?? -1)}
+                    />
                   ),
                 )
               ) : (
                 built.unified.map((row, i) =>
                   row.kind === "hunk" ? (
                     <text key={i} fg={diffColor.hunk} wrapMode="none">
-                      {row.header}
+                      {" " + row.header}
                     </text>
                   ) : (
-                    <UnifiedLine key={i} row={row} />
+                    <UnifiedLine key={i} row={row} marked={markedLines.has(row.newNumber ?? -1)} />
                   ),
                 )
               )}
@@ -330,8 +408,8 @@ export function DiffView(props: DiffViewProps): ReactNode {
           into the file panel's bottom rule (P3) */}
       <box width="100%" height={1} overflow="hidden">
         <text wrapMode="none" fg={color.dim} attributes={DIM}>
-          j/k file · [ ] / n p hunk{hunkCount ? ` (${hunkSel + 1}/${hunkCount})` : ""} · t
-          unified/split · b scope · ^d/^u scroll · g/G top/bottom · esc back
+          j/k file · [ ] / n p hunk{hunkCount ? ` (${hunkSel + 1}/${hunkCount})` : ""} · c comment
+          · C review · t unified/split · b scope · ^d/^u scroll · esc back
         </text>
       </box>
     </box>

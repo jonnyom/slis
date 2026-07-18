@@ -265,6 +265,25 @@ export interface FileResult {
   content?: string;
 }
 
+// ── review (F2) ──────────────────────────────────────────────────────────────
+
+// One pending inline-review comment — GitHub-review-style feedback awaiting
+// delivery to a slice's agent. Mirrors `slis review list --json` (docs/AGENT.md
+// §review). `line` is a 1-based line in the new (post-change) file; `branch` is
+// the reviewed member/branch (filled at add time, may be ""); `hunk` is an
+// optional diff/source excerpt (absent when empty).
+export interface ReviewComment {
+  id: string;
+  slice: string;
+  repo: string;
+  branch?: string;
+  file: string;
+  line: number;
+  hunk?: string;
+  body: string;
+  created_at: string;
+}
+
 // ── capture (spec v0) ──────────────────────────────────────────────────────
 
 export interface CaptureResult {
@@ -338,6 +357,11 @@ export interface RpcClient {
     path: string;
     maxBytes?: number;
   }): Promise<FileResult>;
+
+  // Pending inline-review comments (F2). Without a slice → every slice's; with
+  // one → just that slice's. Read-only; add/rm/send stay CLI-only (see mutate).
+  // An older sidecar answers -32601 (method not found) — callers feature-detect.
+  reviews(params?: { slice?: string }): Promise<ReviewComment[]>;
 
   /** Subscribe to live session-status changes. Returns an unsubscribe fn. */
   onSessionEvent(handler: (event: SessionEvent) => void): () => void;

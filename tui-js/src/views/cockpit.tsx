@@ -34,9 +34,11 @@ import type {
   PrComment,
   PrStackEntry,
   ProcsResult,
+  ReviewComment,
   RpcClient,
 } from "../rpc/types";
 import { isMethodNotFound } from "../rpc/client";
+import { fileComment, linesWithComments } from "../review/context";
 import type { SliceView } from "../state/derive";
 import { buildStackRows, clampSel } from "../state/stacknav";
 import {
@@ -58,7 +60,7 @@ import { HintBar } from "../components/hintbar";
 import { DiffPane } from "../components/diffpane";
 import { DiffView, type DiffMode } from "../components/diffview";
 import { FileTree } from "../components/filetree";
-import { FileView } from "../components/fileview";
+import { FileView, contentLines } from "../components/fileview";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 import { normalizeKeyName } from "../util/keys";
@@ -730,6 +732,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [stackReviewSupported, setStackReviewSupported] = useState(true);
+  // F2 inline review: pending comments for this slice + a line cursor for the
+  // file view. `reviewsNonce` piggybacks reloads on other actions (add/send/
+  // refresh) — no dedicated tick.
+  const [reviews, setReviews] = useState<ReviewComment[]>([]);
+  const [reviewsNonce, setReviewsNonce] = useState(0);
+  const [reviewsSupported, setReviewsSupported] = useState(true);
+  const [fileCursor, setFileCursor] = useState(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
   const scope = SCOPES[scopeIdx]!;
@@ -752,6 +761,17 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const treeRows = useMemo(
     () => flattenFileTree(treeChildren, treeExpanded),
     [treeChildren, treeExpanded],
+  );
+
+  // Lines of the open file (for the review line cursor) + which of them carry a
+  // pending comment (for the ✎ gutter marker).
+  const fileLines = useMemo(
+    () => (openFile && !openFile.binary ? contentLines(openFile.content ?? "") : []),
+    [openFile],
+  );
+  const fileMarked = useMemo(
+    () => (openFile ? linesWithComments(reviews, selectedRepo, openFile.path) : new Set<number>()),
+    [reviews, selectedRepo, openFile],
   );
 
   const monitor = useProcMonitor(client, slice, panel === "procs");
@@ -805,6 +825,25 @@ export function Cockpit(props: CockpitProps): ReactNode {
     selectedBranch,
     stackReviewSupported,
   ]);
+
+  // Load the slice's pending review comments (F2). Reloads on slice change and
+  // whenever `reviewsNonce` bumps (after add / send / refresh) — no new tick. An
+  // older sidecar without the `reviews` method disables the feature silently.
+  useEffect(() => {
+    if (!reviewsSupported) return;
+    let live = true;
+    client.reviews({ slice }).then(
+      (rows) => live && setReviews(rows),
+      (err) => {
+        if (isMethodNotFound(err)) setReviewsSupported(false);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, slice, reviewsNonce, reviewsSupported]);
+
+  const bumpReviews = () => setReviewsNonce((n) => n + 1);
 
   // Leaving the Stack panel (or changing slice) drops back to the diff sub-mode.
   useEffect(() => {
@@ -879,6 +918,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setOpenFile(null);
     setFileError(null);
     setFileLoading(true);
+    setFileCursor(0);
     setReviewMode("file");
     client.file({ slice, repo: selectedRepo, branch: selectedBranch, path }).then(
       (r) => {
@@ -924,6 +964,35 @@ export function Cockpit(props: CockpitProps): ReactNode {
       setTreeExpanded((e) => toggled(e, parent));
     }
   };
+
+  // File-view line cursor (F2): move + keep the cursor line in view.
+  const moveFileCursor = (delta: number) => {
+    setFileCursor((i) => {
+      const next = Math.max(0, Math.min(Math.max(0, fileLines.length - 1), i + delta));
+      scrollRef.current?.scrollChildIntoView(`fileline-${next}`);
+      return next;
+    });
+  };
+
+  // Comment on the file view's cursor line — captures the line + surrounding
+  // source as the excerpt, then opens the composer.
+  const commentOnFileLine = () => {
+    if (!openFile || fileLines.length === 0) return;
+    const fc = fileComment(fileLines, fileCursor);
+    overlays.comment(
+      {
+        slice,
+        repo: selectedRepo,
+        branch: selectedBranch,
+        file: openFile.path,
+        line: fc.line,
+        hunk: fc.hunk,
+      },
+      bumpReviews,
+    );
+  };
+
+  const openReviewOverlay = () => overlays.review(slice, bumpReviews);
 
   const toggleCollapse = (expand: boolean) => {
     const pid = procRows[procSel]?.proc.pid;
@@ -1018,6 +1087,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   // Refresh inside the cockpit (G10): on the Session panel reload only the live
   // capture; otherwise trigger the app-level workspace refresh.
   const refreshCockpit = () => {
+    bumpReviews();
     if (panel === "session") setCaptureNonce((n) => n + 1);
     else props.onRefresh();
   };
@@ -1041,8 +1111,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (name === "q") return props.onQuit();
       if (name === "?") return overlays.help();
       if (name === "escape" || name === "h") return setReviewMode("tree");
-      if (name === "j" || name === "down") return scrollRef.current?.scrollBy(1);
-      if (name === "k" || name === "up") return scrollRef.current?.scrollBy(-1);
+      if (name === "c") return commentOnFileLine();
+      if (name === "C") return openReviewOverlay();
+      if (name === "j" || name === "down") return moveFileCursor(1);
+      if (name === "k" || name === "up") return moveFileCursor(-1);
       if (name === "g") return scrollRef.current?.scrollTo(0);
       if (name === "G") return scrollRef.current?.scrollTo(scrollRef.current.scrollHeight);
       if (name === "space" || (key.ctrl && name === "d") || name === "pagedown")
@@ -1054,6 +1126,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (panel === "stack" && reviewMode === "tree") {
       if (name === "q") return props.onQuit();
       if (name === "?") return overlays.help();
+      if (name === "C") return openReviewOverlay();
       if (name === "escape") return setReviewMode("diff");
       if (name === "j" || name === "down")
         return setTreeSel((i) => clampSel(i + 1, treeRows.length));
@@ -1076,8 +1149,11 @@ export function Cockpit(props: CockpitProps): ReactNode {
       return props.onBack();
     }
     if (name === "w") return overlays.swap(slice, view.slice.active);
+    // a attaches the terminal (launches the agent when autostart is configured);
+    // C is the pending-review overlay (F2). Explicit agent launch stays on the
+    // browser's C — the cockpit reuses the letter for review.
     if (name === "a") return props.onOpenTerm(slice, false);
-    if (name === "C") return props.onOpenTerm(slice, true);
+    if (name === "C") return openReviewOverlay();
     if (name === "e") return overlays.editor(slice);
     if (name === "o") return overlays.editor(slice, selectedRepo);
     // F3: open the file-tree browser for the selected branch (diff sub-mode).
@@ -1183,6 +1259,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setTreeSel(0);
     setOpenFile(null);
     setFileError(null);
+    setFileCursor(0);
   }, [slice]);
 
   const leftW = Math.min(46, Math.floor(props.width / 2));
@@ -1239,6 +1316,14 @@ export function Cockpit(props: CockpitProps): ReactNode {
 
   const headerTrailing = (
     <text wrapMode="none">
+      {reviews.length > 0 ? (
+        <>
+          <span fg={color.candidate} attributes={BOLD}>
+            {glyph.comment} {reviews.length}
+          </span>
+          <span> </span>
+        </>
+      ) : null}
       {view.slice.active ? <Badge state="live" label="LIVE · swapped in" bold /> : null}
       {view.slice.stale ? (
         <>
@@ -1288,12 +1373,15 @@ export function Cockpit(props: CockpitProps): ReactNode {
         mode={diffMode}
         width={props.width}
         height={props.height}
+        comments={reviews}
         onCycleScope={
           onMemberBranch ? () => setScopeIdx((i) => (i + 1) % SCOPES.length) : () => {}
         }
         onToggleMode={() => setDiffMode((m) => (m === "unified" ? "split" : "unified"))}
         onClose={() => setDiffOpen(false)}
         onQuit={props.onQuit}
+        onComment={(target) => overlays.comment({ slice, ...target }, bumpReviews)}
+        onReview={openReviewOverlay}
       />
     );
   }
@@ -1354,7 +1442,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
             >
               {panel === "stack" ? (
                 reviewMode === "file" ? (
-                  <FileView file={openFile} error={fileError} loading={fileLoading} />
+                  <FileView
+                    file={openFile}
+                    error={fileError}
+                    loading={fileLoading}
+                    cursor={fileCursor}
+                    marked={fileMarked}
+                  />
                 ) : reviewMode === "tree" ? (
                   <FileTree rows={treeRows} sel={treeSel} loading={treeLoading} />
                 ) : onMemberBranch ? (

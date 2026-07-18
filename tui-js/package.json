@@ -10,7 +10,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "term:e2e": "bun run src/term/e2e.ts",
-    "term:picker:e2e": "bun run src/term/agentpicker.e2e.ts"
+    "term:picker:e2e": "bun run src/term/agentpicker.e2e.ts",
+    "review:e2e": "bun run src/review/e2e.ts"
   },
   "dependencies": {
     "@opentui/core": "0.4.5",

@@ -23,6 +23,7 @@ import type {
   ShowResult,
   StatusEntry,
   PrStackEntry,
+  ReviewComment,
   TreeResult,
 } from "./types";
 
@@ -310,6 +311,9 @@ export class SlisRpcClient implements RpcClient {
     maxBytes?: number;
   }): Promise<FileResult> {
     return this.call<FileResult>("file", params);
+  }
+  reviews(params?: { slice?: string }): Promise<ReviewComment[]> {
+    return this.call<ReviewComment[]>("reviews", params?.slice ? { slice: params.slice } : {});
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────

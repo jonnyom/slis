@@ -8,7 +8,15 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
-import type { AgentSpec, Candidate, ConflictsResult, RpcClient } from "../rpc/types";
+import type {
+  AgentSpec,
+  Candidate,
+  ConflictsResult,
+  ReviewComment,
+  RpcClient,
+} from "../rpc/types";
+import type { CommentContext } from "../review/context";
+import { clampReviewSel } from "../review/context";
 import { quickPickIndex } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
 import {
@@ -33,6 +41,9 @@ import {
   prStackMarkdown,
   removeSlice,
   restackSlice,
+  reviewAdd,
+  reviewRm,
+  reviewSend,
   submitSlice,
   summarySlice,
   syncSlice,
@@ -45,11 +56,13 @@ import {
   CiRerunOverlay,
   ConflictRadarOverlay,
   AgentPickerOverlay,
+  CommentComposerOverlay,
   CreateOverlay,
   EditorPickerOverlay,
   GroupOverlay,
   RemoveOverlay,
   ResultOverlay,
+  ReviewListOverlay,
   StackActionsOverlay,
   SummaryOverlay,
   SwapOverlay,
@@ -74,6 +87,15 @@ type Overlay =
   | { kind: "agentPicker"; agents: AgentSpec[]; sel: number; slice: string; onPick: (agent: AgentSpec) => void }
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
+  | { kind: "comment"; ctx: CommentContext; text: string; onAdded: () => void }
+  | {
+      kind: "review";
+      slice: string;
+      comments: ReviewComment[] | null;
+      sel: number;
+      confirmSend: boolean;
+      onChanged: () => void;
+    }
   | { kind: "working"; text: string }
   | { kind: "result"; title: string; body: string; status: ResultStatus }
   | null;
@@ -95,6 +117,9 @@ export interface OverlayApi {
   group(slices: string[], onDone: () => void): void;
   conflictRadar(): void;
   summary(slice: string, ai: boolean): void;
+  // F2 inline review: comment composer + pending-review overlay.
+  comment(ctx: CommentContext, onAdded: () => void): void;
+  review(slice: string, onChanged: () => void): void;
   editor(slice: string, repo?: string): void;
   agentPicker(slice: string, agents: AgentSpec[], onPick: (agent: AgentSpec) => void): void;
   info(title: string, body: string): void;
@@ -247,6 +272,34 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     );
   }, []);
 
+  // Re-fetch a slice's pending comments into an open review overlay (after a
+  // delete). Read-only; the overlay stays put if the user has moved on.
+  const reloadReview = useCallback(
+    (slice: string) => {
+      client.reviews({ slice }).then(
+        (rows) =>
+          setOverlay((o) =>
+            o && o.kind === "review" && o.slice === slice
+              ? { ...o, comments: rows, sel: clampReviewSel(o.sel, rows.length) }
+              : o,
+          ),
+        () =>
+          setOverlay((o) =>
+            o && o.kind === "review" && o.slice === slice ? { ...o, comments: [] } : o,
+          ),
+      );
+    },
+    [client],
+  );
+
+  const openReview = useCallback(
+    (slice: string, onChanged: () => void) => {
+      setOverlay({ kind: "review", slice, comments: null, sel: 0, confirmSend: false, onChanged });
+      reloadReview(slice);
+    },
+    [reloadReview],
+  );
+
   // Open the swap confirm. For a swap-IN we asynchronously probe the working
   // tree so the overlay can offer [s] activate --stash when it is dirty.
   const openSwap = useCallback(
@@ -321,6 +374,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     group: (slices, onDone) => setOverlay({ kind: "group", slices, text: "", onDone }),
     conflictRadar: () => setOverlay({ kind: "conflicts", scroll: 0 }),
     summary: openSummary,
+    comment: (ctx, onAdded) => setOverlay({ kind: "comment", ctx, text: "", onAdded }),
+    review: openReview,
     editor: openEditor,
     agentPicker: (slice, agents, onPick) =>
       setOverlay({ kind: "agentPicker", slice, agents, sel: 0, onPick }),
@@ -492,6 +547,104 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         else if (name === "S") openSummary(overlay.slice, true);
         else if (name === "s" || isCancel || name === "q") close();
         return;
+      case "comment":
+        if (isCancel) close();
+        else if (isEnter) {
+          const body = overlay.text.trim();
+          if (!body) {
+            close();
+            return;
+          }
+          const { ctx, onAdded } = overlay;
+          setOverlay({ kind: "working", text: "Adding comment…" });
+          reviewAdd({
+            slice: ctx.slice,
+            repo: ctx.repo,
+            branch: ctx.branch,
+            file: ctx.file,
+            line: ctx.line,
+            hunk: ctx.hunk,
+            body,
+          }).then(
+            (res) => {
+              if (res.code === 0) {
+                toast("Added review comment", "ci-pass");
+                onAdded();
+                close();
+              } else {
+                setOverlay({
+                  kind: "result",
+                  title: "Add comment — failed",
+                  body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
+                  status: "failure",
+                });
+              }
+            },
+            (err) =>
+              setOverlay({
+                kind: "result",
+                title: "Add comment — failed",
+                body: String(err),
+                status: "failure",
+              }),
+          );
+        } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
+        return;
+      case "review": {
+        const { slice, comments, sel, confirmSend, onChanged } = overlay;
+        if (confirmSend) {
+          if (name === "y" || isEnter) {
+            const n = comments?.length ?? 0;
+            setOverlay({ kind: "working", text: "Sending review…" });
+            reviewSend(slice).then(
+              (res) => {
+                if (res.code === 0) {
+                  toast(`Sent ${n} comment${n === 1 ? "" : "s"} to ${slice}`, "ci-pass");
+                  onChanged();
+                  close();
+                } else {
+                  // No running session (or other refusal) — surface the CLI's
+                  // guidance verbatim as a neutral warn, not a red failure.
+                  setOverlay({
+                    kind: "result",
+                    title: "Send review",
+                    body:
+                      (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
+                    status: "warn",
+                  });
+                }
+              },
+              (err) =>
+                setOverlay({
+                  kind: "result",
+                  title: "Send review — failed",
+                  body: String(err),
+                  status: "failure",
+                }),
+            );
+          } else if (name === "n" || isCancel) setOverlay({ ...overlay, confirmSend: false });
+          return;
+        }
+        const list = comments ?? [];
+        if (name === "j" || name === "down")
+          setOverlay({ ...overlay, sel: clampReviewSel(sel + 1, list.length) });
+        else if (name === "k" || name === "up")
+          setOverlay({ ...overlay, sel: clampReviewSel(sel - 1, list.length) });
+        else if (name === "x" && list[sel]) {
+          const id = list[sel]!.id;
+          reviewRm(slice, id).then(
+            (res) => {
+              if (res.code === 0) {
+                onChanged();
+                reloadReview(slice);
+              }
+            },
+            () => {},
+          );
+        } else if (name === "s" && list.length > 0) setOverlay({ ...overlay, confirmSend: true });
+        else if (isCancel || name === "q") close();
+        return;
+      }
     }
   });
 
@@ -545,6 +698,18 @@ function renderOverlay(
           loading={overlay.loading}
           text={overlay.text}
           scroll={overlay.scroll}
+          height={height}
+        />
+      );
+    case "comment":
+      return <CommentComposerOverlay ctx={overlay.ctx} text={overlay.text} />;
+    case "review":
+      return (
+        <ReviewListOverlay
+          slice={overlay.slice}
+          comments={overlay.comments}
+          sel={overlay.sel}
+          confirmSend={overlay.confirmSend}
           height={height}
         />
       );

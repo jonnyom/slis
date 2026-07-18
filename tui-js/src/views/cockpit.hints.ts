@@ -73,10 +73,11 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
     case "stack":
       if (s.reviewMode === "file")
         return [
-          { key: "esc", label: "tree" },
-          { key: "j/k", label: "scroll" },
+          { key: "j/k", label: "line" },
+          { key: "c", label: "comment" },
+          { key: "C", label: "review" },
           { key: "^d/u", label: "page" },
-          { key: "g/G", label: "top/end" },
+          { key: "esc", label: "tree" },
         ];
       if (s.reviewMode === "tree")
         return [
@@ -91,6 +92,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         { key: "enter", label: "rich diff" },
         ...(s.onMember ? [{ key: "b", label: `scope: ${s.scope}` }] : []),
         { key: "t", label: s.showPatch ? "stat" : "patch" },
+        { key: "C", label: "review" },
         { key: "w", label: "swap" },
       ];
     case "prs":

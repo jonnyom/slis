@@ -4,7 +4,8 @@
 // conflictpane.go, the swap / stack / remove prompts in app.go).
 
 import type { ReactNode } from "react";
-import type { AgentSpec, Candidate, ConflictsResult } from "../rpc/types";
+import type { AgentSpec, Candidate, ConflictsResult, ReviewComment } from "../rpc/types";
+import type { CommentContext } from "../review/context";
 import { agentCmdline } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
 import { glyph, theme, type ResultStatus } from "../theme";
@@ -355,6 +356,161 @@ export function CandidatesOverlay({
       )}
     </Card>
   );
+}
+
+// ── inline review (F2) ────────────────────────────────────────────────────────
+
+// The comment composer: captured context (repo · branch · file:line) + a short
+// excerpt for reference, and a single-line body input. Submitting persists via
+// `slis review add`. Body is single-line in v1 (the shared editText reducer has
+// no soft-wrap); enter submits, esc cancels.
+export function CommentComposerOverlay({
+  ctx,
+  text,
+}: {
+  ctx: CommentContext;
+  text: string;
+}): ReactNode {
+  const excerpt = ctx.hunk ? ctx.hunk.split("\n").slice(0, 6) : [];
+  return (
+    <Card
+      title="Comment on this line"
+      subtitle={`${ctx.repo} · ${ctx.branch || "?"} ${glyph.arrow} ${ctx.file}:${ctx.line}`}
+      width={76}
+      hints={[
+        { key: "enter", label: "add comment" },
+        { key: "esc", label: "cancel" },
+      ]}
+    >
+      {excerpt.length > 0 ? (
+        <box flexDirection="column" marginBottom={1}>
+          {excerpt.map((l, i) => (
+            <text key={i} fg={theme.textFaint} wrapMode="none">
+              {l === "" ? " " : stripSgr(l)}
+            </text>
+          ))}
+        </box>
+      ) : null}
+      <text fg={theme.focus} attributes={BOLD} wrapMode="none">
+        instruction for the agent
+      </text>
+      <TextInputRow text={text} />
+      <text fg={theme.textDim} wrapMode="none">
+        Delivered with `C` {glyph.arrow} `s`, or `slis review send {ctx.slice}`.
+      </text>
+    </Card>
+  );
+}
+
+// The pending-review overlay: lists the slice's queued comments (j/k, x delete),
+// with `s` to send the batch to the agent. `confirmSend` swaps the list for a
+// send-confirmation card. A windowed list keeps the selection visible without a
+// nested scrollbox (matching the other list overlays).
+export function ReviewListOverlay({
+  slice,
+  comments,
+  sel,
+  confirmSend,
+  height,
+}: {
+  slice: string;
+  comments: ReviewComment[] | null;
+  sel: number;
+  confirmSend: boolean;
+  height: number;
+}): ReactNode {
+  const list = comments ?? [];
+
+  if (confirmSend) {
+    return (
+      <Card
+        title={`Send review · ${slice}`}
+        width={64}
+        hints={[
+          { key: "y", label: "send" },
+          { key: "esc", label: "cancel" },
+        ]}
+      >
+        <text wrapMode="word">
+          <span fg={theme.text}>Send </span>
+          <span fg={theme.textBright} attributes={BOLD}>
+            {list.length} comment{list.length === 1 ? "" : "s"}
+          </span>
+          <span fg={theme.text}> to {slice}'s agent session?</span>
+        </text>
+        <text fg={theme.textDim} wrapMode="word">
+          Injects one structured prompt into the running tmux session, then clears the batch.
+        </text>
+      </Card>
+    );
+  }
+
+  const count = list.length;
+  const subtitle = comments === null ? "loading…" : `${count} pending`;
+  const maxRows = Math.max(4, Math.floor((height - 12) / 2));
+  const start = Math.min(Math.max(0, sel - maxRows + 1), Math.max(0, count - maxRows));
+  const shown = list.slice(start, start + maxRows);
+
+  return (
+    <Card
+      title={`Review ${glyph.comment} ${slice}`}
+      subtitle={subtitle}
+      width={82}
+      hints={[
+        { key: "j/k", label: "move" },
+        { key: "x", label: "delete" },
+        ...(count > 0 ? [{ key: "s", label: "send to agent" }] : []),
+        { key: "esc", label: "close" },
+      ]}
+    >
+      {comments === null ? (
+        <text fg={theme.textDim} wrapMode="none">
+          reading pending comments…
+        </text>
+      ) : count === 0 ? (
+        <text fg={theme.textDim} wrapMode="none">
+          No pending comments — press `c` on a diff or file line to add one.
+        </text>
+      ) : (
+        <>
+          {start > 0 ? (
+            <text fg={theme.textFaint} wrapMode="none">
+              ↑ {start} more above
+            </text>
+          ) : null}
+          {shown.map((c, i) => {
+            const idx = start + i;
+            const focused = idx === sel;
+            return (
+              <box key={c.id} flexDirection="column">
+                <text wrapMode="none">
+                  <span fg={theme.focus}>{focused ? glyph.focusBar + " " : "  "}</span>
+                  <span fg={theme.textDim}>{c.repo} </span>
+                  <span fg={focused ? theme.textBright : theme.text}>
+                    {c.file}:{c.line}
+                  </span>
+                </text>
+                <text wrapMode="none">
+                  <span fg={theme.textFaint}>    </span>
+                  <span fg={focused ? theme.text : theme.textDim}>{truncate(c.body, 72)}</span>
+                </text>
+              </box>
+            );
+          })}
+          {start + maxRows < count ? (
+            <text fg={theme.textFaint} wrapMode="none">
+              ↓ {count - start - maxRows} more below
+            </text>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function truncate(s: string, n: number): string {
+  const flat = s.replace(/\s+/g, " ").trim();
+  return flat.length > n ? flat.slice(0, n - 1) + "…" : flat;
 }
 
 export function ConflictRadarOverlay({
