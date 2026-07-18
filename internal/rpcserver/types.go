@@ -85,6 +85,9 @@ type sessionsResult struct {
 	Agent     string `json:"agent"`
 	Layout    string `json:"layout"`
 	Autostart bool   `json:"autostart"`
+	// Editor is the configured editor binary (workspace.yaml sessions.editor),
+	// "" when unset — the front-end's e/o keys use it to skip the editor picker.
+	Editor string `json:"editor,omitempty"`
 }
 
 // sliceParams is the shared param shape for methods that name a slice.

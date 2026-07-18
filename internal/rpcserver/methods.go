@@ -23,6 +23,7 @@ func (s *Server) hello() (interface{}, *rpcError) {
 			Agent:     s.ws.Sessions.AgentCommand(),
 			Layout:    s.ws.Sessions.Layout,
 			Autostart: s.ws.Sessions.Autostart,
+			Editor:    s.ws.Sessions.Editor,
 		},
 	}, nil
 }

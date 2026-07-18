@@ -48,6 +48,12 @@ export function activate(slice: string): Promise<MutateResult> {
   return run(["activate", slice]);
 }
 
+// activate --stash: swap in AND stash any dirty work in the primaries first,
+// popping it back on swap-out (the swap engine pins the stash by commit SHA).
+export function activateStash(slice: string): Promise<MutateResult> {
+  return run(["activate", slice, "--stash"]);
+}
+
 export function deactivate(slice: string): Promise<MutateResult> {
   return run(["deactivate", slice]);
 }
@@ -102,6 +108,21 @@ export function ignoreCandidate(path: string): Promise<MutateResult> {
 
 export function adoptBranch(branch: string): Promise<MutateResult> {
   return run(["adopt", branch]);
+}
+
+// ── editor (one-shot spawns; `slis edit` launches detached, `slis editor set`
+// persists the chosen editor to workspace.yaml exactly like the Go TUI) ───────
+
+export function editorSet(bin: string): Promise<MutateResult> {
+  return run(["editor", "set", bin]);
+}
+
+export function editSlice(slice: string): Promise<MutateResult> {
+  return run(["edit", slice]);
+}
+
+export function editRepo(slice: string, repo: string): Promise<MutateResult> {
+  return run(["edit", slice, "--repo", repo]);
 }
 
 // ── summary (a read command, but a one-shot spawn like the mutations) ────────
