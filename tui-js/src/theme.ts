@@ -1,62 +1,97 @@
-// Theme mirrored from the Bubble Tea TUI (internal/tui/detail.go). The Go side
-// uses lipgloss ANSI-256 palette indices; these are their exact xterm hex
-// equivalents so the JS TUI reads identically. Glyphs are the literal runes the
-// Go side renders (sliceGlyph / sessionBadge).
+// Five-hue design system for the JS TUI (redesign spec §2). Dark-terminal-first,
+// truecolor. OpenTUI accepts hex strings directly, so tokens stay plain hex.
+//
+// The palette is: a neutral ramp (bg → textBright), one focus/identity blue, and
+// exactly four semantic hues (good / attn / bad / merged). Diff and syntax colors
+// are derived from these — no new hues. `attention(view)` collapses work-state +
+// session status into the scannable "left edge" glyph; `badgeFor(state)` maps a
+// state keyword to a Badge's glyph+color.
+//
+// Back-compat: the pre-redesign `color` map is preserved but re-pointed onto the
+// new tokens so existing views keep compiling and immediately render the new
+// palette. New code should import `theme` (and the helpers) rather than `color`.
 
 import type { SessionStatus } from "./rpc/types";
 import type { FileStatus } from "./diff/parse";
 import type { TokenKind } from "./diff/tokenize";
+import type { SliceView } from "./state/derive";
+
+// ── Neutral ramp + focus + four semantics ────────────────────────────────────
+
+export const theme = {
+  // Neutral ramp
+  bg: "#0b0d12",
+  surface: "#14181f",
+  surfaceAlt: "#1c2029",
+  hairline: "#262b34",
+  border: "#3a414c",
+  textFaint: "#5b6472",
+  textDim: "#8a93a3",
+  text: "#c3cad6",
+  textBright: "#f4f7fb",
+  // Focus / identity
+  focus: "#4c9dff",
+  focusDim: "#2d5c8f",
+  // Semantic (the only four hues)
+  good: "#34d399",
+  attn: "#f5a623",
+  bad: "#ff5d5d",
+  merged: "#b28bff",
+} as const;
+
+// ── Back-compat `color` map (old names → new tokens) ─────────────────────────
 
 export const color = {
   // Accents
-  title: "#5fafff", // 75  — "slis" title / focused panel border
-  live: "#00d787", // 42  — ● live
-  synced: "#00af5f", // 35  — ✓ in-review / approved
-  wait: "#ffaf00", // 214 — ⏸ waiting / stale / conflict
-  done: "#5fffff", // 87  — ✦ done
-  ready: "#87ff87", // 120 — ♻ ready to clear
-  merged: "#af87ff", // 141 — merged
-  missing: "#ff5f5f", // 203 — missing / error / changes-requested
-  candidate: "#87d7ff", // 117 — new-worktree / create-name
-  restack: "#ff8700", // 208 — ⟳ needs restack / cpu warn
-  repoHeader: "#0087ff", // 33  — repo name headers
-  code: "#afffff", // 159 — inline code
+  title: theme.focus,
+  live: theme.good,
+  synced: theme.good,
+  wait: theme.attn,
+  done: theme.merged,
+  ready: theme.good,
+  merged: theme.merged,
+  missing: theme.bad,
+  candidate: theme.focus,
+  restack: theme.attn,
+  repoHeader: theme.focus,
+  code: theme.good,
   // Structure
-  border: "#585858", // 240 — unfocused panel border
-  borderFocus: "#5fafff", // 75  — focused panel border
-  boxBorder: "#5f5fd7", // 62  — help / empty-state box border
-  overlayBg: "#101010", // near-black wash behind floating modal cards
-  dim: "#808080", // 244 — dim headers / faint rows
-  stackHeader: "#949494", // 246 — stack-cluster group header
-  diffHeader: "#808080", // 244 — diff file/hunk header
+  border: theme.hairline,
+  borderFocus: theme.focus,
+  boxBorder: theme.focus,
+  overlayBg: theme.surface,
+  dim: theme.textDim,
+  stackHeader: theme.textFaint,
+  diffHeader: theme.textDim,
   // Foregrounds
-  fg: "#c0c0c0", // terminal-default-ish light gray
-  white: "#ffffff", // 231
-  cursorBar: "#5fafff", // 75  — ▎ focus marker
+  fg: theme.text,
+  white: theme.textBright,
+  cursorBar: theme.focus,
 } as const;
 
-// Diff colors (colorizePatch in the Go TUI).
+// ── Diff colors (derived — no new hues) ──────────────────────────────────────
+
 export const diffColor = {
-  add: "#00af5f", // green +
-  del: "#ff5f5f", // red -
-  hunk: "#5fafff", // blue @@
-  header: "#808080", // dim file header
-  // Word-level intra-line highlight backgrounds (subtle, readable on dark).
-  addChangeBg: "#154023", // muted green wash behind changed words on + lines
-  delChangeBg: "#4a1518", // muted red wash behind changed words on - lines
-  gutter: "#585858", // line-number gutter
+  add: theme.good,
+  del: theme.bad,
+  hunk: theme.focus,
+  header: theme.textDim,
+  addChangeBg: "#10281c",
+  delChangeBg: "#2e1214",
+  gutter: theme.border,
 } as const;
 
-// Syntax-token foregrounds for the rich differ's own tokenizer.
+// ── Syntax tokens (re-pinned to the five-hue system) ─────────────────────────
+
 export const syntaxColor: Record<TokenKind, string> = {
-  keyword: "#ff87d7", // magenta/pink
-  string: "#87d787", // green
-  comment: "#6c6c6c", // dim grey
-  number: "#ffaf5f", // orange
-  type: "#5fd7ff", // cyan
-  function: "#87afff", // blue
-  punct: "#a8a8a8", // light grey
-  plain: "#c0c0c0", // default fg
+  keyword: theme.merged,
+  string: theme.good,
+  number: theme.attn,
+  type: theme.focus,
+  function: theme.focus,
+  comment: theme.textFaint,
+  punct: theme.textDim,
+  plain: theme.text,
 };
 
 export function colorForKind(kind: TokenKind): string {
@@ -67,46 +102,175 @@ export function colorForKind(kind: TokenKind): string {
 export function statusColor(status: FileStatus): string {
   switch (status) {
     case "added":
-      return color.synced;
+      return theme.good;
     case "deleted":
-      return color.missing;
+      return theme.bad;
     case "renamed":
-      return color.candidate;
+      return theme.focus;
     case "modified":
     default:
-      return color.wait;
+      return theme.attn;
   }
 }
 
-// Slice-row glyph per combined session/work state (sliceGlyph).
+// ── Glyphs (trimmed; each pinned to one color-by-context) ────────────────────
+
 export const glyph = {
   waiting: "⏸",
   done: "✦",
-  ciFail: "❌",
   ready: "♻",
   inReview: "✓",
+  changes: "✗",
+  ciFail: "✗",
+  ciPass: "✓",
+  ciPending: "⋯",
   live: "●",
   running: "●",
   idle: "·",
   restack: "⟳",
+  dirty: "⚠",
   selected: "✓",
   focusBar: "▎",
   filterMarker: "▸",
-  arrow: "→",
+  arrow: "›",
+  new: "＋",
 } as const;
 
-// Standalone session badge (sessionBadge) — used in the cockpit Session panel.
+// ── Attention model — drives the "left edge" ─────────────────────────────────
+//
+// Collapses work-state + session status into one of four levels. See spec §2.
+// Levels: needs-you (3) > active (2) > info (1) > idle (0).
+
+export type AttentionLevel = 0 | 1 | 2 | 3;
+
+export interface Attention {
+  level: AttentionLevel;
+  color: string;
+  glyph: string;
+  bold: boolean;
+}
+
+function changesRequested(view: SliceView): boolean {
+  return !!view.prs && view.prs.some((p) => p.review_decision === "CHANGES_REQUESTED");
+}
+
+function ciFailing(view: SliceView): boolean {
+  return (
+    !!view.prs &&
+    view.prs.some((p) => p.ci === "fail" || (p.ci_fail ?? 0) > 0)
+  );
+}
+
+function allPrsMerged(view: SliceView): boolean {
+  const withPr = (view.prs ?? []).filter((p) => p.number !== undefined);
+  return withPr.length > 0 && withPr.every((p) => p.state === "MERGED");
+}
+
+function anyOpenPr(view: SliceView): boolean {
+  return !!view.prs && view.prs.some((p) => p.state === "OPEN");
+}
+
+export function attention(view: SliceView): Attention {
+  // 3 — needs you
+  if (view.status === "waiting-input")
+    return { level: 3, color: theme.attn, glyph: glyph.waiting, bold: true };
+  if (changesRequested(view))
+    return { level: 3, color: theme.bad, glyph: glyph.changes, bold: true };
+  if (ciFailing(view))
+    return { level: 3, color: theme.bad, glyph: glyph.ciFail, bold: true };
+
+  // 2 — active
+  if (view.slice.active)
+    return { level: 2, color: theme.good, glyph: glyph.live, bold: true };
+  if (view.status === "running")
+    return { level: 2, color: theme.good, glyph: glyph.running, bold: true };
+
+  // 1 — info
+  if (view.status === "done")
+    return { level: 1, color: theme.merged, glyph: glyph.done, bold: false };
+  if (allPrsMerged(view))
+    return { level: 1, color: theme.good, glyph: glyph.ready, bold: false };
+  if (anyOpenPr(view))
+    return { level: 1, color: theme.focus, glyph: glyph.inReview, bold: false };
+
+  // 0 — idle
+  return { level: 0, color: theme.textDim, glyph: glyph.idle, bold: false };
+}
+
+// ── Badges — small state tokens (glyph + label in one semantic hue) ──────────
+
+export type BadgeState =
+  | "live"
+  | "running"
+  | "waiting"
+  | "done"
+  | "dirty"
+  | "stale"
+  | "restack"
+  | "ready"
+  | "ci-pass"
+  | "ci-fail"
+  | "ci-pending"
+  | "approved"
+  | "changes"
+  | "merged"
+  | "idle";
+
+export interface BadgeSpec {
+  glyph: string;
+  color: string;
+  label: string;
+}
+
+export function badgeFor(state: BadgeState): BadgeSpec {
+  switch (state) {
+    case "live":
+      return { glyph: glyph.live, color: theme.good, label: "live" };
+    case "running":
+      return { glyph: glyph.running, color: theme.good, label: "running" };
+    case "waiting":
+      return { glyph: glyph.waiting, color: theme.attn, label: "waiting" };
+    case "done":
+      return { glyph: glyph.done, color: theme.merged, label: "done" };
+    case "dirty":
+      return { glyph: glyph.dirty, color: theme.attn, label: "dirty" };
+    case "stale":
+      return { glyph: glyph.dirty, color: theme.attn, label: "stale" };
+    case "restack":
+      return { glyph: glyph.restack, color: theme.attn, label: "restack" };
+    case "ready":
+      return { glyph: glyph.ready, color: theme.good, label: "ready" };
+    case "ci-pass":
+      return { glyph: glyph.ciPass, color: theme.good, label: "ci" };
+    case "ci-fail":
+      return { glyph: glyph.ciFail, color: theme.bad, label: "ci" };
+    case "ci-pending":
+      return { glyph: glyph.ciPending, color: theme.attn, label: "ci" };
+    case "approved":
+      return { glyph: glyph.inReview, color: theme.good, label: "approved" };
+    case "changes":
+      return { glyph: glyph.changes, color: theme.bad, label: "changes" };
+    case "merged":
+      return { glyph: glyph.done, color: theme.merged, label: "merged" };
+    case "idle":
+    default:
+      return { glyph: glyph.idle, color: theme.textDim, label: "idle" };
+  }
+}
+
+// ── Session badge / label (re-pointed to the five-hue system) ────────────────
+
 export function sessionBadge(status: SessionStatus): { glyph: string; color: string } {
   switch (status) {
     case "waiting-input":
-      return { glyph: "⏸", color: color.wait };
+      return { glyph: glyph.waiting, color: theme.attn };
     case "running":
-      return { glyph: "●", color: color.live };
+      return { glyph: glyph.running, color: theme.good };
     case "done":
-      return { glyph: "✓", color: color.done };
+      return { glyph: glyph.done, color: theme.merged };
     case "none":
     default:
-      return { glyph: "○", color: color.dim };
+      return { glyph: "○", color: theme.textDim };
   }
 }
 
