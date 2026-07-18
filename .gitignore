@@ -1,5 +1,6 @@
 # Binaries
 /slis
+/slis-ui
 /dist/
 *.exe
 *.out
