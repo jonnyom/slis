@@ -23,6 +23,7 @@ import {
   workState,
   type SliceView,
 } from "../state/derive";
+import { clusterByStack, nextAttentionIndex, type StackLeader } from "../state/cluster";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
@@ -106,15 +107,26 @@ const SliceRow = memo(function SliceRow({
   );
 });
 
+function StackHeader({ leader }: { leader: StackLeader }): ReactNode {
+  const root = leader.root === "" ? "(stack)" : leader.root;
+  return (
+    <text wrapMode="none" fg={color.stackHeader} attributes={DIM}>
+      {`  stack: ${root} → … (${leader.count} slices)`}
+    </text>
+  );
+}
+
 function PulseBar({
   count,
   views,
+  ls,
   version,
   search,
   selectedCount,
 }: {
   count: number;
   views: SliceView[];
+  ls: LsResult;
   version: string;
   search: string | null;
   selectedCount: number;
@@ -125,6 +137,10 @@ function PulseBar({
   ).length;
   const ready = views.filter((v) => workState(v) === "ready").length;
   const restack = views.filter((v) => needsRestack(v)).length;
+  const hidden = ls.skipped?.length ?? 0;
+  const repoErrors = ls.repo_errors?.length ?? 0;
+  const missing = new Set((ls.missing ?? []).map((m) => m.slice)).size;
+  const candidates = ls.candidates?.length ?? 0;
   return (
     <text wrapMode="none">
       <span fg={color.title} attributes={BOLD}>
@@ -159,6 +175,23 @@ function PulseBar({
         <span fg={color.restack}>
           {"  "}
           {glyph.restack} {restack} need restack
+        </span>
+      ) : null}
+      {hidden > 0 || repoErrors > 0 ? (
+        <span fg={color.restack}>
+          {"  "}⚠ {hidden > 0 ? `${hidden} hidden` : ""}
+          {hidden > 0 && repoErrors > 0 ? ", " : ""}
+          {repoErrors > 0 ? `${repoErrors} repo err` : ""} — doctor
+        </span>
+      ) : null}
+      {missing > 0 ? (
+        <span fg={color.missing}>
+          {"  "}⚠ {missing} missing
+        </span>
+      ) : null}
+      {candidates > 0 ? (
+        <span fg={color.candidate}>
+          {"  "}＋{candidates} new — press i
         </span>
       ) : null}
       {search !== null ? (
@@ -358,7 +391,7 @@ export function Browser(props: BrowserProps): ReactNode {
   const [search, setSearch] = useState("");
 
   const filter = FILTERS[filterIndex]!;
-  const visible = useMemo(() => {
+  const filtered = useMemo(() => {
     const list = views.filter((v) => filter.match(v) && matchesSearch(v.slice.name, search));
     if (filter.key === "8") {
       return [...list].sort((a, b) => {
@@ -368,6 +401,13 @@ export function Browser(props: BrowserProps): ReactNode {
     }
     return list;
   }, [views, filter, search]);
+
+  // Cluster stack-sibling slices adjacently under a header (mirrors the Go
+  // browser). `visible` is the clustered order that focus navigates.
+  const { visible, leaders } = useMemo(() => {
+    const c = clusterByStack(filtered);
+    return { visible: c.ordered, leaders: c.leaders };
+  }, [filtered]);
 
   // Keep focus in range as the visible set changes.
   useEffect(() => {
@@ -432,6 +472,16 @@ export function Browser(props: BrowserProps): ReactNode {
     }
     if (name === "g") return setFocusIndex(0);
     if (name === "G") return setFocusIndex(Math.max(0, visible.length - 1));
+    if (name === "n") {
+      const next = nextAttentionIndex(visible, focusIndex, 1);
+      if (next !== null) setFocusIndex(next);
+      return;
+    }
+    if (name === "N") {
+      const prev = nextAttentionIndex(visible, focusIndex, -1);
+      if (prev !== null) setFocusIndex(prev);
+      return;
+    }
     if (name === "return" || name === "enter" || name === "l" || name === "right") {
       if (focusedSlice) props.onEnter(focusedSlice.slice.name);
       return;
@@ -487,6 +537,11 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, true);
       return;
     }
+    if (name === "e" || name === "o") {
+      // Browser is slice-level (no per-repo selection): both open the whole slice.
+      if (focusedSlice) overlays.editor(focusedSlice.slice.name);
+      return;
+    }
   });
 
   const leftW = Math.max(20, Math.min(30, Math.floor(props.width / 4)));
@@ -499,6 +554,7 @@ export function Browser(props: BrowserProps): ReactNode {
       <PulseBar
         count={views.length}
         views={views}
+        ls={props.ls}
         version={props.version}
         search={searching ? search : null}
         selectedCount={selected.size}
@@ -521,15 +577,20 @@ export function Browser(props: BrowserProps): ReactNode {
                 (no slices in this filter)
               </text>
             ) : (
-              visible.map((v, i) => (
-                <SliceRow
-                  key={v.slice.name}
-                  view={v}
-                  focused={i === focusIndex}
-                  listFocused={hubFocus === "list"}
-                  selected={selected.has(v.slice.name)}
-                />
-              ))
+              visible.map((v, i) => {
+                const leader = leaders.get(v.slice.name);
+                return (
+                  <box key={v.slice.name} flexDirection="column">
+                    {leader ? <StackHeader leader={leader} /> : null}
+                    <SliceRow
+                      view={v}
+                      focused={i === focusIndex}
+                      listFocused={hubFocus === "list"}
+                      selected={selected.has(v.slice.name)}
+                    />
+                  </box>
+                );
+              })
             )}
           </Panel>
         </box>
@@ -543,7 +604,7 @@ export function Browser(props: BrowserProps): ReactNode {
       <text wrapMode="none" fg={color.dim} attributes={DIM}>
         {searching
           ? "type to filter · enter keep · esc clear"
-          : "enter open · a/C term · w live · space/A select · m/u group · R stack · c new · i import · ! radar · P procs · / search · Y copy · d clear · r refresh · ? help · q quit"}
+          : "enter open · n/N todo · a/C term · e editor · w live · space/A sel · m/u group · R stack · c new · i import · P procs · / search · d clear · r refresh · ? help · q quit"}
       </text>
     </box>
   );

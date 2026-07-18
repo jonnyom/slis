@@ -5,6 +5,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { Candidate, ConflictsResult } from "../rpc/types";
+import type { EditorSpec } from "../editor/detect";
 import { color, glyph } from "../theme";
 import { Overlay } from "../components/overlay";
 import { BOLD, DIM } from "../components/ui";
@@ -21,7 +22,15 @@ function KeyHint({ k, label }: { k: string; label: string }): ReactNode {
   );
 }
 
-export function SwapOverlay({ slice, active }: { slice: string; active: boolean }): ReactNode {
+export function SwapOverlay({
+  slice,
+  active,
+  dirty,
+}: {
+  slice: string;
+  active: boolean;
+  dirty: boolean;
+}): ReactNode {
   const detail = active
     ? "Restores each primary to its previous branch."
     : "Puts each primary on slis/live/" + slice + " at the slice tip.";
@@ -37,10 +46,54 @@ export function SwapOverlay({ slice, active }: { slice: string; active: boolean 
       <text fg={color.dim} attributes={DIM} wrapMode="none">
         {detail}
       </text>
+      {dirty && !active ? (
+        <text fg={color.wait} wrapMode="none">
+          ⚠ a primary has uncommitted work — [s] stashes it, popped back on swap-out.
+        </text>
+      ) : null}
       <text> </text>
       <text wrapMode="none">
         <KeyHint k="y" label="confirm" />
+        {dirty && !active ? <KeyHint k="s" label="stash + swap in" /> : null}
         <KeyHint k="n/esc" label="cancel" />
+      </text>
+    </Overlay>
+  );
+}
+
+export function EditorPickerOverlay({
+  editors,
+  sel,
+  slice,
+  repo,
+}: {
+  editors: EditorSpec[];
+  sel: number;
+  slice: string;
+  repo?: string;
+}): ReactNode {
+  const target = repo ? `${slice} · ${repo}` : slice;
+  return (
+    <Overlay title="Open in which editor?" width={58}>
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        {target}
+      </text>
+      <text> </text>
+      {editors.map((e, i) => {
+        const focused = i === sel;
+        return (
+          <text key={e.bin} wrapMode="none">
+            <span fg={color.cursorBar}>{focused ? glyph.focusBar + " " : "  "}</span>
+            <span fg={focused ? color.white : color.fg} attributes={focused ? BOLD : 0}>
+              {e.name}
+            </span>
+            <span fg={color.dim}>{"  (" + e.bin + ")"}</span>
+          </text>
+        );
+      })}
+      <text> </text>
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        ↑/↓ select · enter open (remembered) · esc cancel
       </text>
     </Overlay>
   );
