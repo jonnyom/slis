@@ -1,0 +1,46 @@
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_214eff700152ce 632
+  s_197478f89af866::t_30d12d8f7f8ecb 64,634,636
+  s_197478f89af866::t_41dd87b928ce35 552-553
+  s_197478f89af866::t_1808bebf703b6f 638
+tui-js/src/views/browser.tsx
+  s_197478f89af866::t_16f070d4fb1f90 435-436
+  s_197478f89af866::t_30d12d8f7f8ecb 42,380-387
+tui-js/src/index.tsx
+  s_197478f89af866::t_30d12d8f7f8ecb 8-9,11
+tui-js/src/term/tabs.tsx
+  s_197478f89af866::t_30d12d8f7f8ecb 1-243
+tui-js/src/term/manager.ts
+  s_197478f89af866::t_30d12d8f7f8ecb 1-38
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_30d12d8f7f8ecb 16-17,38,114
+tui-js/src/app.tsx
+  s_197478f89af866::t_30d12d8f7f8ecb 25-28,115-122,165,169,250-312,329,340,348,355,362-372
+  s_197478f89af866::t_b4c9a43b98a97c 373
+tui-js/src/term/tmux.ts
+  s_197478f89af866::t_30d12d8f7f8ecb 1-233
+tui-js/src/term/e2e.ts
+  s_197478f89af866::t_30d12d8f7f8ecb 1-109
+tui-js/package.json
+  s_197478f89af866::t_30d12d8f7f8ecb 11-12,17
+tui-js/src/term/session.ts
+  s_197478f89af866::t_30d12d8f7f8ecb 1-133
+tui-js/bun.lock
+  s_197478f89af866::t_feec9f85152297 10,41-42,55-56,59-60,67-68,89-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a57af090a1e03bfdc28108afdb3dfe5d62ecf17d",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
