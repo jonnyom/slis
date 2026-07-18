@@ -196,7 +196,7 @@ func TestHelloExposesConfiguredAgents(t *testing.T) {
 
 func TestHelloResolvesSessionsConfig(t *testing.T) {
 	ws := makeWorkspace(t)
-	ws.Sessions = config.Sessions{Harness: "codex", Layout: "repos", Autostart: true}
+	ws.Sessions = config.Sessions{Harness: "codex", Layout: "repos", Autostart: true, DefaultAgent: "Codex"}
 	h := newHarness(t, ws)
 
 	resp := h.call(1, "hello", "")
@@ -214,6 +214,9 @@ func TestHelloResolvesSessionsConfig(t *testing.T) {
 	}
 	if !hr.Sessions.Autostart {
 		t.Errorf("autostart = false, want true")
+	}
+	if hr.Sessions.DefaultAgent != "Codex" {
+		t.Errorf("default agent = %q, want Codex", hr.Sessions.DefaultAgent)
 	}
 }
 

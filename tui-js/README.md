@@ -132,6 +132,7 @@ Arrow keys work alongside the documented Vim-style motions.
 | `d` | Clear finished slices, with guarded force removal when requested. |
 | `v` / `F` | Open failing-CI detail / launch the fix-CI flow. |
 | `a` / `C` | Attach to the slice terminal / launch a configured agent. |
+| `V` / `,` | Manage pending review comments / configure the default agent. |
 | `e` / `o` | Open the slice in an editor. |
 | `Y` | Copy PR-stack Markdown to the clipboard. |
 | `P` / `!` | Show all-slice processes / cross-slice conflict radar. |
@@ -147,12 +148,13 @@ Arrow keys work alongside the documented Vim-style motions.
 | `enter` / `l` | Open the selected stack branch's rich diff. On other panels, `enter` zooms the detail pane. |
 | `f` | Browse the selected stack branch's file tree at that revision. |
 | `t` / `b` | Toggle stat/patch (or unified/split in the rich diff) / cycle diff scope. |
-| `c` / `C` | Add an inline comment / manage and send the pending review. |
+| `c` / `V` | Add an inline comment / manage and send the pending review. |
 | `y` / `Y` | Copy the current diff / PR-stack Markdown. |
 | `v` / `ctrl+r` / `F` / `O` | View CI logs, rerun failed CI, fix CI, or open the focused PR. |
 | `s` / `S` | Show a cached AI summary / force regeneration. |
 | `x` / `X` | Send SIGTERM to the selected process / process subtree. |
-| `a` | Open the slice's embedded terminal tab. |
+| `a` / `C` | Open the slice's embedded terminal tab / launch an agent. |
+| `,` | Configure the default launch agent. |
 | `e` / `o` | Open the whole slice / selected repo in an editor. |
 | `esc` / `h` | Step back or return to the hub. |
 

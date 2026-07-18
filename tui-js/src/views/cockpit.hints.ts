@@ -65,7 +65,9 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
       { key: "enter", label: "unzoom" },
       { key: "j/k", label: "move" },
       { key: "^d/u", label: "scroll" },
-      { key: "a", label: "term" },
+      { key: "a", label: "agent" },
+      { key: "C", label: "launch" },
+      { key: "t", label: "shell" },
       { key: "w", label: "swap" },
     ];
   switch (panel) {
@@ -75,7 +77,8 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
           { key: "j/k", label: "line" },
           ...(s.onMember ? [{ key: "e", label: "edit" }] : []),
           { key: "c", label: "comment" },
-          { key: "C", label: "review" },
+          { key: "V", label: "review" },
+          { key: "C", label: "launch" },
           { key: "^d/u", label: "page" },
           { key: "esc", label: "tree" },
         ];
@@ -86,6 +89,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
           { key: "h", label: "collapse" },
           ...(s.onMember ? [{ key: "e", label: "edit" }] : []),
           { key: "o/E", label: "repo/slice" },
+          { key: "C", label: "launch" },
           { key: "esc", label: "diff" },
         ];
       return [
@@ -93,12 +97,13 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         ...(s.stackReview ? [{ key: "f", label: "files" }] : []),
         { key: "enter", label: "rich diff" },
         ...(s.onMember ? [{ key: "b", label: `scope: ${s.scope}` }] : []),
-        { key: "C", label: "review" },
+        { key: "V", label: "review" },
+        { key: "C", label: "launch" },
         { key: "w", label: "swap" },
       ];
     case "prs":
       return [
-        { key: "tab", label: "panel" },
+        { key: "C", label: "launch" },
         { key: "j/k", label: "pr" },
         { key: "enter", label: "zoom" },
         { key: "v", label: "CI log" },
@@ -110,13 +115,15 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
       return [
         { key: "tab", label: "panel" },
         { key: "enter", label: "zoom" },
-        { key: "a", label: "term" },
+        { key: "a", label: "agent" },
+        { key: "C", label: "launch" },
+        { key: "t", label: "shell" },
         { key: "r", label: "reload" },
         { key: "w", label: "swap" },
       ];
     case "procs":
       return [
-        { key: "tab", label: "panel" },
+        { key: "C", label: "launch" },
         { key: "j/k", label: "proc" },
         { key: "h/l", label: "fold" },
         { key: "s", label: "sort" },

@@ -24,9 +24,13 @@ export interface SessionOpts {
   layout?: string;
 }
 
+/** Agent and ad-hoc shell terminals intentionally use separate tmux sessions. */
+export type SessionKind = "agent" | "shell";
+
 /** tmux disallows ':' and '.' in session names → replace with '-'. */
-export function sessionName(slice: string): string {
-  return "slis/" + slice.replace(/[:.]/g, "-");
+export function sessionName(slice: string, kind: SessionKind = "agent"): string {
+  const prefix = kind === "agent" ? "slis/" : "slis-shell/";
+  return prefix + slice.replace(/[:.]/g, "-");
 }
 
 async function sh(cmd: string[]): Promise<{ code: number; out: string }> {
@@ -40,18 +44,18 @@ export function tmuxAvailable(): boolean {
   return Bun.which("tmux") !== null;
 }
 
-export async function sessionExists(slice: string): Promise<boolean> {
-  return (await sh(["tmux", "has-session", "-t", sessionName(slice)])).code === 0;
+export async function sessionExists(slice: string, kind: SessionKind = "agent"): Promise<boolean> {
+  return (await sh(["tmux", "has-session", "-t", sessionName(slice, kind)])).code === 0;
 }
 
 /** Current directories for every pane in a slice session. */
-export async function sessionPanePaths(slice: string): Promise<string[]> {
+export async function sessionPanePaths(slice: string, kind: SessionKind = "agent"): Promise<string[]> {
   const r = await sh([
     "tmux",
     "list-panes",
     "-s",
     "-t",
-    sessionName(slice),
+    sessionName(slice, kind),
     "-F",
     "#{pane_current_path}",
   ]);
@@ -114,12 +118,13 @@ function sessionWindows(members: TermMember[], opts: SessionOpts): Window[] {
 // tmux prefix detach (C-b d). Mirrors internal/tmuxctl.detachHint.
 const DETACH_HINT = " detach: C-b d  (Ctrl-D quits Claude) ";
 
-async function setStatusHint(name: string): Promise<void> {
+async function setStatusHint(name: string, kind: SessionKind): Promise<void> {
   // Per-session mouse mode lets the embedded client use wheel scrolling without
   // changing the user's global tmux configuration.
   await sh(["tmux", "set-option", "-t", name, "mouse", "on"]);
   await sh(["tmux", "set-option", "-t", name, "status-right-length", "40"]);
-  await sh(["tmux", "set-option", "-t", name, "status-right", DETACH_HINT]);
+  const hint = kind === "agent" ? DETACH_HINT : " detach: C-b d  (ctrl+q returns to Slis) ";
+  await sh(["tmux", "set-option", "-t", name, "status-right", hint]);
 }
 
 /**
@@ -130,10 +135,11 @@ export async function ensureSession(
   slice: string,
   members: TermMember[],
   opts: SessionOpts,
+  kind: SessionKind = "agent",
 ): Promise<void> {
-  const name = sessionName(slice);
-  if (await sessionExists(slice)) {
-    await setStatusHint(name);
+  const name = sessionName(slice, kind);
+  if (await sessionExists(slice, kind)) {
+    await setStatusHint(name, kind);
     return;
   }
 
@@ -141,7 +147,7 @@ export async function ensureSession(
   if (wins.length === 0) {
     const r = await sh(["tmux", "new-session", "-d", "-s", name]);
     if (r.code !== 0) throw new Error(`tmux new-session: ${r.out}`);
-    await setStatusHint(name);
+    await setStatusHint(name, kind);
     return;
   }
 
@@ -158,17 +164,17 @@ export async function ensureSession(
     if (r.code !== 0) throw new Error(`tmux new-window ${w.name}: ${r.out}`);
   }
 
-  await setStatusHint(name);
+  await setStatusHint(name, kind);
 }
 
 /** Foreground command of the session's active pane (e.g. "zsh", "claude"). */
-export async function activePaneCommand(slice: string): Promise<string> {
+export async function activePaneCommand(slice: string, kind: SessionKind = "agent"): Promise<string> {
   const r = await sh([
     "tmux",
     "display-message",
     "-p",
     "-t",
-    sessionName(slice),
+    sessionName(slice, kind),
     "#{pane_current_command}",
   ]);
   return r.code === 0 ? r.out.trim() : "";
@@ -180,8 +186,8 @@ export function isShellCmd(cmd: string): boolean {
 }
 
 /** Type keys into the session's active pane followed by Enter. */
-export async function sendKeys(slice: string, keys: string): Promise<void> {
-  await sh(["tmux", "send-keys", "-t", sessionName(slice), keys, "Enter"]);
+export async function sendKeys(slice: string, keys: string, kind: SessionKind = "agent"): Promise<void> {
+  await sh(["tmux", "send-keys", "-t", sessionName(slice, kind), keys, "Enter"]);
 }
 
 // ── agent launch line (ported from internal/tui/agentctx.go) ─────────────────

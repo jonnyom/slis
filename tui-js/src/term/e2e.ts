@@ -15,6 +15,7 @@ const APP_COLS = 160;
 const APP_ROWS = 44;
 const SLICE = "checkout"; // first fake slice; focused at index 0 under filter "All"
 const SESSION = sessionName(SLICE); // slis/checkout
+const SHELL_SESSION = sessionName(SLICE, "shell"); // slis-shell/checkout
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function sh(cmd: string[]) {
@@ -33,8 +34,10 @@ async function main() {
   // Pre-create the slice's tmux session so the app's ensureSession is a no-op and
   // attaches to a known shell (no dependency on real worktrees or on claude).
   await sh(["tmux", "kill-session", "-t", SESSION]);
+  await sh(["tmux", "kill-session", "-t", SHELL_SESSION]);
   const shell = process.env["SHELL"] ?? "bash";
   await sh(["tmux", "new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", shell]);
+  await sh(["tmux", "new-session", "-d", "-s", SHELL_SESSION, "-x", "200", "-y", "50", shell]);
 
   const vt = new PersistentTerminal({ cols: APP_COLS, rows: APP_ROWS });
   let tearingDown = false;
@@ -74,6 +77,7 @@ async function main() {
     try { app.kill(); } catch {}
     vt.destroy();
     await sh(["tmux", "kill-session", "-t", SESSION]);
+    await sh(["tmux", "kill-session", "-t", SHELL_SESSION]);
     console.log(`installed_browser=${sawBrowser} create_overlay=${sawCreate} ctrl_c_quit=${quit}`);
     process.exit(sawBrowser && sawCreate && quit ? 0 : 1);
   }
@@ -119,6 +123,18 @@ async function main() {
   const backText = vt.getText();
   const backToBrowser = backText.includes("SLICES") && !backText.includes("ctrl+q back");
 
+  // A separate shell tab must coexist with the agent tab and attach to its own
+  // tmux namespace rather than replacing or typing into the agent session.
+  pty.write("t");
+  await sleep(900);
+  const shellTabText = vt.getText();
+  const sawShellTab = shellTabText.includes(`${SLICE} · shell`);
+  const bothSessionsAlive =
+    (await sh(["tmux", "has-session", "-t", SESSION])).code === 0 &&
+    (await sh(["tmux", "has-session", "-t", SHELL_SESSION])).code === 0;
+  pty.write("\x11");
+  await sleep(700);
+
   // Ctrl+C must also quit while an overlay owns React keyboard focus. Open the
   // create window first; this catches regressions where ctrl+c is normalized to
   // plain `c` or swallowed by the modal instead of reaching the global guard.
@@ -142,6 +158,7 @@ async function main() {
   await sleep(150);
   vt.destroy();
   await sh(["tmux", "kill-session", "-t", SESSION]);
+  await sh(["tmux", "kill-session", "-t", SHELL_SESSION]);
 
   const R: Record<string, boolean> = {
     browser_paints_slice_list: sawBrowser,
@@ -152,6 +169,7 @@ async function main() {
     keystrokes_reach_embedded_shell: sawMarker,
     ctrl_c_reaches_embedded_terminal: ctrlCReachedTerminal,
     ctrl_q_returns_to_browser: backToBrowser,
+    shell_tab_is_separate: sawShellTab && bothSessionsAlive,
     c_opens_create_overlay: createOverlayOpen,
     ctrl_c_quits_from_overlay: ctrlCQuitsBrowser,
     tmux_session_survives_app_quit: sessionAlive,

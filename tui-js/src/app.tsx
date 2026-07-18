@@ -33,13 +33,13 @@ import { DIM } from "./components/ui";
 import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
 import { tmuxAvailable, type TermMember } from "./term/tmux";
-import type { TermSessionOpts } from "./term/session";
-import { pickableAgents, agentCmdline } from "./term/agentpick";
+import type { OpenTermMode, TermSessionOpts } from "./term/session";
+import { availableAgents, findSavedAgent, pickableAgents, agentCmdline } from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
 import { useToasts, ToastLayer } from "./components/toast";
-import { createSlice } from "./rpc/mutate";
+import { agentDefaultSet, createSlice } from "./rpc/mutate";
 import {
   createBusyLabel,
   createReducer,
@@ -313,6 +313,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     view,
     height,
     client,
+    activeSlice: ls?.slices.find((slice) => slice.active)?.name,
     editors: editorList,
     configuredEditor: hello?.sessions.editor,
     runInteractive: openCommandTab,
@@ -370,10 +371,46 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [views, current],
   );
 
-  const preferredAgent = useMemo(
-    () => hello?.agents?.find((agent) => agent.name === uiPrefs.agent),
-    [hello?.agents, uiPrefs.agent],
+  const agentList = useMemo(
+    () => availableAgents(hello?.agents, (binary) => !!Bun.which(binary)),
+    [hello?.agents],
   );
+  // workspace.yaml is authoritative; the XDG preference is a migration
+  // fallback for releases that saved the selection there only.
+  const savedAgent = useMemo(
+    () => findSavedAgent(agentList, hello?.sessions.default_agent, uiPrefs.agent),
+    [agentList, hello?.sessions.default_agent, uiPrefs.agent],
+  );
+  const preferredAgent = savedAgent ?? agentList[0];
+
+  const rememberAgent = useCallback(
+    (choice: AgentSpec) => {
+      persistUiPrefs({ agent: choice.name });
+      agentDefaultSet(choice.name).then((result) => {
+        if (result.code !== 0) {
+          overlays.error(
+            "Save default agent — failed",
+            (result.stderr || result.stdout || "Unable to update workspace.yaml").trim(),
+          );
+        }
+      });
+    },
+    [overlays, persistUiPrefs],
+  );
+
+  const configureAgents = useCallback(() => {
+    const choices = agentList;
+    if (choices.length === 0) {
+      overlays.info(
+        "No agents found",
+        "Install a supported coding-agent CLI or add one under sessions.agents in workspace.yaml.",
+      );
+      return;
+    }
+    overlays.agentConfig(choices, preferredAgent?.name, (choice) => {
+      rememberAgent(choice);
+    });
+  }, [agentList, overlays, preferredAgent, rememberAgent]);
 
   const onEnter = useCallback(
     (slice: string, entry?: CockpitEntry) => {
@@ -393,7 +430,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // defaults. Autostart is OR'd into launchAgent so a plain attach launches the
   // agent when configured, mirroring the Go TUI's attach.
   const buildTermOpts = useCallback(
-    (slice: string, launchAgent: boolean, choice?: AgentSpec): TermSessionOpts | null => {
+    (slice: string, mode: OpenTermMode, choice?: AgentSpec): TermSessionOpts | null => {
       const v = views.find((x) => x.slice.name === slice);
       if (!v) return null;
       const wsRoot = hello?.workspaceRoot ?? "";
@@ -404,13 +441,15 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         worktreePath: m.worktree_path,
       }));
       const selectedAgent = choice ?? preferredAgent;
+      const kind = mode === "shell" ? "shell" : "agent";
       return {
         slice,
+        kind,
         members,
         active: v.slice.active,
         wsRoot,
         sessionOpts: { root: wsRoot, layout: sessions?.layout ?? "" },
-        launchAgent: launchAgent || (sessions?.autostart ?? false),
+        launchAgent: kind === "agent" && (mode === "agent-launch" || (sessions?.autostart ?? false)),
         agent: selectedAgent ? agentCmdline(selectedAgent.cmd) : sessions?.agent || "claude",
         harness: sessions?.harness || "claude",
         agentLabel: selectedAgent?.name,
@@ -422,20 +461,24 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // Open (or reuse) the slice's terminal tab, attaching a tmux client and — when
   // launching an agent — running the picked (or default) agent in it.
   const launchTermTab = useCallback(
-    (slice: string, launchAgent: boolean, choice?: AgentSpec) => {
+    (slice: string, mode: OpenTermMode, choice?: AgentSpec) => {
+      const opts = buildTermOpts(slice, mode, choice);
+      if (!opts) return;
+      const key = `${opts.kind}:${slice}`;
       setTabs((prev) => {
-        if (prev.some((t) => t.kind === "session" && t.slice === slice)) return prev; // reuse open tab
-        const opts = buildTermOpts(slice, launchAgent, choice);
-        return opts ? [...prev, { kind: "session", slice, opts }] : prev;
+        if (prev.some((t) => t.kind === "session" && t.slice === slice && t.opts.kind === opts.kind)) {
+          return prev; // reuse the matching agent/shell tab; the other kind stays open
+        }
+        return [...prev, { kind: "session", slice, opts }];
       });
-      setActiveTab(slice);
+      setActiveTab(key);
       setTermMode(true);
     },
     [buildTermOpts],
   );
 
   const openTerm = useCallback(
-    (slice: string, launchAgent: boolean) => {
+    (slice: string, mode: OpenTermMode) => {
       if (!tmuxAvailable()) {
         overlays.info(
           "Terminal unavailable",
@@ -445,24 +488,30 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       }
       // With more than one configured agent, a launch (C / autostart) first asks
       // which one; a single agent (or an older sidecar) keeps the direct path.
-      if (launchAgent) {
-        const choices = pickableAgents(hello?.agents);
+      if (mode === "agent-launch") {
+        // Once a valid default exists, C is a one-keystroke launch. The picker
+        // is only the first-run choice; comma explicitly reconfigures it.
+        if (savedAgent) {
+          launchTermTab(slice, "agent-launch", savedAgent);
+          return;
+        }
+        const choices = pickableAgents(agentList);
         if (choices.length > 1) {
           overlays.agentPicker(
             slice,
             choices,
             (choice) => {
-              persistUiPrefs({ agent: choice.name });
-              launchTermTab(slice, true, choice);
+              rememberAgent(choice);
+              launchTermTab(slice, "agent-launch", choice);
             },
             preferredAgent?.name,
           );
           return;
         }
       }
-      launchTermTab(slice, launchAgent);
+      launchTermTab(slice, mode);
     },
-    [launchTermTab, overlays, hello, persistUiPrefs, preferredAgent],
+    [launchTermTab, overlays, agentList, preferredAgent, rememberAgent, savedAgent],
   );
 
   // Remove a tab and re-point the active tab / term mode. When a *command* tab
@@ -542,6 +591,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           height={height}
           onEnter={onEnter}
           onOpenTerm={openTerm}
+          onConfigureAgents={configureAgents}
           onFocusSlice={onFocusSlice}
           onRefresh={manualRefresh}
           onToggleProcs={() => setProcsOpen(true)}
@@ -565,6 +615,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onDiffScopeChange={(scope) => persistUiPrefs({ diff_scope: scope })}
           onBack={() => setView("browser")}
           onOpenTerm={openTerm}
+          onConfigureAgents={configureAgents}
           onToggleProcs={() => setProcsOpen(true)}
           onRefresh={manualRefresh}
           onQuit={quit}

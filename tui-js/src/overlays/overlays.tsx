@@ -18,32 +18,42 @@ import { visibleTextLines } from "./textinput";
 export function SwapOverlay({
   slice,
   active,
+  replacing,
 }: {
   slice: string;
   active: boolean;
+  replacing?: string;
 }): ReactNode {
-  const detail = active
+  const detail = replacing
+    ? `Restores ${replacing}'s primaries, then activates ${slice}. Dirty primary work is safely stashed.`
+    : active
     ? "Restores each primary to its previous branch."
     : "Puts each primary on slis/live/" +
       slice +
       " at the slice tip; dirty work is stashed and restored on swap-out.";
   return (
     <Card
-      title={`Swap · ${slice}`}
-      width={58}
+      title={replacing ? `Swap · ${replacing} → ${slice}` : `Swap · ${slice}`}
+      width={68}
       hints={[
         { key: "y", label: "confirm" },
         { key: "esc", label: "cancel" },
       ]}
     >
       <text wrapMode="none">
-        <span fg={theme.text}>{active ? "swap OUT " : "swap IN "}</span>
+        <span fg={theme.text}>{replacing ? "swap OUT " : active ? "swap OUT " : "swap IN "}</span>
         <span fg={theme.textBright} attributes={BOLD}>
-          {slice}
+          {replacing ?? slice}
         </span>
+        {replacing ? (
+          <>
+            <span fg={theme.text}>{" · then swap IN "}</span>
+            <span fg={theme.textBright} attributes={BOLD}>{slice}</span>
+          </>
+        ) : null}
         <span fg={theme.text}>?</span>
       </text>
-      <text fg={theme.textDim} wrapMode="none">
+      <text fg={theme.textDim} wrapMode="word">
         {detail}
       </text>
     </Card>
@@ -98,25 +108,36 @@ export function EditorPickerOverlay({
 }
 
 export function AgentPickerOverlay({
+  mode,
   agents,
   sel,
   slice,
+  preferredAgent,
 }: {
+  mode: "launch" | "configure";
   agents: AgentSpec[];
   sel: number;
-  slice: string;
+  slice?: string;
+  preferredAgent?: string;
 }): ReactNode {
+  const configuring = mode === "configure";
   return (
     <Card
-      title="Launch which agent?"
-      subtitle={slice}
+      title={configuring ? "Agent settings" : "Launch which agent?"}
+      subtitle={configuring ? "Choose the default launch agent" : slice}
       width={58}
-      hints={[
-        { key: "1-9", label: "quick pick" },
-        { key: "↑/↓", label: "select" },
-        { key: "enter", label: "launch" },
-        { key: "esc", label: "cancel" },
-      ]}
+      hints={configuring
+        ? [
+            { key: "↑/↓", label: "select" },
+            { key: "enter", label: "set default" },
+            { key: "esc", label: "cancel" },
+          ]
+        : [
+            { key: "1-9", label: "quick pick" },
+            { key: "↑/↓", label: "select" },
+            { key: "enter", label: "launch" },
+            { key: "esc", label: "cancel" },
+          ]}
     >
       {agents.map((a, i) => {
         const focused = i === sel;
@@ -128,6 +149,7 @@ export function AgentPickerOverlay({
               {a.name}
             </span>
             <span fg={theme.textFaint}>{"  (" + agentCmdline(a.cmd) + ")"}</span>
+            {a.name === preferredAgent ? <span fg={theme.good}>  default</span> : null}
           </text>
         );
       })}
@@ -299,8 +321,8 @@ export function GroupOverlay({
 }): ReactNode {
   return (
     <Card
-      title="Group slices"
-      subtitle={`grouping: ${slices.join(", ")}`}
+      title={slices.length === 1 ? "Group / rename slice" : "Group slices"}
+      subtitle={`selected: ${slices.join(", ")}`}
       width={60}
       hints={[
         { key: "enter", label: "group" },

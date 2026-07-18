@@ -66,6 +66,7 @@ import {
   sessionPanePaths,
 } from "../term/tmux";
 import { color, glyph, sessionBadge, sessionLabel, theme } from "../theme";
+import type { OpenTermMode } from "../term/session";
 import { Panel } from "../components/panel";
 import { Breadcrumb } from "../components/breadcrumb";
 import { Badge } from "../components/badge";
@@ -78,6 +79,7 @@ import { FileView, contentLines } from "../components/fileview";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 import { isQuitKey, normalizeKeyName } from "../util/keys";
+import { shortcutAction } from "../util/shortcut-contract";
 import { useProcMonitor } from "../proc/monitor";
 import { buildProcTree, flattenTree, totalCpu, totalMem } from "../proc/tree";
 import { nextSort, SORT_LABEL, type ProcSort } from "../proc/sort";
@@ -148,7 +150,8 @@ export interface CockpitProps {
   onDiffModeChange?: (mode: DiffMode) => void;
   onDiffScopeChange?: (scope: DiffScope) => void;
   onBack: () => void;
-  onOpenTerm: (slice: string, launchAgent: boolean) => void;
+  onOpenTerm: (slice: string, mode: OpenTermMode) => void;
+  onConfigureAgents: () => void;
   onToggleProcs: () => void;
   onRefresh: () => void;
   onQuit: () => void;
@@ -360,22 +363,27 @@ function SessionSection({
   focused,
   lastLine,
   exists,
+  shellExists,
   outsideRepos,
 }: {
   view: SliceView;
   focused: boolean;
   lastLine: string | undefined;
   exists: boolean;
+  shellExists: boolean;
   outsideRepos: boolean;
 }): ReactNode {
   const badge = sessionBadge(view.status);
   const presentWithoutHookStatus = exists && view.status === "none";
+  const count = Number(exists) + Number(shellExists);
   const trailing = (
     <text wrapMode="none">
       <span fg={outsideRepos ? theme.attn : badge.color}>
         {outsideRepos ? glyph.dirty : presentWithoutHookStatus ? glyph.live : badge.glyph}{" "}
         {outsideRepos
           ? "outside repos"
+          : count > 1
+            ? `${count} sessions`
           : presentWithoutHookStatus
             ? "session"
             : sessionSummary(view.status)}
@@ -401,6 +409,9 @@ function SessionSection({
           {"  " + sessionLabel(view.status)}
         </text>
       )}
+      <text fg={shellExists ? theme.good : color.dim} attributes={DIM} wrapMode="none">
+        {`  ${shellExists ? glyph.live : "·"} shell ${shellExists ? "ready" : "not started"}`}
+      </text>
     </Panel>
   );
 }
@@ -696,20 +707,32 @@ function CiLogRight({ state }: { state: CiLogState }): ReactNode {
 function SessionRight({
   view,
   lines,
+  agentExists,
+  shellExists,
   outsideRepos,
 }: {
   view: SliceView;
   lines: string[];
+  agentExists: boolean;
+  shellExists: boolean;
   outsideRepos: boolean;
 }): ReactNode {
   const members = view.slice.members;
   return (
     <>
       <text wrapMode="none">
-        <span fg={color.dim}>session: </span>
-        <span fg={color.fg}>{sessionName(view.slice.name)}</span>
-        <span fg={color.dim}> · {members.length} repos</span>
+        <span fg={agentExists ? theme.good : color.dim}>{agentExists ? glyph.live : "·"}</span>
+        <span fg={color.dim}> agent  </span>
+        <span fg={color.fg}>{sessionName(view.slice.name, "agent")}</span>
+        <span fg={color.dim}>  · a open</span>
       </text>
+      <text wrapMode="none">
+        <span fg={shellExists ? theme.good : color.dim}>{shellExists ? glyph.live : "·"}</span>
+        <span fg={color.dim}> shell  </span>
+        <span fg={color.fg}>{sessionName(view.slice.name, "shell")}</span>
+        <span fg={color.dim}>  · t open</span>
+      </text>
+      <text fg={color.dim} wrapMode="none">{members.length} repos</text>
       <text> </text>
       <text fg={color.dim} attributes={DIM} wrapMode="none">
         repos:
@@ -735,12 +758,12 @@ function SessionRight({
       ) : null}
       {lines.length === 0 ? (
         <text fg={color.dim} attributes={DIM}>
-          (no session output — attach with a/C to start one)
+          (no agent output — a attaches; t opens a separate shell)
         </text>
       ) : (
         <>
           <text fg={color.dim} attributes={DIM} wrapMode="none">
-            ─── session output (live) ───
+            ─── agent output (live) ───
           </text>
           {lines.map((l, i) => (
             <text key={i} fg={color.fg} wrapMode="none">
@@ -836,6 +859,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     return initial >= 0 ? initial : 0;
   });
   const [hasSession, setHasSession] = useState(false);
+  const [hasShellSession, setHasShellSession] = useState(false);
   const [sessionOutsideRepos, setSessionOutsideRepos] = useState(false);
   const [ciLog, setCiLog] = useState<CiLogState | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
@@ -951,10 +975,14 @@ export function Cockpit(props: CockpitProps): ReactNode {
     let live = true;
     const probe = async () => {
       try {
-        const exists = await sessionExists(slice);
+        const [exists, shellExists] = await Promise.all([
+          sessionExists(slice, "agent"),
+          sessionExists(slice, "shell"),
+        ]);
         const paths = exists ? await sessionPanePaths(slice) : [];
         if (!live) return;
         setHasSession(exists);
+        setHasShellSession(shellExists);
         setSessionOutsideRepos(exists && sessionHasPaneOutsideMembers(paths, sessionMembers));
       } catch {
         // Preserve the last known state across a transient tmux probe failure.
@@ -1357,6 +1385,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     // While the full diff view is open it owns the keyboard.
     if (diffOpen) return;
     const name = normalizeKeyName(key);
+    const cockpitShortcut = shortcutAction("cockpit", name);
 
     // A pending kill confirmation captures input until answered.
     if (pendingKill) {
@@ -1365,17 +1394,24 @@ export function Cockpit(props: CockpitProps): ReactNode {
       return;
     }
 
+    // Agent settings are a global mode, including from nested file/tree views.
+    if (cockpitShortcut === "configure-agents") return props.onConfigureAgents();
+
     // F3 stack-review sub-modes own navigation + the esc chain (file → tree →
     // diff → back). Only q and ? escape them.
     if (panel === "stack" && reviewMode === "file") {
+      const shortcut = shortcutAction("cockpit.file", name);
       if (isQuitKey(key, name)) return props.onQuit();
       if (name === "?") return overlays.help();
+      if (shortcut === "attach-agent") return props.onOpenTerm(slice, "agent");
+      if (shortcut === "launch-agent") return props.onOpenTerm(slice, "agent-launch");
+      if (shortcut === "open-shell") return props.onOpenTerm(slice, "shell");
       if (name === "escape" || name === "h") return setReviewMode("tree");
       if (name === "e" && openFile) return editPreviewPath(openFile.path, fileCursor + 1);
       if (name === "o") return overlays.editor(slice, selectedRepo);
       if (name === "E") return overlays.editor(slice);
       if (name === "c") return commentOnFileLine();
-      if (name === "C") return openReviewOverlay();
+      if (shortcut === "pending-review") return openReviewOverlay();
       if (name === "j" || name === "down") return moveFileCursor(1);
       if (name === "k" || name === "up") return moveFileCursor(-1);
       if (name === "g") return scrollRef.current?.scrollTo(0);
@@ -1387,9 +1423,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
       return;
     }
     if (panel === "stack" && reviewMode === "tree") {
+      const shortcut = shortcutAction("cockpit.tree", name);
       if (isQuitKey(key, name)) return props.onQuit();
       if (name === "?") return overlays.help();
-      if (name === "C") return openReviewOverlay();
+      if (shortcut === "attach-agent") return props.onOpenTerm(slice, "agent");
+      if (shortcut === "launch-agent") return props.onOpenTerm(slice, "agent-launch");
+      if (shortcut === "open-shell") return props.onOpenTerm(slice, "shell");
+      if (shortcut === "pending-review") return openReviewOverlay();
       if (name === "escape") return setReviewMode("diff");
       if (name === "e") {
         const row = treeRows[treeSel];
@@ -1419,11 +1459,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
       return props.onBack();
     }
     if (name === "w") return overlays.swap(slice, view.slice.active);
-    // a attaches the terminal (launches the agent when autostart is configured);
-    // C is the pending-review overlay (F2). Explicit agent launch stays on the
-    // browser's C — the cockpit reuses the letter for review.
-    if (name === "a") return props.onOpenTerm(slice, false);
-    if (name === "C") return openReviewOverlay();
+    // Agent and ad-hoc shell terminals are separate persistent tmux sessions.
+    // C consistently launches an agent everywhere; V owns the review list.
+    if (cockpitShortcut === "attach-agent") return props.onOpenTerm(slice, "agent");
+    if (cockpitShortcut === "launch-agent") return props.onOpenTerm(slice, "agent-launch");
+    if (cockpitShortcut === "open-shell") return props.onOpenTerm(slice, "shell");
+    if (cockpitShortcut === "pending-review") return openReviewOverlay();
     if (name === "e") return overlays.editor(slice);
     if (name === "E") return overlays.editor(slice);
     if (name === "o") return overlays.editor(slice, selectedRepo);
@@ -1482,7 +1523,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (name === "R") return overlays.stack([slice], []);
     if (name === "s") return overlays.summary(slice, false);
     if (name === "S") return overlays.summary(slice, true);
-    if (name === "d" && !key.ctrl) {
+    if (cockpitShortcut === "clear-slice" && !key.ctrl) {
       if (view.slice.active)
         overlays.info("Cannot clear", `${slice} is live — swap back (w) first.`);
       else overlays.remove([slice]);
@@ -1655,7 +1696,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
         }
         onClose={() => setDiffOpen(false)}
         onQuit={props.onQuit}
-        onAttach={() => props.onOpenTerm(slice, false)}
+        onAttach={() => props.onOpenTerm(slice, "agent")}
+        onLaunchAgent={() => props.onOpenTerm(slice, "agent-launch")}
+        onConfigureAgents={props.onConfigureAgents}
         onComment={(target) => overlays.comment({ slice, ...target }, bumpReviews)}
         onReview={openReviewOverlay}
       />
@@ -1694,6 +1737,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
               focused={panel === "session"}
               lastLine={lastLine}
               exists={hasSession}
+              shellExists={hasShellSession}
               outsideRepos={sessionOutsideRepos}
             />
             <Divider width={dividerW} />
@@ -1773,6 +1817,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
                 <SessionRight
                   view={view}
                   lines={captureLines}
+                  agentExists={hasSession}
+                  shellExists={hasShellSession}
                   outsideRepos={sessionOutsideRepos}
                 />
               ) : (

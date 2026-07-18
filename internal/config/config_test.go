@@ -163,6 +163,7 @@ root: ~/code
 repos:
   web: { primary: ~/code/web, default_branch: main }
 sessions:
+  default_agent: codex
   agents:
     - name: claude
       cmd: [claude]
@@ -181,6 +182,9 @@ sessions:
 	}
 	if agents[0].Name != "claude" || agents[1].Name != "codex" {
 		t.Errorf("agent names = %q, %q", agents[0].Name, agents[1].Name)
+	}
+	if ws.Sessions.DefaultAgent != "codex" {
+		t.Errorf("default agent = %q, want codex", ws.Sessions.DefaultAgent)
 	}
 	if len(agents[1].Cmd) != 2 || agents[1].Cmd[1] != "--full-auto" {
 		t.Errorf("codex cmd = %v", agents[1].Cmd)

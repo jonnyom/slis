@@ -9,6 +9,9 @@
 // Run: bun run src/term/agentpicker.e2e.ts   (requires tmux; skips cleanly if absent)
 
 import { PersistentTerminal } from "ghostty-opentui";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sessionName } from "./tmux";
 
 const APP_COLS = 160;
@@ -35,12 +38,15 @@ async function main() {
   await sh(["tmux", "kill-session", "-t", SESSION]);
   const shell = process.env["SHELL"] ?? "bash";
   await sh(["tmux", "new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", shell]);
+  // Isolate preferences so this always proves the first-run picker regardless
+  // of the developer's real saved default.
+  const stateHome = mkdtempSync(join(tmpdir(), "slis-agent-picker-"));
 
   const vt = new PersistentTerminal({ cols: APP_COLS, rows: APP_ROWS });
   let tearingDown = false;
   const app: any = Bun.spawn(["bun", "run", "src/index.tsx"], {
     cwd: `${import.meta.dir}/../..`,
-    env: { ...process.env, TERM: "xterm-256color", SLIS_FAKE: "1" },
+    env: { ...process.env, TERM: "xterm-256color", SLIS_FAKE: "1", XDG_STATE_HOME: stateHome },
     terminal: {
       cols: APP_COLS,
       rows: APP_ROWS,
@@ -52,6 +58,18 @@ async function main() {
   const pty = app.terminal;
 
   await sleep(2800); // boot: renderer + fake data + first paint
+
+  // Comma enters the dedicated configuration mode. It must clearly describe
+  // Enter as setting the default and must not overload the destructive d key.
+  pty.write(",");
+  await sleep(700);
+  const configText = vt.getText();
+  const sawConfig =
+    configText.includes("Agent settings") &&
+    configText.includes("set default") &&
+    !configText.includes("make default");
+  pty.write("\x1b");
+  await sleep(300);
 
   // Press C: launch agent. With two fake agents, the picker overlay must appear.
   pty.write("C");
@@ -69,6 +87,16 @@ async function main() {
   const pickerGone = !tabText.includes("Launch which agent?");
   const sawAgentTab = tabText.includes(SLICE) && tabText.includes("codex");
 
+  // Return to the TUI and launch again. The just-saved default must bypass the
+  // picker and reopen the existing codex tab immediately.
+  pty.write("\x11");
+  await sleep(500);
+  pty.write("C");
+  await sleep(800);
+  const repeatText = vt.getText();
+  const savedDefaultSkipsPicker =
+    !repeatText.includes("Launch which agent?") && repeatText.includes("codex");
+
   const lastPaint = vt.getText();
   tearingDown = true;
   try {
@@ -79,11 +107,14 @@ async function main() {
   await sleep(150); // let in-flight PTY data drain into the ignored callback
   vt.destroy();
   await sh(["tmux", "kill-session", "-t", SESSION]);
+  rmSync(stateHome, { recursive: true, force: true });
 
   const R: Record<string, boolean> = {
+    comma_opens_agent_configuration: sawConfig,
     C_opens_agent_picker_with_both_agents: sawPicker,
     quick_pick_dismisses_picker: pickerGone,
     session_tab_titled_with_agent_name: sawAgentTab,
+    saved_default_skips_picker: savedDefaultSkipsPicker,
   };
   console.log("\n===== agent-picker E2E (drove real src/index.tsx in a PTY) =====");
   for (const [k, v] of Object.entries(R)) console.log(`  ${(v ? "PASS" : "FAIL").padEnd(5)} ${k}`);

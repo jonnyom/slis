@@ -99,7 +99,7 @@ describe("cockpitHints", () => {
     expect(fileLabels).toContain("line");
     expect(fileLabels).toContain("comment");
     expect(fileLabels).toContain("edit");
-    expect(file.some((h) => h.key === "C" && h.label === "review")).toBe(true);
+    expect(file.some((h) => h.key === "V" && h.label === "review")).toBe(true);
 
     const readOnlyTree = cockpitHints("stack", {
       ...base,

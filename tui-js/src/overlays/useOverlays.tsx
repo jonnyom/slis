@@ -18,6 +18,7 @@ import type {
 import type { CommentContext } from "../review/context";
 import { clampReviewSel } from "../review/context";
 import { quickPickIndex } from "../term/agentpick";
+import { shortcutAction } from "../util/shortcut-contract";
 import type { EditorSpec } from "../editor/detect";
 import {
   adoptBranch,
@@ -74,7 +75,7 @@ import type { BadgeState, ResultStatus } from "../theme";
 
 type Overlay =
   | { kind: "help" }
-  | { kind: "swap"; slice: string; active: boolean }
+  | { kind: "swap"; slice: string; active: boolean; replacing?: string }
   | { kind: "stack"; slices: string[]; conflictWith: string[] }
   | { kind: "remove"; slices: string[] }
   | { kind: "ciRerun"; slice: string }
@@ -91,7 +92,8 @@ type Overlay =
       path?: string;
       line?: number;
     }
-  | { kind: "agentPicker"; agents: AgentSpec[]; sel: number; slice: string; onPick: (agent: AgentSpec) => void }
+  | { kind: "agentPicker"; agents: AgentSpec[]; sel: number; slice: string; preferredAgent?: string; onPick: (agent: AgentSpec) => void }
+  | { kind: "agentConfig"; agents: AgentSpec[]; sel: number; preferredAgent?: string; onDefault: (agent: AgentSpec) => void }
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
   | { kind: "comment"; ctx: CommentContext; text: string; onAdded: () => void }
@@ -134,6 +136,11 @@ export interface OverlayApi {
     onPick: (agent: AgentSpec) => void,
     preferredAgent?: string,
   ): void;
+  agentConfig(
+    agents: AgentSpec[],
+    preferredAgent: string | undefined,
+    onDefault: (agent: AgentSpec) => void,
+  ): void;
   info(title: string, body: string): void;
   error(title: string, body: string): void;
   // immediate actions (still funnel through the shared runner)
@@ -149,6 +156,9 @@ export interface UseOverlaysArgs {
   view: "browser" | "cockpit";
   height: number;
   client: RpcClient;
+  // The workspace permits one live slice. When an inactive target is selected,
+  // this lets the swap prompt offer a deliberate deactivate -> activate handoff.
+  activeSlice?: string;
   // Editors found on PATH + the configured editor (workspace.yaml sessions.editor).
   // Drive the editor open flow: skip the picker when one is configured or exactly
   // one is available.
@@ -187,6 +197,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     view,
     height,
     client,
+    activeSlice,
     editors,
     configuredEditor,
     runInteractive,
@@ -331,9 +342,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
   // (the dirtiness that matters lives in the primary checkout).
   const openSwap = useCallback(
     (slice: string, active: boolean) => {
-      setOverlay({ kind: "swap", slice, active });
+      const replacing = !active && activeSlice && activeSlice !== slice ? activeSlice : undefined;
+      setOverlay({ kind: "swap", slice, active, replacing });
     },
-    [],
+    [activeSlice],
   );
 
   // Open a path/repo/slice in the editor. Successful GUI launches are quiet:
@@ -418,7 +430,11 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     editor: openEditor,
     agentPicker: (slice, agents, onPick, preferredAgent) => {
       const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
-      setOverlay({ kind: "agentPicker", slice, agents, sel: preferred >= 0 ? preferred : 0, onPick });
+      setOverlay({ kind: "agentPicker", slice, agents, sel: preferred >= 0 ? preferred : 0, preferredAgent, onPick });
+    },
+    agentConfig: (agents, preferredAgent, onDefault) => {
+      const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
+      setOverlay({ kind: "agentConfig", agents, sel: preferred >= 0 ? preferred : 0, preferredAgent, onDefault });
     },
     info: (title, body) => setOverlay({ kind: "result", title, body, status: "warn" }),
     error: (title, body) => setOverlay({ kind: "result", title, body, status: "failure" }),
@@ -455,12 +471,14 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
       case "swap":
         if (name === "y" || isEnter)
           runMutation(
-            overlay.active ? "Swap out" : "Swap in",
-            () => swapSlice(overlay.slice, overlay.active),
+            overlay.active ? "Swap out" : overlay.replacing ? "Switch live slice" : "Swap in",
+            () => swapSlice(overlay.slice, overlay.active, overlay.replacing),
             {
               successToast: overlay.active
                 ? `Swapped out ${overlay.slice}`
-                : `Swapped in ${overlay.slice}`,
+                : overlay.replacing
+                  ? `Swapped ${overlay.replacing} → ${overlay.slice}`
+                  : `Swapped in ${overlay.slice}`,
             },
           );
         else if (name === "n" || isCancel) close();
@@ -564,18 +582,35 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
       }
       case "agentPicker": {
         const { agents, sel, onPick } = overlay;
+        const shortcut = shortcutAction("agent.launch", name);
         const quick = quickPickIndex(name, agents.length);
         if (quick !== null) {
           close();
           onPick(agents[quick]!);
-        } else if (name === "j" || name === "down")
+        } else if (shortcut === "next")
           setOverlay({ ...overlay, sel: Math.min(agents.length - 1, sel + 1) });
-        else if (name === "k" || name === "up")
+        else if (shortcut === "previous")
           setOverlay({ ...overlay, sel: Math.max(0, sel - 1) });
-        else if (isCancel || name === "q") close();
-        else if (isEnter && agents[sel]) {
+        else if (shortcut === "cancel") close();
+        else if (shortcut === "choose" && agents[sel]) {
           close();
           onPick(agents[sel]!);
+        }
+        return;
+      }
+      case "agentConfig": {
+        const { agents, sel } = overlay;
+        const shortcut = shortcutAction("agent.configure", name);
+        if (shortcut === "next")
+          setOverlay({ ...overlay, sel: Math.min(agents.length - 1, sel + 1) });
+        else if (shortcut === "previous")
+          setOverlay({ ...overlay, sel: Math.max(0, sel - 1) });
+        else if (shortcut === "cancel") close();
+        else if (shortcut === "set-default" && agents[sel]) {
+          const selected = agents[sel]!;
+          close();
+          overlay.onDefault(selected);
+          toast(`Default agent: ${selected.name}`, "ci-pass");
         }
         return;
       }
@@ -714,7 +749,13 @@ function renderOverlay(
     case "help":
       return <Help view={view} />;
     case "swap":
-      return <SwapOverlay slice={overlay.slice} active={overlay.active} />;
+      return (
+        <SwapOverlay
+          slice={overlay.slice}
+          active={overlay.active}
+          replacing={overlay.replacing}
+        />
+      );
     case "stack":
       return <StackActionsOverlay slices={overlay.slices} conflictWith={overlay.conflictWith} />;
     case "remove":
@@ -741,7 +782,9 @@ function renderOverlay(
         />
       );
     case "agentPicker":
-      return <AgentPickerOverlay agents={overlay.agents} sel={overlay.sel} slice={overlay.slice} />;
+      return <AgentPickerOverlay mode="launch" agents={overlay.agents} sel={overlay.sel} slice={overlay.slice} preferredAgent={overlay.preferredAgent} />;
+    case "agentConfig":
+      return <AgentPickerOverlay mode="configure" agents={overlay.agents} sel={overlay.sel} preferredAgent={overlay.preferredAgent} />;
     case "conflicts":
       return <ConflictRadarOverlay conflicts={conflicts} scroll={overlay.scroll} height={height} />;
     case "summary":

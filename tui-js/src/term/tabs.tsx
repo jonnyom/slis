@@ -35,14 +35,15 @@ export type TabEntry =
   | { kind: "session"; slice: string; opts: TermSessionOpts }
   | { kind: "command"; id: string; title: string; argv: string[]; cwd?: string; exited: boolean; code?: number };
 
-/** The stable id a tab is keyed by (slice for sessions, id for commands). */
+/** The stable id a tab is keyed by. Agent and shell tabs may coexist per slice. */
 export function tabKey(t: TabEntry): string {
-  return t.kind === "session" ? t.slice : t.id;
+  return t.kind === "session" ? `${t.opts.kind}:${t.slice}` : t.id;
 }
 
 /** The label shown in the tab bar. Session tabs annotate the picked agent. */
 export function tabLabel(t: TabEntry): string {
   if (t.kind !== "session") return t.title;
+  if (t.opts.kind === "shell") return `${t.slice} · shell`;
   return t.opts.agentLabel ? `${t.slice} · ${t.opts.agentLabel}` : t.slice;
 }
 
@@ -87,7 +88,7 @@ function TermTab({
       if (visibleRef.current) renderer.requestRender();
     };
     if (entry.kind === "session") {
-      const session = manager.session(entry.slice);
+      const session = manager.session(key, entry.slice);
       const offExit = session.onExit(() => onSessionExit(key));
       session.attach(cols, rows, feed, entry.opts).catch((err) => {
         term.feed(`\r\n[slis] failed to attach session: ${String(err)}\r\n`);
@@ -189,7 +190,9 @@ function TabBar({
           const on = key === active;
           const glyph =
             t.kind === "session"
-              ? sessionBadge(statuses[t.slice] ?? "none")
+              ? t.opts.kind === "shell"
+                ? { glyph: "›", color: color.live }
+                : sessionBadge(statuses[t.slice] ?? "none")
               : {
                   glyph: t.exited ? (t.code === 0 ? "✓" : "✗") : "▸",
                   color: t.exited ? (t.code === 0 ? color.live : color.missing) : color.title,

@@ -14,12 +14,12 @@ export class TermManager {
   private readonly sessions = new Map<string, TermSession>();
   private readonly commands = new Map<string, CommandSession>();
 
-  /** Get-or-create the (not-yet-attached) tmux session for a slice. */
-  session(slice: string): TermSession {
-    let s = this.sessions.get(slice);
+  /** Get-or-create a (not-yet-attached) agent or shell tmux client. */
+  session(key: string, slice: string): TermSession {
+    let s = this.sessions.get(key);
     if (!s) {
       s = new TermSession(slice);
-      this.sessions.set(slice, s);
+      this.sessions.set(key, s);
     }
     return s;
   }

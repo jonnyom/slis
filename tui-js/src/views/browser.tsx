@@ -36,6 +36,7 @@ import { listHints } from "./browser.hints";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
 import { isQuitKey, normalizeKeyName } from "../util/keys";
+import { shortcutAction } from "../util/shortcut-contract";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
 import { attention, diffColor, glyph, theme } from "../theme";
@@ -46,6 +47,7 @@ import { HintBar, type Hint } from "../components/hintbar";
 import { StatusGlyph } from "../components/statusglyph";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
+import type { OpenTermMode } from "../term/session";
 
 export interface BrowserProps {
   enabled: boolean;
@@ -59,7 +61,8 @@ export interface BrowserProps {
   width: number;
   height: number;
   onEnter: (slice: string, entry?: CockpitEntry) => void;
-  onOpenTerm: (slice: string, launchAgent: boolean) => void;
+  onOpenTerm: (slice: string, mode: OpenTermMode) => void;
+  onConfigureAgents: () => void;
   onFocusSlice: (slice: string) => void;
   onRefresh: () => void;
   onToggleProcs: () => void;
@@ -594,6 +597,7 @@ export function Browser(props: BrowserProps): ReactNode {
   useKeyboard((key: KeyEvent) => {
     if (!enabled) return;
     const name = normalizeKeyName(key);
+    const shortcut = shortcutAction("browser", name);
 
     if (searching) {
       if (name === "escape") {
@@ -678,8 +682,12 @@ export function Browser(props: BrowserProps): ReactNode {
     if (name === "i") return overlays.candidates(props.ls.candidates ?? []);
     if (name === "I") return overlays.adopt();
     if (name === "m") {
-      if (selected.size > 0) overlays.group([...selected], () => setSelected(new Set()));
-      else overlays.info("Group", "Select slices with space, then m to group them.");
+      // Match the other batch actions: an explicit multi-selection wins, while
+      // an empty selection acts on the focused row. A one-slice grouping is a
+      // useful rename and, importantly, opens the real input instead of a
+      // dead-end instructional modal.
+      const targets = targetsFor();
+      if (targets.length > 0) overlays.group(targets, () => setSelected(new Set()));
       return;
     }
     if (name === "u") {
@@ -697,7 +705,7 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) overlays.yankPrStack(focusedSlice.slice.name);
       return;
     }
-    if (name === "d" && !key.ctrl) {
+    if (shortcut === "clear-slice" && !key.ctrl) {
       const targets = targetsFor();
       if (targets.length === 0) return;
       const live = targets.filter((t) => views.find((v) => v.slice.name === t)?.slice.active);
@@ -706,6 +714,7 @@ export function Browser(props: BrowserProps): ReactNode {
       else overlays.remove(targets);
       return;
     }
+    if (shortcut === "configure-agents") return props.onConfigureAgents();
     // M4 — red CI is actionable from the browser. `v` opens the focused slice
     // straight into the cockpit PRs panel with the failing-CI log shown (one key
     // from red to why); `F` runs fix-ci through the existing PTY path.
@@ -717,12 +726,20 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) overlays.fixCi(focusedSlice.slice.name);
       return;
     }
-    if (name === "a") {
-      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, false);
+    if (shortcut === "attach-agent") {
+      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, "agent");
       return;
     }
-    if (name === "C") {
-      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, true);
+    if (shortcut === "launch-agent") {
+      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, "agent-launch");
+      return;
+    }
+    if (shortcut === "pending-review") {
+      if (focusedSlice) overlays.review(focusedSlice.slice.name, props.onRefresh);
+      return;
+    }
+    if (shortcut === "open-shell") {
+      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, "shell");
       return;
     }
     if (name === "e" || name === "o") {

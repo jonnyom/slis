@@ -18,6 +18,7 @@ import (
 	diffpkg "github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/forge"
+	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
@@ -319,6 +320,7 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 				ordered := st.Lineage(m.Branch)
 				stack := make([]OrderedBranchDTO, 0, len(ordered)+1)
 				sawCurrent := false
+				sawTrunk := false
 				maxDepth := -1
 				for _, ob := range ordered {
 					if ob.Name == m.Branch {
@@ -326,6 +328,9 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 					}
 					if ob.Depth > maxDepth {
 						maxDepth = ob.Depth
+					}
+					if ob.Trunk {
+						sawTrunk = true
 					}
 					node := OrderedBranchDTO{
 						Name:         ob.Name,
@@ -344,6 +349,34 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 						}
 					}
 					stack = append(stack, node)
+				}
+				// An untracked or partially-recorded Graphite branch has no lineage,
+				// but Git can still provide the repository trunk. Preserve the same
+				// trunk → member structure every repo group uses without mutating gt.
+				if !sawTrunk {
+					base := git.DetectBase(m.WorktreePath)
+					if base != "" && git.RefExists(m.WorktreePath, base) {
+						if base == m.Branch {
+							if !sawCurrent {
+								stack = append(stack, OrderedBranchDTO{Name: base, Trunk: true})
+								sawCurrent = true
+							} else {
+								for i := range stack {
+									if stack[i].Name == m.Branch {
+										stack[i].Trunk = true
+										stack[i].Depth = 0
+									}
+								}
+							}
+							maxDepth = 0
+						} else {
+							for i := range stack {
+								stack[i].Depth++
+							}
+							stack = append([]OrderedBranchDTO{{Name: base, Trunk: true}}, stack...)
+							maxDepth++
+						}
+					}
 				}
 				// A newly-created/untracked Graphite branch may be absent from gt's
 				// lineage even though it is the worktree's actual branch. Never hide

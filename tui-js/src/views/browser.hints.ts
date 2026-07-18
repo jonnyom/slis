@@ -21,12 +21,16 @@ export function listHints(focused: SliceView | undefined, searchActive: boolean)
   const waiting = focused?.status === "waiting-input";
   const hints: Hint[] = [
     { key: "enter", label: "open" },
-    { key: "a", label: waiting ? "answer" : "term" },
+    { key: "a", label: waiting ? "answer" : "agent" },
+    { key: "C", label: "launch" },
+    { key: "V", label: "review" },
+    { key: "t", label: "shell" },
   ];
   if (hasFailingCi(focused)) hints.push({ key: "v", label: "why" }, { key: "F", label: "fix" });
   if (focused && needsRestack(focused)) hints.push({ key: "R", label: "stack" });
   hints.push({ key: "w", label: "swap" });
   if (searchActive) hints.push({ key: "n/N", label: "match" });
   else hints.push({ key: "space", label: "select" }, { key: "/", label: "search" });
+  hints.push({ key: ",", label: "config" });
   return hints;
 }

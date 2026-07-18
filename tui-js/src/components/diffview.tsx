@@ -23,6 +23,7 @@ import {
 } from "../diff/rows";
 import { color, colorForKind, diffColor, glyph, statusColor } from "../theme";
 import { normalizeKeyName } from "../util/keys";
+import { shortcutAction } from "../util/shortcut-contract";
 import { BOLD, DIM } from "./ui";
 
 export type DiffMode = "unified" | "split";
@@ -233,7 +234,9 @@ export interface DiffViewProps {
   onClose: () => void;
   onQuit: () => void;
   onAttach: () => void;
-  // c → comment on the selected line/range; C → open pending review.
+  onLaunchAgent: () => void;
+  onConfigureAgents: () => void;
+  // c → comment on the selected line/range; V → open pending review.
   onComment: (target: DiffCommentTarget) => void;
   onReview: () => void;
 }
@@ -442,8 +445,11 @@ export function DiffView(props: DiffViewProps): ReactNode {
   useKeyboard((key) => {
     if (!enabled) return;
     const name = normalizeKeyName(key);
+    const shortcut = shortcutAction("diff", name);
+    if (shortcut === "configure-agents") return props.onConfigureAgents();
     if (name === "q") return props.onQuit();
-    if (name === "a") return props.onAttach();
+    if (shortcut === "attach-agent") return props.onAttach();
+    if (shortcut === "launch-agent") return props.onLaunchAgent();
     if (pane === "diff" && mode === "split" && (name === "h" || name === "left")) {
       switchDiffSide("old");
       return;
@@ -469,7 +475,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
       if (pane === "files") return setPane("diff");
       return commentOnSelection();
     }
-    if (name === "C") return props.onReview();
+    if (shortcut === "pending-review") return props.onReview();
     if (name === "t") return props.onToggleMode();
     if (name === "b") return props.onCycleScope();
     if (name === "j" || name === "down")
@@ -538,7 +544,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           <span fg={color.candidate}>{mode === "split" ? "side-by-side" : "unified"}</span>
         </text>
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          {pane === "files" ? "[enter/tab] select lines" : "[v/space] toggle range  [c] comment"}  [C] review  [a] agent  [esc] back
+          {pane === "files" ? "[enter/tab] select lines" : "[v/space] toggle range  [c] comment"}  [V] review  [a] attach  [C] launch  [esc] back
         </text>
       </box>
 
@@ -642,7 +648,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           {pane === "files"
             ? "j/k file · enter/tab review lines · c start comment"
             : `j/k ${activeLine?.side ?? diffSide} line${activeLine ? ` ${activeLine.line}` : ""}${mode === "split" ? " · h/l old/new side" : ""} · v/space range · c comment · n/p hunk`}
-          {hunkCount ? ` (${hunkCount})` : ""} · C review · a agent · t unified/split · b scope · esc back
+          {hunkCount ? ` (${hunkCount})` : ""} · V review · a attach · C launch · t unified/split · b scope · esc back
         </text>
       </box>
     </box>

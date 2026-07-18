@@ -47,6 +47,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
     label: "stack & prs",
     bindings: [
       ["R", "stack actions: restack / submit / merge / sync"],
+      ["V", "pending-review overlay: list comments · x delete · s send to agent"],
       ["v", "open cockpit PRs panel + failing-CI log"],
       ["F", "fix-ci: point the agent at failing CI"],
       ["Y", "copy PR-stack markdown to clipboard"],
@@ -56,8 +57,10 @@ const BROWSER_GROUPS: BindingGroup[] = [
   {
     label: "session",
     bindings: [
-      ["a", "open session terminal tab"],
-      ["C", "launch agent + open terminal tab (picks when >1 configured)"],
+      ["a", "open the slice's agent terminal"],
+      ["C", "launch agent + open terminal tab (picks when multiple are available)"],
+      [",", "configure the default launch agent"],
+      ["t", "open a separate persistent shell terminal"],
       ["P", "processes across all slices"],
     ],
   },
@@ -96,7 +99,7 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     label: "review",
     bindings: [
       ["c", "focus rich-diff lines, then comment on the selected line / range"],
-      ["C", "pending-review overlay: list comments · x delete · s send to agent"],
+      ["V", "pending-review overlay: list comments · x delete · s send to agent"],
     ],
   },
   {
@@ -125,7 +128,10 @@ const COCKPIT_GROUPS: BindingGroup[] = [
       ["s", "cycle process sort cpu → mem → pid"],
       ["x / X", "kill process / kill subtree (SIGTERM)"],
       ["P", "processes across all slices"],
-      ["a", "open terminal tab (launches the agent when autostart is set)"],
+      ["a", "open the slice's agent terminal"],
+      ["C", "launch an available coding agent"],
+      [",", "configure the default launch agent"],
+      ["t", "open a separate persistent shell terminal"],
       ["S", "force AI summary (s: summary outside Processes panel)"],
     ],
   },
@@ -137,7 +143,9 @@ const DIFF_BINDINGS: Binding[] = [
   ["Tab / Enter", "move focus between the file list and diff lines"],
   ["v / Space", "toggle multi-line selection, then extend it with j / k"],
   ["c", "comment on the selected diff line / range (feeds the agent)"],
-  ["C", "pending-review overlay (list / delete / send)"],
+  ["V", "pending-review overlay (list / delete / send)"],
+  ["C", "launch an available coding agent"],
+  [",", "configure the default launch agent"],
   ["a", "attach to the slice agent without leaving the diff"],
   ["h / l", "in side-by-side mode, select old/deleted or new/added side"],
   ["t", "toggle unified / side-by-side"],

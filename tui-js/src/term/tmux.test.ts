@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { sessionHasPaneOutsideMembers, type TermMember } from "./tmux";
+import { sessionHasPaneOutsideMembers, sessionName, type TermMember } from "./tmux";
+
+describe("sessionName", () => {
+  test("keeps the existing agent namespace for compatibility", () => {
+    expect(sessionName("feature.one")).toBe("slis/feature-one");
+  });
+
+  test("gives ad-hoc shells an independent tmux namespace", () => {
+    expect(sessionName("feature.one", "shell")).toBe("slis-shell/feature-one");
+  });
+});
 
 const members: TermMember[] = [
   {

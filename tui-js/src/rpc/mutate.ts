@@ -154,8 +154,38 @@ export function swapArgs(slice: string, active: boolean): string[] {
   return active ? ["deactivate"] : ["activate", slice, "--stash"];
 }
 
-export function swapSlice(slice: string, active: boolean): Promise<MutateResult> {
-  return run(swapArgs(slice, active));
+// A handoff is deliberately represented as two commands: deactivate must
+// succeed before activate is attempted. Keeping the plan pure makes the safety
+// invariant easy to test and keeps the confirmation UI honest.
+export function swapPlan(slice: string, active: boolean, replacing?: string): string[][] {
+  if (active) return [["deactivate"]];
+  if (replacing && replacing !== slice) {
+    return [["deactivate"], ["activate", slice, "--stash"]];
+  }
+  return [["activate", slice, "--stash"]];
+}
+
+export async function swapSlice(
+  slice: string,
+  active: boolean,
+  replacing?: string,
+): Promise<MutateResult> {
+  const plan = swapPlan(slice, active, replacing);
+  if (plan.length === 1) return run(plan[0]!);
+
+  const deactivated = await run(plan[0]!);
+  if (deactivated.code !== 0) return deactivated;
+
+  const activated = await run(plan[1]!);
+  if (activated.code === 0) return activated;
+
+  const note = `${replacing} was swapped out, but ${slice} could not be swapped in. ` +
+    `No slice is currently active; retry swapping in ${slice}.`;
+  return {
+    ...activated,
+    stdout: [deactivated.stdout, activated.stdout].filter(Boolean).join("\n"),
+    stderr: [note, activated.stderr].filter(Boolean).join("\n"),
+  };
 }
 
 // ── slice lifecycle ──────────────────────────────────────────────────────────
@@ -297,6 +327,12 @@ export function adoptBranch(branch: string): Promise<MutateResult> {
 
 export function editorSet(bin: string): Promise<MutateResult> {
   return run(["editor", "set", bin]);
+}
+
+// Persist the selected launch agent in workspace.yaml. XDG UI preferences are
+// still updated by the caller for compatibility with older slis releases.
+export function agentDefaultSet(name: string): Promise<MutateResult> {
+  return run(["agent", "set-default", name]);
 }
 
 export function editSlice(slice: string): Promise<MutateResult> {

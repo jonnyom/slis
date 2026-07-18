@@ -5,6 +5,7 @@ import {
   mutationRoute,
   spawnCapture,
   swapArgs,
+  swapPlan,
 } from "./mutate";
 
 describe("mutationRoute", () => {
@@ -25,6 +26,7 @@ describe("mutationRoute", () => {
       "import",
       "ignore",
       "editor",
+      "agent",
       "ci-rerun",
       "edit",
       "summary",
@@ -42,6 +44,27 @@ describe("swapArgs", () => {
 
   test("swap-out deactivates the current journal", () => {
     expect(swapArgs("feature", true)).toEqual(["deactivate"]);
+  });
+});
+
+describe("swapPlan", () => {
+  test("hands off the live slice before activating another", () => {
+    expect(swapPlan("test", false, "showing-mar")).toEqual([
+      ["deactivate"],
+      ["activate", "test", "--stash"],
+    ]);
+  });
+
+  test("does not deactivate when no other slice is live", () => {
+    expect(swapPlan("test", false)).toEqual([["activate", "test", "--stash"]]);
+  });
+
+  test("does not create a handoff from a stale self-reference", () => {
+    expect(swapPlan("test", false, "test")).toEqual([["activate", "test", "--stash"]]);
+  });
+
+  test("swapping out remains a single deactivation", () => {
+    expect(swapPlan("test", true, "test")).toEqual([["deactivate"]]);
   });
 });
 

@@ -103,6 +103,9 @@ type sessionsResult struct {
 	// Editor is the configured editor binary (workspace.yaml sessions.editor),
 	// "" when unset — the front-end's e/o keys use it to skip the editor picker.
 	Editor string `json:"editor,omitempty"`
+	// DefaultAgent is the persisted selection from workspace.yaml. An older
+	// workspace leaves it empty, causing the front-end to ask once.
+	DefaultAgent string `json:"default_agent,omitempty"`
 }
 
 // sliceParams is the shared param shape for methods that name a slice.

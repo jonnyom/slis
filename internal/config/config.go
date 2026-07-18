@@ -59,6 +59,10 @@ type Sessions struct {
 	// empty falls back to the single default agent derived from Harness/Agent
 	// (see AgentList). Each entry needs a non-empty name and cmd.
 	Agents []AgentSpec `yaml:"agents,omitempty"`
+	// DefaultAgent is the display name selected by the TUI. It may refer to an
+	// explicitly configured entry or to a well-known agent detected on PATH by
+	// the front-end. Empty means ask when multiple choices are available.
+	DefaultAgent string `yaml:"default_agent,omitempty"`
 	// Autostart launches the harness in a slice's session automatically when the
 	// session is first attached (same as pressing `C`).
 	Autostart bool `yaml:"autostart"`

@@ -7,10 +7,14 @@
 // The `data` callback delivers raw VT bytes; the caller feeds them to a ghostty
 // renderable. `write` forwards raw keystrokes; `resize` propagates the pane size.
 
-import { agentLaunchLine, activePaneCommand, ensureSession, isShellCmd, sessionName, sendKeys, type SessionOpts, type TermMember } from "./tmux";
+import { agentLaunchLine, activePaneCommand, ensureSession, isShellCmd, sessionName, sendKeys, type SessionKind, type SessionOpts, type TermMember } from "./tmux";
+
+/** User intent when opening a terminal from the TUI. */
+export type OpenTermMode = "agent" | "agent-launch" | "shell";
 
 export interface TermSessionOpts {
   slice: string;
+  kind: SessionKind;
   members: TermMember[];
   active: boolean;
   wsRoot: string;
@@ -54,10 +58,10 @@ export class TermSession {
   async attach(cols: number, rows: number, onData: (bytes: Uint8Array) => void, opts: TermSessionOpts): Promise<void> {
     if (this.attached) return;
 
-    await ensureSession(opts.slice, opts.members, opts.sessionOpts);
+    await ensureSession(opts.slice, opts.members, opts.sessionOpts, opts.kind);
 
     // Only type a launch line at a shell prompt — never into a running agent.
-    if (opts.launchAgent && isShellCmd(await activePaneCommand(opts.slice))) {
+    if (opts.kind === "agent" && opts.launchAgent && isShellCmd(await activePaneCommand(opts.slice, opts.kind))) {
       await sendKeys(
         opts.slice,
         agentLaunchLine({
@@ -68,6 +72,7 @@ export class TermSession {
           active: opts.active,
           wsRoot: opts.wsRoot,
         }),
+        opts.kind,
       );
     }
 
@@ -81,7 +86,7 @@ export class TermSession {
         data: (_t: unknown, bytes: Uint8Array) => onData(bytes),
       },
     } as unknown as Parameters<typeof Bun.spawn>[1];
-    const proc = Bun.spawn(["tmux", "attach", "-t", sessionName(opts.slice)], spawnOpts) as unknown as {
+    const proc = Bun.spawn(["tmux", "attach", "-t", sessionName(opts.slice, opts.kind)], spawnOpts) as unknown as {
       terminal: PtyHandle;
       kill(): void;
       exited: Promise<number>;

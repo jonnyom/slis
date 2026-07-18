@@ -26,11 +26,12 @@ func (s *Server) hello() (interface{}, *rpcError) {
 		Version:       s.version,
 		WorkspaceRoot: s.ws.Root,
 		Sessions: sessionsResult{
-			Harness:   s.ws.Sessions.HarnessName(),
-			Agent:     s.ws.Sessions.AgentCommand(),
-			Layout:    s.ws.Sessions.Layout,
-			Autostart: s.ws.Sessions.Autostart,
-			Editor:    s.ws.Sessions.Editor,
+			Harness:      s.ws.Sessions.HarnessName(),
+			Agent:        s.ws.Sessions.AgentCommand(),
+			Layout:       s.ws.Sessions.Layout,
+			Autostart:    s.ws.Sessions.Autostart,
+			Editor:       s.ws.Sessions.Editor,
+			DefaultAgent: s.ws.Sessions.DefaultAgent,
 		},
 		Agents: agents,
 	}, nil

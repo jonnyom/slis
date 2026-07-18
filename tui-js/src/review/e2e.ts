@@ -1,7 +1,7 @@
 // End-to-end proof for the inline-review loop (F2): run the REAL app
 // (src/index.tsx) in a Bun PTY with the fake sidecar, drive the whole loop —
 // open the rich diff → focus lines → select a range → `c` compose →
-// submit → `C` list it → `s`/`y`
+// submit → `V` list it → `s`/`y`
 // send → toast — and read what it actually paints (via ghostty's parser). No
 // human, no real `slis` binary (SLIS_FAKE drives the shared fake review store).
 //
@@ -36,6 +36,15 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const boot = vt.getText();
   const sawBrowser = boot.includes("checkout") && boot.toLowerCase().includes("slices");
 
+  // V works directly from the browser; dismiss this first inspection before
+  // driving the full comment loop from the cockpit.
+  pty.write("V");
+  await sleep(700);
+  const browserReview = vt.getText();
+  const browserVReview = browserReview.toLowerCase().includes("pending");
+  pty.write("\x1b");
+  await sleep(300);
+
   // Open the focused slice (checkout) cockpit, then the rich diff.
   pty.write("l");
   await sleep(900);
@@ -67,8 +76,8 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const afterAdd = vt.getText();
   const sawAddToast = afterAdd.includes("Added review comment");
 
-  // C → pending-review overlay lists the comment(s).
-  pty.write("C");
+  // V → pending-review overlay lists the comment(s).
+  pty.write("V");
   await sleep(900);
   const reviewList = vt.getText();
   const sawList =
@@ -109,12 +118,13 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
 
   const R: Record<string, boolean> = {
     browser_paints_slice_list: sawBrowser,
+    browser_V_opens_pending_reviews: browserVReview,
     cockpit_breadcrumb_comment_badge: sawBadge,
     rich_diff_opens: sawDiff,
     gutter_marker_visible: sawGutterMarker,
     range_opens_comment_composer: sawComposer,
     submit_shows_add_toast: sawAddToast,
-    C_lists_pending_comments: sawList,
+    V_lists_pending_comments: sawList,
     s_shows_send_confirm: sawConfirm,
     y_sends_shows_toast: sawSendToast,
     esc_chain_returns_to_browser: escChain,

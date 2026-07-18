@@ -5,12 +5,55 @@
 
 import type { AgentSpec } from "../rpc/types";
 
+export const KNOWN_AGENTS: readonly AgentSpec[] = [
+  { name: "Claude Code", cmd: ["claude"] },
+  { name: "Codex", cmd: ["codex"] },
+  { name: "Gemini CLI", cmd: ["gemini"] },
+  { name: "Cursor Agent", cmd: ["cursor-agent"] },
+  { name: "OpenCode", cmd: ["opencode"] },
+];
+
+// Preserve every configured command (including flags/custom wrappers), then
+// append installed well-known harnesses that are not already represented.
+export function availableAgents(
+  configured: AgentSpec[] | undefined,
+  onPath: (binary: string) => boolean,
+): AgentSpec[] {
+  const result = [...(configured ?? [])];
+  const binaryName = (command: string | undefined) => command?.split(/[\\/]/).pop();
+  const represented = new Set(result.map((agent) => binaryName(agent.cmd[0])).filter(Boolean));
+  for (const agent of KNOWN_AGENTS) {
+    const binary = agent.cmd[0]!;
+    if (onPath(binary) && !represented.has(binary)) {
+      result.push({ name: agent.name, cmd: [...agent.cmd] });
+      represented.add(binary);
+    }
+  }
+  return result;
+}
+
 // pickableAgents returns the agents worth showing a picker for — the list only
 // when it holds more than one. Tolerates an older sidecar whose `hello` omitted
 // the field (undefined → no picker, so the caller keeps the single-agent path).
 export function pickableAgents(agents: AgentSpec[] | undefined): AgentSpec[] {
   const list = agents ?? [];
   return list.length > 1 ? list : [];
+}
+
+// Resolve a persisted default by display name. workspace.yaml wins, while the
+// legacy XDG preference remains a fallback during migration. Stale names are
+// ignored so a removed agent returns the user to the picker safely.
+export function findSavedAgent(
+  agents: AgentSpec[],
+  configuredName?: string,
+  legacyName?: string,
+): AgentSpec | undefined {
+  for (const name of [configuredName, legacyName]) {
+    if (!name) continue;
+    const found = agents.find((agent) => agent.name === name);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;

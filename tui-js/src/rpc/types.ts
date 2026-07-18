@@ -47,6 +47,8 @@ export interface SessionsConfig {
   // Configured editor binary (workspace.yaml sessions.editor). Empty/undefined
   // means auto-detect; when set, the e/o editor keys skip the picker.
   editor?: string;
+  // Persisted display name from workspace.yaml sessions.default_agent.
+  default_agent?: string;
 }
 
 // ── ls ─────────────────────────────────────────────────────────────────────
