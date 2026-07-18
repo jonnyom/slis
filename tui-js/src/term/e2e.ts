@@ -83,6 +83,7 @@ async function main() {
   } catch {
     // best-effort teardown
   }
+  const lastPaint = vt.getText();
   vt.destroy();
   await sh(["tmux", "kill-session", "-t", SESSION]);
 
@@ -98,7 +99,7 @@ async function main() {
   console.log("============================================================");
   const ok = Object.values(R).every(Boolean);
   if (!ok) {
-    console.log("\n--- last paint (first 16 lines) ---\n" + vt.getText().split("\n").slice(0, 16).join("\n"));
+    console.log("\n--- last paint (first 16 lines) ---\n" + lastPaint.split("\n").slice(0, 16).join("\n"));
   }
   process.exit(ok ? 0 : 1);
 }

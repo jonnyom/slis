@@ -6,6 +6,7 @@
 //   └ footer hints ─────────────────────────────────────────┘
 
 import { useKeyboard } from "@opentui/react";
+import type { KeyEvent } from "@opentui/core";
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   CaptureResult,
@@ -22,6 +23,9 @@ import {
   workState,
   type SliceView,
 } from "../state/derive";
+import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
+import { editText } from "../overlays/textinput";
+import type { OverlayApi } from "../overlays/useOverlays";
 import { color, glyph } from "../theme";
 import { Panel } from "../components/panel";
 import { BOLD, DIM } from "../components/ui";
@@ -35,15 +39,25 @@ export interface BrowserProps {
   views: SliceView[];
   ls: LsResult;
   conflicts: ConflictsResult | null;
+  overlays: OverlayApi;
   width: number;
   height: number;
   onEnter: (slice: string) => void;
-  onSwap: (slice: string) => void;
   onOpenTerm: (slice: string, launchAgent: boolean) => void;
   onRefresh: () => void;
-  onToggleHelp: () => void;
   onToggleProcs: () => void;
   onQuit: () => void;
+}
+
+// Slices that share a changed file with `slice` — the stack-actions pre-merge
+// heads-up (same signal the conflict radar shows).
+function conflictPartners(conflicts: ConflictsResult | null, slice: string): string[] {
+  const set = new Set<string>();
+  for (const o of conflicts?.overlaps ?? []) {
+    if (!o.slices.includes(slice)) continue;
+    for (const s of o.slices) if (s !== slice) set.add(s);
+  }
+  return [...set];
 }
 
 function glyphFor(view: SliceView): { g: string; c: string; bold: boolean } {
@@ -65,10 +79,12 @@ const SliceRow = memo(function SliceRow({
   view,
   focused,
   listFocused,
+  selected,
 }: {
   view: SliceView;
   focused: boolean;
   listFocused: boolean;
+  selected: boolean;
 }): ReactNode {
   const { g, c, bold } = glyphFor(view);
   const marker = focused && listFocused ? glyph.focusBar : " ";
@@ -76,6 +92,7 @@ const SliceRow = memo(function SliceRow({
   return (
     <text wrapMode="none">
       <span fg={color.cursorBar}>{marker}</span>
+      <span fg={selected ? color.ready : color.dim}>{selected ? glyph.selected : " "}</span>
       <span fg={c} attributes={bold ? BOLD : 0}>
         {g}
       </span>
@@ -93,10 +110,14 @@ function PulseBar({
   count,
   views,
   version,
+  search,
+  selectedCount,
 }: {
   count: number;
   views: SliceView[];
   version: string;
+  search: string | null;
+  selectedCount: number;
 }): ReactNode {
   const active = views.find((v) => v.slice.active);
   const needYou = views.filter(
@@ -110,6 +131,12 @@ function PulseBar({
         slis
       </span>
       <span fg={color.dim}> · {count} slices</span>
+      {selectedCount > 0 ? (
+        <span fg={color.ready}>
+          {"  "}
+          {glyph.selected} {selectedCount} selected
+        </span>
+      ) : null}
       {active ? (
         <span fg={color.live}>
           {"  "}
@@ -132,6 +159,11 @@ function PulseBar({
         <span fg={color.restack}>
           {"  "}
           {glyph.restack} {restack} need restack
+        </span>
+      ) : null}
+      {search !== null ? (
+        <span fg={color.candidate}>
+          {"  "}/ {search === "" ? "…" : search}
         </span>
       ) : null}
       <span fg={color.dim}>  v{version}</span>
@@ -317,14 +349,17 @@ function Preview({
 }
 
 export function Browser(props: BrowserProps): ReactNode {
-  const { views, enabled } = props;
+  const { views, enabled, overlays } = props;
   const [filterIndex, setFilterIndex] = useState(0);
   const [focusIndex, setFocusIndex] = useState(0);
   const [hubFocus, setHubFocus] = useState<"rail" | "list">("list");
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [searching, setSearching] = useState(false);
+  const [search, setSearch] = useState("");
 
   const filter = FILTERS[filterIndex]!;
   const visible = useMemo(() => {
-    const list = views.filter(filter.match);
+    const list = views.filter((v) => filter.match(v) && matchesSearch(v.slice.name, search));
     if (filter.key === "8") {
       return [...list].sort((a, b) => {
         const r = attentionRank(a) - attentionRank(b);
@@ -332,7 +367,7 @@ export function Browser(props: BrowserProps): ReactNode {
       });
     }
     return list;
-  }, [views, filter]);
+  }, [views, filter, search]);
 
   // Keep focus in range as the visible set changes.
   useEffect(() => {
@@ -341,13 +376,41 @@ export function Browser(props: BrowserProps): ReactNode {
 
   const focusedSlice = visible[focusIndex];
 
-  useKeyboard((key) => {
+  const targetsFor = (): string[] => {
+    if (selected.size > 0) return [...selected];
+    return focusedSlice ? [focusedSlice.slice.name] : [];
+  };
+
+  useKeyboard((key: KeyEvent) => {
     if (!enabled) return;
     const name = key.name;
+
+    // Incremental search mode captures printable input.
+    if (searching) {
+      if (name === "escape") {
+        setSearch("");
+        setSearching(false);
+      } else if (name === "return" || name === "enter") {
+        setSearching(false);
+      } else {
+        setSearch((s) => editText(s, key));
+      }
+      return;
+    }
+
     if (name === "q") return props.onQuit();
-    if (name === "?") return props.onToggleHelp();
+    if (name === "?") return overlays.help();
     if (name === "P") return props.onToggleProcs();
     if (name === "r") return props.onRefresh();
+    if (name === "/") {
+      setSearch("");
+      setSearching(true);
+      return;
+    }
+    if (name === "escape" && search !== "") {
+      setSearch("");
+      return;
+    }
     if (name === "tab") {
       setHubFocus((f) => (f === "rail" ? "list" : "rail"));
       return;
@@ -373,8 +436,47 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) props.onEnter(focusedSlice.slice.name);
       return;
     }
+    if (name === "space") {
+      if (focusedSlice) setSelected((s) => toggleSelected(s, focusedSlice.slice.name));
+      return;
+    }
+    if (name === "A") {
+      setSelected((s) => toggleAllVisible(s, visible.map((v) => v.slice.name)));
+      return;
+    }
     if (name === "w") {
-      if (focusedSlice) props.onSwap(focusedSlice.slice.name);
+      if (focusedSlice) overlays.swap(focusedSlice.slice.name, focusedSlice.slice.active);
+      return;
+    }
+    if (name === "c") return overlays.create();
+    if (name === "i" || name === "I") return overlays.candidates(props.ls.candidates ?? []);
+    if (name === "m") {
+      if (selected.size > 0) overlays.group([...selected], () => setSelected(new Set()));
+      else overlays.info("Group", "Select slices with space, then m to group them.");
+      return;
+    }
+    if (name === "u") {
+      if (focusedSlice) overlays.ungroup(focusedSlice.slice.name);
+      return;
+    }
+    if (name === "R") {
+      const targets = targetsFor();
+      if (targets.length > 0)
+        overlays.stack(targets, conflictPartners(props.conflicts, targets[0]!));
+      return;
+    }
+    if (name === "!") return overlays.conflictRadar();
+    if (name === "Y") {
+      if (focusedSlice) overlays.yankPrStack(focusedSlice.slice.name);
+      return;
+    }
+    if (name === "d") {
+      const targets = targetsFor();
+      if (targets.length === 0) return;
+      const live = targets.filter((t) => views.find((v) => v.slice.name === t)?.slice.active);
+      if (live.length > 0)
+        overlays.info("Cannot clear", `${live.join(", ")} is live — swap back (w) first.`);
+      else overlays.remove(targets);
       return;
     }
     if (name === "a") {
@@ -394,7 +496,13 @@ export function Browser(props: BrowserProps): ReactNode {
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      <PulseBar count={views.length} views={views} version={props.version} />
+      <PulseBar
+        count={views.length}
+        views={views}
+        version={props.version}
+        search={searching ? search : null}
+        selectedCount={selected.size}
+      />
       <box flexDirection="row" flexGrow={1}>
         <box flexDirection="column" width={leftW}>
           <StatesRail
@@ -419,6 +527,7 @@ export function Browser(props: BrowserProps): ReactNode {
                   view={v}
                   focused={i === focusIndex}
                   listFocused={hubFocus === "list"}
+                  selected={selected.has(v.slice.name)}
                 />
               ))
             )}
@@ -432,8 +541,9 @@ export function Browser(props: BrowserProps): ReactNode {
         />
       </box>
       <text wrapMode="none" fg={color.dim} attributes={DIM}>
-        tab rail/list · j/k move · 1-8 filter · enter open · a/C term · w live · P
-        procs · r refresh · ? help · q quit
+        {searching
+          ? "type to filter · enter keep · esc clear"
+          : "enter open · a/C term · w live · space/A select · m/u group · R stack · c new · i import · ! radar · P procs · / search · Y copy · d clear · r refresh · ? help · q quit"}
       </text>
     </box>
   );

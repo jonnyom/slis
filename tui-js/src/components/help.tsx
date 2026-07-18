@@ -16,9 +16,18 @@ const BROWSER_BINDINGS: Binding[] = [
   ["a", "open session terminal tab"],
   ["C", "launch agent + open terminal tab"],
   ["w", "swap slice in / out (live)"],
+  ["space / A", "select one / all visible (batch ops)"],
+  ["m / u", "group selected / ungroup focused"],
+  ["R", "stack actions: restack / submit / merge / sync"],
+  ["c", "create a new slice (worktrees per repo)"],
+  ["i / I", "import / adopt discovered candidate worktrees"],
+  ["d", "clear finished slice(s): [y] remove · [f] force"],
+  ["Y", "copy PR-stack markdown to clipboard"],
+  ["!", "conflict radar (files changed by >1 slice)"],
   ["P", "processes across all slices"],
+  ["/", "search slices by name"],
   ["r", "refresh workspace"],
-  ["? ", "toggle this help"],
+  ["?", "toggle this help"],
   ["q", "quit"],
 ];
 
@@ -37,7 +46,12 @@ const COCKPIT_BINDINGS: Binding[] = [
   ["g / G", "top / bottom of right pane"],
   ["a / C", "open terminal tab (C also launches agent)"],
   ["w", "swap slice in / out (live)"],
-  ["esc", "back to browser"],
+  ["S", "force AI summary (s: summary outside Processes panel)"],
+  ["R", "stack actions: restack / submit / merge / sync"],
+  ["d", "clear this finished slice"],
+  ["y / Y", "yank diff / PR-stack markdown to clipboard"],
+  ["O", "open focused PR in browser"],
+  ["esc / h", "back to browser"],
   ["q", "quit"],
 ];
 

@@ -23,6 +23,7 @@ import type {
   RpcClient,
 } from "../rpc/types";
 import type { SliceView } from "../state/derive";
+import type { OverlayApi } from "../overlays/useOverlays";
 import { color, glyph, sessionBadge, sessionLabel } from "../theme";
 import { Panel } from "../components/panel";
 import { DiffPane } from "../components/diffpane";
@@ -57,12 +58,11 @@ export interface CockpitProps {
   enabled: boolean;
   client: RpcClient;
   view: SliceView;
+  overlays: OverlayApi;
   width: number;
   height: number;
   onBack: () => void;
-  onSwap: (slice: string) => void;
   onOpenTerm: (slice: string, launchAgent: boolean) => void;
-  onToggleHelp: () => void;
   onToggleProcs: () => void;
   onQuit: () => void;
 }
@@ -445,7 +445,7 @@ function ProcsRight({
 // ── cockpit ──────────────────────────────────────────────────────────────────
 
 export function Cockpit(props: CockpitProps): ReactNode {
-  const { view, client, enabled } = props;
+  const { view, client, enabled, overlays } = props;
   const slice = view.slice.name;
 
   const [panel, setPanel] = useState<PanelId>("stack");
@@ -528,6 +528,24 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setPendingKill(null);
   };
 
+  const focusedPr = () =>
+    panel === "prs"
+      ? (view.prs ?? [])[prSel]
+      : (view.prs ?? []).find((p) => p.repo === selectedRepo);
+
+  const yankDiff = () => {
+    const build = diff
+      ? Promise.resolve(diff)
+      : client.diff({ slice, scope, format: "patch" });
+    build.then(
+      (d) =>
+        overlays.yankDiff(
+          d.repos.map((r) => `# repo: ${r.repo}\n${r.patch ?? ""}`).join("\n"),
+        ),
+      () => {},
+    );
+  };
+
   useKeyboard((key) => {
     if (!enabled) return;
     // While the full diff view is open it owns the keyboard.
@@ -542,13 +560,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
     }
 
     if (name === "q") return props.onQuit();
-    if (name === "?") return props.onToggleHelp();
+    if (name === "?") return overlays.help();
     if (name === "P") return props.onToggleProcs();
     // On the Processes tree, h/← collapse and l/→ expand (esc still goes back).
     if (panel === "procs" && (name === "h" || name === "left")) return toggleCollapse(false);
     if (panel === "procs" && (name === "l" || name === "right")) return toggleCollapse(true);
     if (name === "escape" || name === "h") return props.onBack();
-    if (name === "w") return props.onSwap(slice);
+    if (name === "w") return overlays.swap(slice, view.slice.active);
     if (name === "a") return props.onOpenTerm(slice, false);
     if (name === "C") return props.onOpenTerm(slice, true);
     if (
@@ -579,6 +597,24 @@ export function Cockpit(props: CockpitProps): ReactNode {
     }
     if (name === "t" && panel === "stack") {
       setShowPatch((p) => !p);
+      return;
+    }
+    // stack actions + slice mutations (overlays own the confirm / run flow).
+    if (name === "R") return overlays.stack([slice], []);
+    if (name === "s") return overlays.summary(slice, false);
+    if (name === "S") return overlays.summary(slice, true);
+    if (name === "d" && !key.ctrl) {
+      if (view.slice.active)
+        overlays.info("Cannot clear", `${slice} is live — swap back (w) first.`);
+      else overlays.remove([slice]);
+      return;
+    }
+    if (name === "y") return yankDiff();
+    if (name === "Y") return overlays.yankPrStack(slice);
+    if (name === "O") {
+      const pr = focusedPr();
+      if (pr?.url) overlays.openPr(pr.url);
+      else overlays.info("Open PR", "No PR for the focused repo yet.");
       return;
     }
     if (name === "g") return scrollRef.current?.scrollTo(0);
@@ -627,15 +663,16 @@ export function Cockpit(props: CockpitProps): ReactNode {
   }, [panel, selectedRepo, view.prs, prSel, slice]);
 
   const footer = useMemo(() => {
+    const common = "w swap · R stack · s/S summary · y/Y yank · d clear · esc back";
     switch (panel) {
       case "stack":
-        return `tab panel · j/k repo · enter rich diff · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · ^d/^u scroll · w swap · a/C term · esc back`;
+        return `tab panel · j/k repo · enter rich diff · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · a/C term · ${common}`;
       case "prs":
-        return "tab panel · j/k pr · w swap · a/C term · esc back";
+        return `tab panel · j/k pr · O open PR · a/C term · ${common}`;
       case "session":
-        return "tab panel · w swap · a/C term · esc back";
+        return `tab panel · a/C term · ${common}`;
       case "procs":
-        return "tab panel · j/k proc · h/l fold · s sort · x/X kill · a/C term · esc back";
+        return "tab panel · j/k proc · h/l fold · s sort · x/X kill · a/C term · w swap · d clear · esc back";
     }
   }, [panel, scope, showPatch]);
 
