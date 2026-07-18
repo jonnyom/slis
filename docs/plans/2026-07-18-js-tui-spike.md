@@ -257,3 +257,17 @@ sleeps against a live PTY + tmux and is timing-flaky (observed ~1 failure in 4
 runs even on a fast laptop; a headless runner would be worse), so gating it
 keeps green CI meaningful. Set the `RUN_TUI_E2E` repo variable to `true` to run
 it on demand.
+
+## Next phase (mandated 2026-07-18, not yet done)
+
+Jonny's direction: the JS TUI is a FULL REPLACEMENT, not an experiment.
+1. Bare `slis` must launch the JS TUI by default (reuse `resolveUILaunch` from
+   internal/cli/ui.go in the root command; Go TUI stays reachable as an
+   escape hatch during transition, e.g. SLIS_TUI=go).
+2. Full feature parity audit vs internal/tui — known suspects: bulk-load
+   strategy for >25 slices (app.tsx refresh() fans out prStack+show for every
+   slice; Go TUI prompted before this), preview phantom-branch warning +
+   colorized diff tail, missing-slice dimmed rows, create-in-progress spinner.
+   Audit rigorously, then close every gap.
+3. Release packaging: goreleaser must build + ship `slis-ui` (bun compile)
+   per platform alongside `slis`, brew cask included.
