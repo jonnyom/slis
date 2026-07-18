@@ -1,0 +1,19 @@
+tui-js/src/rpc/types.ts
+  s_197478f89af866::t_f65f6b4dacb7af 125-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e6476dc08fa7d87d99032994b72a1677b551f1b8",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
