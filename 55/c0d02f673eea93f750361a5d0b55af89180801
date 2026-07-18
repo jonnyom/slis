@@ -1,0 +1,29 @@
+tui-js/src/views/browser.tsx
+  s_197478f89af866::t_c486a92d3381f3 394,405-410
+  s_197478f89af866::t_a4e51753c56eec 180-196
+  s_197478f89af866::t_8826bed831756c 26
+  s_197478f89af866::t_4c4d1bc29ceb88 580-593
+  s_197478f89af866::t_ebd25887cae479 607
+  s_197478f89af866::t_20dab5dad16453 110-118,122,129
+  s_197478f89af866::t_3d7a0c1c921f8f 475-484,543-544
+  s_197478f89af866::t_2f6404a1d096fc 540-542
+  s_197478f89af866::t_4b13cc5a28ecf3 140-143
+  s_197478f89af866::t_01a6471151c465 557
+  s_197478f89af866::t_36712f92e18803 411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "55c0d02f673eea93f750361a5d0b55af89180801",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
