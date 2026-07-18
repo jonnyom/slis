@@ -12,10 +12,18 @@ export function Divider({
   width?: number;
   color?: string;
 }): ReactNode {
-  const line = width && width > 0 ? "─".repeat(width) : "";
+  if (width && width > 0) {
+    return (
+      <text wrapMode="none" fg={color}>
+        {"─".repeat(width)}
+      </text>
+    );
+  }
   return (
-    <text wrapMode="none" fg={color}>
-      {width && width > 0 ? line : "─".repeat(200)}
-    </text>
+    <box width="100%" height={1} overflow="hidden">
+      <text wrapMode="none" fg={color}>
+        {"─".repeat(500)}
+      </text>
+    </box>
   );
 }

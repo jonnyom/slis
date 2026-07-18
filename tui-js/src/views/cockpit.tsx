@@ -1029,7 +1029,14 @@ export function Cockpit(props: CockpitProps): ReactNode {
             <scrollbox
               ref={scrollRef}
               flexGrow={1}
-              scrollbarOptions={{ visible: true }}
+              verticalScrollbarOptions={{
+                showArrows: false,
+                trackOptions: {
+                  foregroundColor: theme.border,
+                  backgroundColor: theme.surface,
+                },
+              }}
+              horizontalScrollbarOptions={{ visible: false }}
             >
               {panel === "stack" ? (
                 <DiffRight
