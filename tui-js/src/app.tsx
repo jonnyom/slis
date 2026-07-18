@@ -25,6 +25,7 @@ import type { SliceView } from "./state/derive";
 import { theme } from "./theme";
 import { Browser } from "./views/browser";
 import { Cockpit } from "./views/cockpit";
+import type { CockpitEntry } from "./views/cockpit.hints";
 import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { DIM } from "./components/ui";
@@ -62,6 +63,7 @@ export function App(): ReactNode {
 
   const [view, setView] = useState<"browser" | "cockpit">("browser");
   const [current, setCurrent] = useState<string | null>(null);
+  const [cockpitEntry, setCockpitEntry] = useState<CockpitEntry | null>(null);
   const [procsOpen, setProcsOpen] = useState(false);
 
   // Embedded terminal session tabs.
@@ -287,8 +289,9 @@ export function App(): ReactNode {
   );
 
   const onEnter = useCallback(
-    (slice: string) => {
+    (slice: string, entry?: CockpitEntry) => {
       if (bulkPhaseRef.current === "lazy" && !loadedRef.current.has(slice)) loadSlice(slice);
+      setCockpitEntry(entry ?? null);
       setCurrent(slice);
       setView("cockpit");
     },
@@ -432,6 +435,8 @@ export function App(): ReactNode {
           overlays={overlays}
           width={width}
           height={height}
+          initialPanel={cockpitEntry?.panel}
+          openCiLog={cockpitEntry?.ciLog}
           onBack={() => setView("browser")}
           onOpenTerm={openTerm}
           onToggleProcs={() => setProcsOpen(true)}

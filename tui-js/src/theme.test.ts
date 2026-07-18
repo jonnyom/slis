@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PrStackEntry, Slice } from "./rpc/types";
 import type { SliceView } from "./state/derive";
-import { attention, badgeFor, glyph, theme } from "./theme";
+import { attention, badgeFor, glyph, resultStatusStyle, theme } from "./theme";
 
 function view(extra: Partial<Slice> = {}, vextra: Partial<SliceView> = {}): SliceView {
   return {
@@ -138,5 +138,37 @@ describe("badgeFor", () => {
     expect(badgeFor("waiting")).toMatchObject({ color: theme.attn, glyph: glyph.waiting });
     expect(badgeFor("live")).toMatchObject({ color: theme.good, glyph: glyph.live });
     expect(badgeFor("merged")).toMatchObject({ color: theme.merged, glyph: glyph.done });
+  });
+});
+
+describe("distinct restack / stale / overlap glyphs (D1)", () => {
+  test("restack ⟳, stale ↓ and overlap ⧉ are three distinct marks", () => {
+    expect(glyph.restack).toBe("⟳");
+    expect(glyph.stale).toBe("↓");
+    expect(glyph.overlap).toBe("⧉");
+    expect(new Set([glyph.restack, glyph.stale, glyph.overlap]).size).toBe(3);
+  });
+
+  test("badgeFor maps stale → ↓ and restack → ⟳ (no shared ⚠)", () => {
+    expect(badgeFor("stale").glyph).toBe(glyph.stale);
+    expect(badgeFor("restack").glyph).toBe(glyph.restack);
+    expect(badgeFor("stale").glyph).not.toBe(glyph.dirty);
+  });
+});
+
+describe("resultStatusStyle (D2 — refusals are warn, not fake success/error)", () => {
+  test("warn is amber ⚠ — never the green success ✓ nor the red error ✗", () => {
+    const warn = resultStatusStyle("warn");
+    expect(warn.color).toBe(theme.attn);
+    expect(warn.glyph).toBe(glyph.dirty);
+    expect(warn.color).not.toBe(theme.good);
+    expect(warn.color).not.toBe(theme.bad);
+    expect(warn.glyph).not.toBe(glyph.inReview);
+    expect(warn.glyph).not.toBe(glyph.changes);
+  });
+
+  test("success is good ✓ and failure is bad ✗", () => {
+    expect(resultStatusStyle("success")).toEqual({ color: theme.good, glyph: glyph.inReview });
+    expect(resultStatusStyle("failure")).toEqual({ color: theme.bad, glyph: glyph.changes });
   });
 });

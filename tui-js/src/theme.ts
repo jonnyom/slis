@@ -129,12 +129,33 @@ export const glyph = {
   idle: "·",
   restack: "⟳",
   dirty: "⚠",
+  stale: "↓",
+  overlap: "⧉",
   selected: "✓",
   focusBar: "▎",
   filterMarker: "▸",
   arrow: "›",
   new: "＋",
 } as const;
+
+// ── Result-overlay outcome styling (D2) ──────────────────────────────────────
+//
+// A finished action reports one of three outcomes. A refusal / guard that
+// blocked with no error is a neutral **warn** (amber ⚠) — never dressed as a
+// green success ✓, and never the red error ✗.
+
+export type ResultStatus = "success" | "warn" | "failure";
+
+export function resultStatusStyle(status: ResultStatus): { color: string; glyph: string } {
+  switch (status) {
+    case "success":
+      return { color: theme.good, glyph: glyph.inReview };
+    case "warn":
+      return { color: theme.attn, glyph: glyph.dirty };
+    case "failure":
+      return { color: theme.bad, glyph: glyph.changes };
+  }
+}
 
 // ── Attention model — drives the "left edge" ─────────────────────────────────
 //
@@ -235,7 +256,7 @@ export function badgeFor(state: BadgeState): BadgeSpec {
     case "dirty":
       return { glyph: glyph.dirty, color: theme.attn, label: "dirty" };
     case "stale":
-      return { glyph: glyph.dirty, color: theme.attn, label: "stale" };
+      return { glyph: glyph.stale, color: theme.attn, label: "stale" };
     case "restack":
       return { glyph: glyph.restack, color: theme.attn, label: "restack" };
     case "ready":

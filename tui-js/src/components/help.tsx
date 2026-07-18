@@ -21,7 +21,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
       ["j / k", "move down / up"],
       ["1–8", "jump to filter"],
       ["g / G", "first / last slice"],
-      ["n / N", "next / prev slice needing you"],
+      ["n / N", "next / prev search match (while searching) · else attention slice"],
       ["enter / l", "open slice cockpit"],
       ["/", "search slices by name"],
       ["r", "refresh workspace"],
@@ -46,6 +46,8 @@ const BROWSER_GROUPS: BindingGroup[] = [
     label: "stack & prs",
     bindings: [
       ["R", "stack actions: restack / submit / merge / sync"],
+      ["v", "open cockpit PRs panel + failing-CI log"],
+      ["F", "fix-ci: point the agent at failing CI"],
       ["Y", "copy PR-stack markdown to clipboard"],
       ["!", "conflict radar (files changed by >1 slice)"],
     ],
@@ -111,6 +113,7 @@ const COCKPIT_GROUPS: BindingGroup[] = [
 
 const DIFF_BINDINGS: Binding[] = [
   ["j / k", "next / prev file"],
+  ["enter / l", "jump to the selected file's first hunk"],
   ["[ / ]  ·  p / n", "prev / next hunk"],
   ["t", "toggle unified / side-by-side"],
   ["b", "cycle diff scope"],
@@ -120,15 +123,20 @@ const DIFF_BINDINGS: Binding[] = [
 ];
 
 function BindingRows({ bindings }: { bindings: Binding[] }): ReactNode {
+  // A fixed key column + a flex-growing description that wraps rather than
+  // clips (M2): every hidden key is reachable only through this screen, so no
+  // description may be truncated at any terminal width.
   return (
     <>
       {bindings.map(([keys, help], i) => (
-        <text key={i} wrapMode="none">
-          <span fg={theme.focus} attributes={BOLD}>
+        <box key={i} flexDirection="row" width="100%">
+          <text wrapMode="none" fg={theme.focus} attributes={BOLD}>
             {keys.padEnd(18)}
-          </span>
-          <span fg={theme.text}>{help}</span>
-        </text>
+          </text>
+          <text flexGrow={1} wrapMode="word" fg={theme.text}>
+            {help}
+          </text>
+        </box>
       ))}
     </>
   );
@@ -150,10 +158,13 @@ function Legend(): ReactNode {
     [glyph.ready, "ready to clear", theme.good],
     [glyph.inReview, "in review", theme.focus],
     [glyph.live, "live / running", theme.good],
+    [glyph.restack, "needs restack", theme.attn],
+    [glyph.stale, "primary behind (stale)", theme.attn],
+    [glyph.overlap, "file overlap (>1 slice)", theme.attn],
     [glyph.idle, "idle", theme.textDim],
   ];
   return (
-    <text wrapMode="none">
+    <text wrapMode="word">
       {items.map(([g, label, c], i) => (
         <span key={i}>
           <span fg={c} attributes={BOLD}>
@@ -174,7 +185,7 @@ export function Help({ view }: { view: "browser" | "cockpit" }): ReactNode {
   const groups = view === "browser" ? BROWSER_GROUPS : COCKPIT_GROUPS;
   const title = view === "browser" ? "slis — Browser shortcuts" : "slis — Cockpit shortcuts";
   return (
-    <Card title={title} width={60} hints={[{ key: "esc", label: "close" }]}>
+    <Card title={title} width={84} hints={[{ key: "esc", label: "close" }]}>
       {groups.map((group) => (
         <Group key={group.label} label={group.label} bindings={group.bindings} />
       ))}
@@ -185,7 +196,7 @@ export function Help({ view }: { view: "browser" | "cockpit" }): ReactNode {
         </>
       ) : null}
       <Legend />
-      <text fg={theme.textDim} wrapMode="none">
+      <text fg={theme.textDim} wrapMode="word">
         in a terminal tab: ctrl+q returns here · tmux detach is C-b d · ? / esc to close
       </text>
     </Card>

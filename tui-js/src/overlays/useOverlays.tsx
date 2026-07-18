@@ -56,7 +56,7 @@ import {
 import { AdoptOverlay } from "./adopt";
 import { normalizeKeyName } from "../util/keys";
 import { Help } from "../components/help";
-import type { BadgeState } from "../theme";
+import type { BadgeState, ResultStatus } from "../theme";
 
 type Overlay =
   | { kind: "help" }
@@ -72,7 +72,7 @@ type Overlay =
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
   | { kind: "working"; text: string }
-  | { kind: "result"; title: string; body: string; ok: boolean }
+  | { kind: "result"; title: string; body: string; status: ResultStatus }
   | null;
 
 export interface OverlayApi {
@@ -172,13 +172,18 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
               kind: "result",
               title: ok ? title : title + " — failed",
               body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
-              ok,
+              status: ok ? "success" : "failure",
             });
           }
           refresh();
         },
         (err) =>
-          setOverlay({ kind: "result", title: title + " — failed", body: String(err), ok: false }),
+          setOverlay({
+            kind: "result",
+            title: title + " — failed",
+            body: String(err),
+            status: "failure",
+          }),
       );
     },
     [refresh, toast, close],
@@ -197,10 +202,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
               kind: "result",
               title: "Failed",
               body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
-              ok: false,
+              status: "failure",
             });
         },
-        (err) => setOverlay({ kind: "result", title: "Failed", body: String(err), ok: false }),
+        (err) => setOverlay({ kind: "result", title: "Failed", body: String(err), status: "failure" }),
       );
     },
     [toast, close],
@@ -286,7 +291,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           kind: "result",
           title: "No editor found",
           body: "install cursor / code / zed, or run `slis editor set <bin>`.",
-          ok: false,
+          status: "failure",
         });
         return;
       }
@@ -313,8 +318,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     conflictRadar: () => setOverlay({ kind: "conflicts", scroll: 0 }),
     summary: openSummary,
     editor: openEditor,
-    info: (title, body) => setOverlay({ kind: "result", title, body, ok: true }),
-    error: (title, body) => setOverlay({ kind: "result", title, body, ok: false }),
+    info: (title, body) => setOverlay({ kind: "result", title, body, status: "warn" }),
+    error: (title, body) => setOverlay({ kind: "result", title, body, status: "failure" }),
     ungroup: (slice) => runMutation("Ungroup " + slice, () => ungroupSlice(slice)),
     yankDiff: (text) => runQuiet("Copied diff to clipboard", () => copyToClipboard(text)),
     yankPrStack: (slice) =>
@@ -521,7 +526,7 @@ function renderOverlay(
     case "working":
       return <WorkingOverlay text={overlay.text} />;
     case "result":
-      return <ResultOverlay title={overlay.title} body={overlay.body} ok={overlay.ok} />;
+      return <ResultOverlay title={overlay.title} body={overlay.body} status={overlay.status} />;
   }
   return null;
 }

@@ -26,11 +26,13 @@ import {
   firstSelectable,
   lastSelectable,
   missingSliceNames,
-  nextAttentionRow,
+  searchAwareNav,
   stepSelectable,
   type BrowserRow,
   type StackLeader,
 } from "../state/cluster";
+import type { CockpitEntry } from "./cockpit.hints";
+import { listHints } from "./browser.hints";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
 import { normalizeKeyName } from "../util/keys";
@@ -58,7 +60,7 @@ export interface BrowserProps {
   overlays: OverlayApi;
   width: number;
   height: number;
-  onEnter: (slice: string) => void;
+  onEnter: (slice: string, entry?: CockpitEntry) => void;
   onOpenTerm: (slice: string, launchAgent: boolean) => void;
   onFocusSlice: (slice: string) => void;
   onRefresh: () => void;
@@ -143,7 +145,7 @@ const SliceRow = memo(function SliceRow({
           {view.slice.name}
         </span>
         {view.slice.active ? <span fg={theme.good}> {glyph.live}</span> : null}
-        {view.slice.stale ? <span fg={theme.attn}> {glyph.dirty}</span> : null}
+        {view.slice.stale ? <span fg={theme.attn}> {glyph.stale}</span> : null}
       </text>
     </box>
   );
@@ -226,7 +228,7 @@ function prBadge(prs: PrStackEntry[] | undefined, repo: string): ReactNode {
     pr.ci === "pass"
       ? { g: glyph.ciPass, c: theme.good, t: "" }
       : pr.ci === "fail"
-        ? { g: glyph.ciFail, c: theme.bad, t: (pr.ci_fail ?? 0) > 0 ? `·${pr.ci_fail}` : "" }
+        ? { g: glyph.ciFail, c: theme.bad, t: (pr.ci_fail ?? 0) > 0 ? `${pr.ci_fail}` : "" }
         : pr.ci === "pending"
           ? { g: glyph.ciPending, c: theme.attn, t: "" }
           : null;
@@ -309,13 +311,13 @@ function previewLines(
   if (view.slice.stale)
     stateSpans.push(
       <span key="stale" fg={theme.attn}>
-        {glyph.dirty} primary behind tip{"   "}
+        {glyph.stale} primary behind tip{"   "}
       </span>,
     );
   if (overlaps.length > 0)
     stateSpans.push(
       <span key="ov" fg={theme.attn}>
-        {glyph.dirty} overlaps {overlaps.length}
+        {glyph.overlap} overlaps {overlaps.length}
       </span>,
     );
   if (stateSpans.length === 0)
@@ -542,14 +544,6 @@ function Preview({
   );
 }
 
-const LIST_HINTS: Hint[] = [
-  { key: "enter", label: "open" },
-  { key: "a", label: "term" },
-  { key: "w", label: "swap" },
-  { key: "space", label: "select" },
-  { key: "/", label: "search" },
-];
-
 const RAIL_HINTS: Hint[] = [
   { key: "j/k", label: "filter" },
   { key: "tab", label: "to list" },
@@ -655,12 +649,12 @@ export function Browser(props: BrowserProps): ReactNode {
     if (name === "g") return setFocusIndex(firstSelectable(rows));
     if (name === "G") return setFocusIndex(lastSelectable(rows));
     if (name === "n") {
-      const next = nextAttentionRow(rows, focusIndex, 1);
+      const next = searchAwareNav(search !== "", rows, focusIndex, 1);
       if (next !== null) setFocusIndex(next);
       return;
     }
     if (name === "N") {
-      const prev = nextAttentionRow(rows, focusIndex, -1);
+      const prev = searchAwareNav(search !== "", rows, focusIndex, -1);
       if (prev !== null) setFocusIndex(prev);
       return;
     }
@@ -715,6 +709,17 @@ export function Browser(props: BrowserProps): ReactNode {
       if (live.length > 0)
         overlays.info("Cannot clear", `${live.join(", ")} is live — swap back (w) first.`);
       else overlays.remove(targets);
+      return;
+    }
+    // M4 — red CI is actionable from the browser. `v` opens the focused slice
+    // straight into the cockpit PRs panel with the failing-CI log shown (one key
+    // from red to why); `F` runs fix-ci through the existing PTY path.
+    if (name === "v") {
+      if (focusedSlice) props.onEnter(focusedSlice.slice.name, { panel: "prs", ciLog: true });
+      return;
+    }
+    if (name === "F") {
+      if (focusedSlice) overlays.fixCi(focusedSlice.slice.name);
       return;
     }
     if (name === "a") {
@@ -829,7 +834,10 @@ export function Browser(props: BrowserProps): ReactNode {
           type to filter · enter keep · esc clear
         </text>
       ) : (
-        <HintBar hints={hubFocus === "rail" ? RAIL_HINTS : LIST_HINTS} width={props.width - 1} />
+        <HintBar
+          hints={hubFocus === "rail" ? RAIL_HINTS : listHints(focusedSlice, search !== "")}
+          width={props.width - 1}
+        />
       )}
     </box>
   );

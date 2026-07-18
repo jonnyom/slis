@@ -178,3 +178,19 @@ export function nextAttentionRow(
   if (p < 0) return dir === 1 ? idxs[0]! : idxs[idxs.length - 1]!;
   return idxs[(p + dir + idxs.length) % idxs.length]!;
 }
+
+// n/N navigation is search-modal (M3). With an active search the list is already
+// narrowed to matches, so n/N step through those matches — the vim/less
+// search-repeat reflex. With no search they hop between attention slices (vim's
+// `n` is meaningless without a search, so there's no collision). Returns the
+// next focus row, or null to leave focus where it is.
+export function searchAwareNav(
+  searchActive: boolean,
+  rows: BrowserRow[],
+  current: number,
+  dir: 1 | -1,
+): number | null {
+  return searchActive
+    ? stepSelectable(rows, current, dir)
+    : nextAttentionRow(rows, current, dir);
+}

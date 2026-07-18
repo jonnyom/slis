@@ -210,8 +210,14 @@ export function DiffView(props: DiffViewProps): ReactNode {
       return setFileSel((i) => Math.max(0, i - 1));
     if (name === "]" || name === "n") return jumpHunk(1);
     if (name === "[" || name === "p") return jumpHunk(-1);
-    if (name === "return" || name === "enter" || name === "l" || name === "right")
-      return scrollRef.current?.scrollTo(0);
+    // enter/l drills into the selected file: jump to its first hunk (P4).
+    if (name === "return" || name === "enter" || name === "l" || name === "right") {
+      if (hunkOffsets && hunkOffsets.length > 0) {
+        setHunkSel(0);
+        scrollRef.current?.scrollTo(hunkOffsets[0]!);
+      }
+      return;
+    }
     if (name === "left") return scrollRef.current?.scrollBy({ x: -8, y: 0 });
     if (name === "g") return scrollRef.current?.scrollTo(0);
     if (name === "G") return scrollRef.current?.scrollTo(scrollRef.current.scrollHeight);
@@ -224,6 +230,9 @@ export function DiffView(props: DiffViewProps): ReactNode {
   const listW = Math.max(24, Math.min(46, Math.floor(props.width * 0.32)));
   const diffW = props.width - listW;
   const half = Math.max(8, Math.floor((diffW - 5) / 2));
+  // Header + footer each take exactly one row; both panels are pinned to the
+  // remainder so their bottom rules line up and never reach the footer (P3).
+  const bodyH = Math.max(1, props.height - 2);
 
   const totalAdded = flat.reduce((a, f) => a + Math.max(f.file.added, 0), 0);
   const totalDeleted = flat.reduce((a, f) => a + Math.max(f.file.deleted, 0), 0);
@@ -254,8 +263,10 @@ export function DiffView(props: DiffViewProps): ReactNode {
         </text>
       </box>
 
-      {/* body */}
-      <box flexDirection="row" flexGrow={1}>
+      {/* body — pinned to an explicit height (header + footer reserved) and
+          clipped so the file panel's bottom rule can never bleed into the
+          footer row (P3) */}
+      <box flexDirection="row" height={bodyH} overflow="hidden">
         <box width={listW} flexShrink={0} flexDirection="column">
           {/* file list gets its own scroll ref via a nested scrollbox */}
           <FileListScroller
@@ -263,6 +274,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
             flat={flat}
             sel={fileSel}
             width={listW}
+            height={bodyH}
             scrollRef={fileScrollRef}
           />
         </box>
@@ -273,7 +285,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
             borderColor={color.borderFocus}
             title={rightTitle}
             titleColor={color.borderFocus}
-            flexGrow={1}
+            height={bodyH}
             paddingLeft={1}
             paddingRight={1}
             overflow="hidden"
@@ -314,11 +326,14 @@ export function DiffView(props: DiffViewProps): ReactNode {
         </box>
       </box>
 
-      {/* footer */}
-      <text wrapMode="none" fg={color.dim} attributes={DIM}>
-        j/k file · [ ] / n p hunk{hunkCount ? ` (${hunkSel + 1}/${hunkCount})` : ""} · t
-        unified/split · b scope · ^d/^u scroll · g/G top/bottom · esc back
-      </text>
+      {/* footer — reserve exactly one row so a long unwrapped hint never bleeds
+          into the file panel's bottom rule (P3) */}
+      <box width="100%" height={1} overflow="hidden">
+        <text wrapMode="none" fg={color.dim} attributes={DIM}>
+          j/k file · [ ] / n p hunk{hunkCount ? ` (${hunkSel + 1}/${hunkCount})` : ""} · t
+          unified/split · b scope · ^d/^u scroll · g/G top/bottom · esc back
+        </text>
+      </box>
     </box>
   );
 }
@@ -330,12 +345,14 @@ function FileListScroller({
   flat,
   sel,
   width,
+  height,
   scrollRef,
 }: {
   groups: RepoGroup[];
   flat: FlatFile[];
   sel: number;
   width: number;
+  height: number;
   scrollRef: React.RefObject<ScrollBoxRenderable | null>;
 }): ReactNode {
   return (
@@ -346,7 +363,7 @@ function FileListScroller({
       title="Files"
       titleColor={color.borderFocus}
       width={width}
-      flexGrow={1}
+      height={height}
       paddingLeft={1}
       paddingRight={1}
       overflow="hidden"

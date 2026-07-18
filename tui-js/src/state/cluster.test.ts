@@ -9,6 +9,7 @@ import {
   missingSliceNames,
   nextAttentionIndex,
   nextAttentionRow,
+  searchAwareNav,
   selectableIndices,
   stackRootOf,
   stepSelectable,
@@ -169,5 +170,31 @@ describe("browser rows (missing-row navigation skip)", () => {
     expect(selectableIndices(allMissing)).toEqual([]);
     expect(stepSelectable(allMissing, 0, 1)).toBe(0);
     expect(clampFocus(allMissing, 1)).toBe(0);
+  });
+});
+
+describe("searchAwareNav (M3 — n/N modal decision)", () => {
+  // calm · wait(attention) · calm2 — index 1 is the only attention row.
+  const rows: BrowserRow[] = buildRows(
+    [view("calm"), view("wait", {}, { status: "waiting-input" }), view("calm2")],
+    [],
+  );
+
+  test("no active search → attention-hop (same as nextAttentionRow)", () => {
+    expect(searchAwareNav(false, rows, 0, 1)).toBe(nextAttentionRow(rows, 0, 1));
+    // from calm(0) forward lands on the single attention row (1).
+    expect(searchAwareNav(false, rows, 0, 1)).toBe(1);
+  });
+
+  test("active search → step through matches (same as stepSelectable)", () => {
+    // With a search filter the whole list is matches, so n/N walk row by row —
+    // stepping onto calm2(2), which attention-hop would never visit.
+    expect(searchAwareNav(true, rows, 1, 1)).toBe(stepSelectable(rows, 1, 1));
+    expect(searchAwareNav(true, rows, 1, 1)).toBe(2);
+    expect(searchAwareNav(true, rows, 2, -1)).toBe(1);
+  });
+
+  test("the two modes diverge — search stepping reaches non-attention rows", () => {
+    expect(searchAwareNav(true, rows, 1, 1)).not.toBe(searchAwareNav(false, rows, 1, 1));
   });
 });
