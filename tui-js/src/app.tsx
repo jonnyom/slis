@@ -21,7 +21,7 @@ import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { useOverlays } from "./overlays/useOverlays";
 import { BOLD, DIM } from "./components/ui";
 import { TermManager } from "./term/manager";
-import { TerminalLayer, type TabEntry } from "./term/tabs";
+import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
 import { tmuxAvailable, type TermMember } from "./term/tmux";
 import type { TermSessionOpts } from "./term/session";
 import { availableEditors } from "./editor/detect";
@@ -53,6 +53,7 @@ export function App(): ReactNode {
   const [tabs, setTabs] = useState<TabEntry[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [termMode, setTermMode] = useState(false);
+  const nextCmdIdRef = useRef(0);
 
   const refresh = useCallback(() => {
     // ls first so the browser paints fast; the sidecar caps subprocess work at
@@ -106,6 +107,17 @@ export function App(): ReactNode {
   // from `hello`, the overlay layer decides whether to open directly or prompt.
   const editorList = useMemo(() => availableEditors((b) => !!Bun.which(b)), []);
 
+  // Open an interactive mutation (submit/sync/merge/adopt/fix-ci) in a PTY tab
+  // so it gets a real TTY — the overlay layer routes these here instead of the
+  // captured runner. The tab title is the command; it stays open after exit so
+  // the user can read the outcome and close it (ctrl+q → refresh).
+  const openCommandTab = useCallback((argv: string[], title: string) => {
+    const id = `cmd:${nextCmdIdRef.current++}:${title}`;
+    setTabs((prev) => [...prev, { kind: "command", id, title, argv, exited: false }]);
+    setActiveTab(id);
+    setTermMode(true);
+  }, []);
+
   const overlays = useOverlays({
     refresh,
     conflicts,
@@ -114,6 +126,7 @@ export function App(): ReactNode {
     client,
     editors: editorList,
     configuredEditor: hello?.sessions.editor,
+    runInteractive: openCommandTab,
   });
 
   // Build per-slice view records.
@@ -179,9 +192,9 @@ export function App(): ReactNode {
         return;
       }
       setTabs((prev) => {
-        if (prev.some((t) => t.slice === slice)) return prev; // reuse open tab
+        if (prev.some((t) => t.kind === "session" && t.slice === slice)) return prev; // reuse open tab
         const opts = buildTermOpts(slice, launchAgent);
-        return opts ? [...prev, { slice, opts }] : prev;
+        return opts ? [...prev, { kind: "session", slice, opts }] : prev;
       });
       setActiveTab(slice);
       setTermMode(true);
@@ -189,17 +202,47 @@ export function App(): ReactNode {
     [buildTermOpts, overlays],
   );
 
-  const closeTab = useCallback((slice: string) => {
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.slice !== slice);
-      setActiveTab((cur) => {
-        if (cur !== slice) return cur;
-        return next.length > 0 ? next[next.length - 1]!.slice : null;
+  // Remove a tab and re-point the active tab / term mode. When a *command* tab
+  // closes, run the post-mutation refresh — the same resync the captured path
+  // does after a mutation completes.
+  const closeTab = useCallback(
+    (key: string) => {
+      let wasCommand = false;
+      setTabs((prev) => {
+        wasCommand = prev.some((t) => t.kind === "command" && t.id === key);
+        const next = prev.filter((t) => tabKey(t) !== key);
+        setActiveTab((cur) => {
+          if (cur !== key) return cur;
+          return next.length > 0 ? tabKey(next[next.length - 1]!) : null;
+        });
+        if (next.length === 0) setTermMode(false);
+        return next;
       });
-      if (next.length === 0) setTermMode(false);
-      return next;
-    });
+      if (wasCommand) refresh();
+    },
+    [refresh],
+  );
+
+  // A command process exited: mark its tab so the tab bar shows the status glyph
+  // and the back key knows it can be closed. The tab stays open until the user
+  // dismisses it.
+  const markCommandExited = useCallback((id: string, code: number) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.kind === "command" && t.id === id ? { ...t, exited: true, code } : t)),
+    );
   }, []);
+
+  // ctrl+q from the terminal layer. A finished command tab is closed (and the
+  // workspace refreshed); anything still running just drops focus back to the
+  // browser so the session / command keeps going.
+  const termBack = useCallback(() => {
+    const active = tabs.find((t) => tabKey(t) === activeTab);
+    if (active && active.kind === "command" && active.exited) {
+      closeTab(active.id);
+      return;
+    }
+    setTermMode(false);
+  }, [tabs, activeTab, closeTab]);
 
   if (!ls) {
     return (
@@ -256,8 +299,9 @@ export function App(): ReactNode {
         width={width}
         height={height}
         manager={manager}
-        onBack={() => setTermMode(false)}
-        onExit={closeTab}
+        onBack={termBack}
+        onSessionExit={closeTab}
+        onCommandExit={markCommandExited}
       />
 
       {!connected ? (

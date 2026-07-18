@@ -25,7 +25,10 @@ import {
   groupSlices,
   ignoreCandidate,
   importCandidate,
+  isFake,
   mergeSlice,
+  mutationArgv,
+  mutationRoute,
   openUrl,
   prStackMarkdown,
   removeSlice,
@@ -105,6 +108,9 @@ export interface UseOverlaysArgs {
   // one is available.
   editors: EditorSpec[];
   configuredEditor?: string;
+  // Open an interactive mutation in a PTY terminal tab (submit/sync/merge/adopt/
+  // fix-ci). Provided by the app, which owns the terminal layer.
+  runInteractive: (argv: string[], title: string) => void;
 }
 
 async function runSequential(
@@ -123,7 +129,8 @@ async function runSequential(
 }
 
 export function useOverlays(args: UseOverlaysArgs): OverlayApi {
-  const { refresh, conflicts, view, height, client, editors, configuredEditor } = args;
+  const { refresh, conflicts, view, height, client, editors, configuredEditor, runInteractive } =
+    args;
   const [overlay, setOverlay] = useState<Overlay>(null);
   const close = useCallback(() => setOverlay(null), []);
 
@@ -146,6 +153,22 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
       );
     },
     [refresh],
+  );
+
+  // Route a mutation by its command kind: interactive commands (submit/sync/
+  // merge/adopt/fix-ci) run in a PTY tab so the user can answer prompts / drive
+  // the agent; everything else runs captured through runMutation. Under
+  // SLIS_FAKE there is no real PTY, so we keep the captured (fake) path.
+  const runMutationRouted = useCallback(
+    (title: string, command: string, cmdArgs: string[], captured: () => Promise<MutateResult>) => {
+      if (!isFake() && mutationRoute(command) === "interactive") {
+        close(); // dismiss the triggering overlay; the tab takes over
+        runInteractive(mutationArgv(command, cmdArgs), title);
+        return;
+      }
+      runMutation(title, captured);
+    },
+    [close, runInteractive, runMutation],
   );
 
   const openSummary = useCallback((slice: string, ai: boolean) => {
@@ -230,7 +253,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     stack: (slices, conflictWith) => setOverlay({ kind: "stack", slices, conflictWith }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
     ciRerun: (slice) => setOverlay({ kind: "ciRerun", slice }),
-    fixCi: (slice) => runMutation("Fix CI " + slice, () => fixCiSlice(slice)),
+    fixCi: (slice) =>
+      runMutationRouted("Fix CI " + slice, "fix-ci", [slice], () => fixCiSlice(slice)),
     create: () => setOverlay({ kind: "create", text: "" }),
     candidates: (items) => setOverlay({ kind: "candidates", items, sel: 0 }),
     group: (slices, onDone) => setOverlay({ kind: "group", slices, text: "", onDone }),
@@ -283,9 +307,12 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           runMutation("Restack " + overlay.slices.join(", "), () =>
             runSequential(overlay.slices, restackSlice),
           );
-        else if (name === "p") runMutation("Submit " + first, () => submitSlice(first));
-        else if (name === "m") runMutation("Merge " + first, () => mergeSlice(first));
-        else if (name === "s") runMutation("Sync " + first, () => syncSlice(first));
+        else if (name === "p")
+          runMutationRouted("Submit " + first, "submit", [first], () => submitSlice(first));
+        else if (name === "m")
+          runMutationRouted("Merge " + first, "merge", [first], () => mergeSlice(first));
+        else if (name === "s")
+          runMutationRouted("Sync " + first, "sync", [first], () => syncSlice(first));
         else if (name === "n" || isCancel) close();
         return;
       }
@@ -335,7 +362,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           const c = items[sel]!;
           if (name === "i" || isEnter)
             runMutation("Import " + c.slice, () => importCandidate(c.path));
-          else if (name === "a") runMutation("Adopt " + c.branch, () => adoptBranch(c.branch));
+          else if (name === "a")
+            runMutationRouted("Adopt " + c.branch, "adopt", [c.branch], () =>
+              adoptBranch(c.branch),
+            );
           else if (name === "x") runMutation("Ignore " + c.slice, () => ignoreCandidate(c.path));
         }
         return;

@@ -27,9 +27,21 @@ export const BACK_KEY = process.env["SLIS_TERM_BACK_KEY"]
   ? String.fromCharCode(parseInt(process.env["SLIS_TERM_BACK_KEY"]!, 16))
   : "\x11";
 
-export interface TabEntry {
-  slice: string;
-  opts: TermSessionOpts;
+// A tmux-session tab (keyed by slice) or an interactive command tab (keyed by a
+// unique id, running a one-shot mutation in a PTY). `exited` tracks a finished
+// command so the tab bar / back key can offer to close it.
+export type TabEntry =
+  | { kind: "session"; slice: string; opts: TermSessionOpts }
+  | { kind: "command"; id: string; title: string; argv: string[]; cwd?: string; exited: boolean; code?: number };
+
+/** The stable id a tab is keyed by (slice for sessions, id for commands). */
+export function tabKey(t: TabEntry): string {
+  return t.kind === "session" ? t.slice : t.id;
+}
+
+/** The label shown in the tab bar. */
+export function tabLabel(t: TabEntry): string {
+  return t.kind === "session" ? t.slice : t.title;
 }
 
 // ── one terminal ─────────────────────────────────────────────────────────────
@@ -41,7 +53,8 @@ function TermTab({
   cols,
   rows,
   top,
-  onExit,
+  onSessionExit,
+  onCommandExit,
 }: {
   entry: TabEntry;
   manager: TermManager;
@@ -49,39 +62,57 @@ function TermTab({
   cols: number;
   rows: number;
   top: number;
-  onExit: (slice: string) => void;
+  /** A tmux client died (session killed elsewhere) → close the tab. */
+  onSessionExit: (key: string) => void;
+  /** A command process exited → mark the tab exited (kept open for the user). */
+  onCommandExit: (id: string, code: number) => void;
 }): ReactNode {
   const renderer = useRenderer();
   const ref = useRef<GhosttyTerminalRenderable>(null);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
 
-  const { slice } = entry;
+  const key = tabKey(entry);
 
-  // Attach the PTY once; detach on unmount (tab close / app quit). The tmux
-  // session is never killed — detach only drops this client.
+  // Attach the PTY once; detach on unmount (tab close / app quit). A tmux
+  // session is never killed — detach only drops its client; a command PTY is
+  // killed by detach only if still running.
   useEffect(() => {
     const term = ref.current;
     if (!term) return;
-    const session = manager.session(slice);
-    const offExit = session.onExit(() => onExit(slice));
-    session
-      .attach(
-        cols,
-        rows,
-        (bytes) => {
-          term.feed(bytes);
-          if (visibleRef.current) renderer.requestRender();
-        },
-        entry.opts,
-      )
-      .catch((err) => {
+    const feed = (bytes: Uint8Array) => {
+      term.feed(bytes);
+      if (visibleRef.current) renderer.requestRender();
+    };
+    if (entry.kind === "session") {
+      const session = manager.session(entry.slice);
+      const offExit = session.onExit(() => onSessionExit(key));
+      session.attach(cols, rows, feed, entry.opts).catch((err) => {
         term.feed(`\r\n[slis] failed to attach session: ${String(err)}\r\n`);
         renderer.requestRender();
       });
+      return () => {
+        offExit();
+        manager.detach(key);
+      };
+    }
+    const cmd = manager.command(key, entry.title, entry.argv, entry.cwd);
+    const offExit = cmd.onExit((code) => {
+      const ok = code === 0;
+      term.feed(
+        `\r\n[slis] ${entry.title} ${ok ? "finished" : `exited (code ${code})`}` +
+          ` — press ctrl+q to close\r\n`,
+      );
+      renderer.requestRender();
+      onCommandExit(key, code);
+    });
+    cmd.attach(cols, rows, feed).catch((err) => {
+      term.feed(`\r\n[slis] failed to run ${entry.title}: ${String(err)}\r\n`);
+      renderer.requestRender();
+    });
     return () => {
       offExit();
-      manager.detach(slice);
+      manager.detach(key);
     };
     // Attach once on mount; size/visibility are driven by the effects below.
   }, []);
@@ -89,8 +120,8 @@ function TermTab({
   // Propagate size changes to the PTY (the renderable's own cols/rows are set
   // via props on re-render).
   useEffect(() => {
-    manager.session(slice).resize(cols, rows);
-  }, [manager, slice, cols, rows]);
+    manager.get(key)?.resize(cols, rows);
+  }, [manager, key, cols, rows]);
 
   // Cursor rendering is gated on focus; only the visible tab is focused.
   useEffect(() => {
@@ -137,17 +168,24 @@ function TabBar({
           {" term "}
         </span>
         {tabs.map((t) => {
-          const badge = sessionBadge(statuses[t.slice] ?? "none");
-          const on = t.slice === active;
+          const key = tabKey(t);
+          const on = key === active;
+          const glyph =
+            t.kind === "session"
+              ? sessionBadge(statuses[t.slice] ?? "none")
+              : {
+                  glyph: t.exited ? (t.code === 0 ? "✓" : "✗") : "▸",
+                  color: t.exited ? (t.code === 0 ? color.live : color.missing) : color.title,
+                };
           return (
-            <span key={t.slice}>
+            <span key={key}>
               <span fg={color.dim}> </span>
-              <span fg={badge.color} attributes={BOLD}>
-                {badge.glyph}
+              <span fg={glyph.color} attributes={BOLD}>
+                {glyph.glyph}
               </span>
               <span fg={on ? color.white : color.fg} attributes={on ? BOLD : 0}>
                 {" "}
-                {t.slice}{" "}
+                {tabLabel(t)}{" "}
               </span>
             </span>
           );
@@ -171,7 +209,8 @@ export function TerminalLayer({
   height,
   manager,
   onBack,
-  onExit,
+  onSessionExit,
+  onCommandExit,
 }: {
   tabs: TabEntry[];
   active: string | null;
@@ -182,7 +221,8 @@ export function TerminalLayer({
   height: number;
   manager: TermManager;
   onBack: () => void;
-  onExit: (slice: string) => void;
+  onSessionExit: (key: string) => void;
+  onCommandExit: (id: string, code: number) => void;
 }): ReactNode {
   const renderer = useRenderer();
 
@@ -203,8 +243,8 @@ export function TerminalLayer({
         onBackRef.current();
         return true;
       }
-      const slice = activeRef.current;
-      if (slice) managerRef.current.session(slice).write(seq);
+      const key = activeRef.current;
+      if (key) managerRef.current.get(key)?.write(seq);
       return true; // consume: everything reaches the PTY, nothing is parsed
     };
     renderer.addInputHandler(handler);
@@ -226,18 +266,22 @@ export function TerminalLayer({
       zIndex={100}
     >
       <TabBar tabs={tabs} active={active} statuses={statuses} />
-      {tabs.map((t) => (
-        <TermTab
-          key={t.slice}
-          entry={t}
-          manager={manager}
-          visible={focused && t.slice === active}
-          cols={width}
-          rows={termRows}
-          top={1}
-          onExit={onExit}
-        />
-      ))}
+      {tabs.map((t) => {
+        const key = tabKey(t);
+        return (
+          <TermTab
+            key={key}
+            entry={t}
+            manager={manager}
+            visible={focused && key === active}
+            cols={width}
+            rows={termRows}
+            top={1}
+            onSessionExit={onSessionExit}
+            onCommandExit={onCommandExit}
+          />
+        );
+      })}
     </box>
   );
 }
