@@ -1,0 +1,51 @@
+tui-js/src/state/bulkload.ts
+  s_470615ee13fe83::t_5061a85d30cc7a 1-15
+tui-js/src/components/bulkload.tsx
+  s_470615ee13fe83::t_529c9ebd5aa7ca 1-43
+tui-js/src/diff/render.ts
+  s_470615ee13fe83::t_48762f5f72dc67 10-33
+tui-js/src/state/cluster.test.ts
+  s_470615ee13fe83::t_a60c2a5ec07d85 6-7,9,11-12,14-15
+  s_470615ee13fe83::t_6cfa34eba0a8dd 105-173
+tui-js/src/views/browser.tsx
+  s_470615ee13fe83::t_639b3a79a63b76 7,16,18,22-33,35,38-45,62,68-77,87-99,114-115,117-127,129-145,149,151-159,163-164,166-167,172,176-177,182-183,186-187,191,193-198,200,204-210,214,216-219,221-229,232,234-235,238-253,258-438,444,450,454,458,465,472-493,496-498,500,504-505,508,510-513,515-518,521-525,527,531-545,547,567,569,572-574,576-577,579-584,629-630,633,638,641-642,644,649,662-667,696,719-731,735,737-745,749-750,752-766,769-772,774,777,780,786,793,796-802
+  s_470615ee13fe83::t_f35cee731a079c 116
+tui-js/src/util/scroll.test.ts
+  s_470615ee13fe83::t_5a909d726d44fe 1-22
+tui-js/src/app.tsx
+  s_470615ee13fe83::t_bf9b928c71d50c 322-329
+  s_470615ee13fe83::t_4ebf06c0b9d396 172-179
+  s_470615ee13fe83::t_a9181dde8fa592 28-29
+  s_470615ee13fe83::t_98838f70615739 59-77,90-98,101-117
+  s_470615ee13fe83::t_7994b06951e74f 255-256
+  s_470615ee13fe83::t_68e9710ed3613d 274
+tui-js/src/state/cluster.ts
+  s_470615ee13fe83::t_f4aa0b95ac0e88 95-180
+tui-js/src/util/scroll.ts
+  s_470615ee13fe83::t_1a239b4d9e624c 1-7
+tui-js/src/state/derive.test.ts
+  s_470615ee13fe83::t_872c09d306d3c7 1-54
+tui-js/src/state/derive.ts
+  s_470615ee13fe83::t_82a658109df59d 91-100
+tui-js/src/diff/render.test.ts
+  s_470615ee13fe83::t_6d949e70cbae48 2,5-13
+  s_470615ee13fe83::t_0cb890f88b562b 14
+tui-js/src/state/bulkload.test.ts
+  s_470615ee13fe83::t_f91ff9bb8588c0 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e75e78ab6265cab3f4bb05d71c2cbfa9b127152b",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
