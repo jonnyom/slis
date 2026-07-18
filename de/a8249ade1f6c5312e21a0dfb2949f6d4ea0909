@@ -1,0 +1,93 @@
+tui-js/src/state/cluster.test.ts
+  s_470615ee13fe83::t_636e1ef9cd370b 175-200
+  s_470615ee13fe83::t_5673b5c0f24b3a 12
+tui-js/src/components/help.tsx
+  s_470615ee13fe83::t_b35c14840b839f 126-128,132-133,135,137-139
+  s_470615ee13fe83::t_8ad15e4aa3a464 116
+  s_470615ee13fe83::t_006cf43c0a36ad 49-50
+  s_470615ee13fe83::t_ad286d06ef25b4 136,167,199
+  s_470615ee13fe83::t_5a9e77b8801e60 161-163
+  s_470615ee13fe83::t_a281fb5996c3fc 24
+  s_470615ee13fe83::t_9f2636cea6fd79 188
+tui-js/src/state/cluster.ts
+  s_470615ee13fe83::t_7d9b3fabb2541a 181-196
+tui-js/src/components/procoverlay.tsx
+  s_470615ee13fe83::t_1bc4f1c3d16495 125-132
+tui-js/src/theme.ts
+  s_470615ee13fe83::t_b69a6dd3f5a0f1 132-133
+  s_470615ee13fe83::t_d69a39b86a1cd8 141-159
+  s_470615ee13fe83::t_2e5440d85e191e 259
+tui-js/src/overlays/useOverlays.tsx
+  s_470615ee13fe83::t_1aeb76d58fc66f 75
+  s_470615ee13fe83::t_98a93d97267e39 294
+  s_470615ee13fe83::t_fb56d1cb913d6d 175,181-186
+  s_470615ee13fe83::t_80d7eac732b73f 59
+  s_470615ee13fe83::t_9e001c14e5d0fe 205,208
+  s_470615ee13fe83::t_4deca67fe00c28 321-322
+  s_470615ee13fe83::t_129e2be8a676f9 529
+tui-js/src/views/browser.hints.test.ts
+  s_470615ee13fe83::t_f4cab538d9b0f5 55-66,68-74
+  s_470615ee13fe83::t_89c911f0d1eb1d 67
+  s_470615ee13fe83::t_b3a7daf6100074 1-54,75-90
+tui-js/src/components/diffview.tsx
+  s_470615ee13fe83::t_26846708bb469b 266-268
+  s_470615ee13fe83::t_d997464c81e93e 233-235
+  s_470615ee13fe83::t_b73cf47aa0dea4 269,277,288
+  s_470615ee13fe83::t_d501c3c5db5407 213-220
+  s_470615ee13fe83::t_aa379801a73d90 329-336
+  s_470615ee13fe83::t_f7bb3186580238 348,355,366
+tui-js/src/views/cockpit.hints.ts
+  s_470615ee13fe83::t_03b0ef221c72ee 11-17
+tui-js/src/overlays/overlays.tsx
+  s_470615ee13fe83::t_ad286d06ef25b4 157,162,370,374
+  s_470615ee13fe83::t_5519397ee40178 109,119
+  s_470615ee13fe83::t_9dd06290b109e1 158
+  s_470615ee13fe83::t_e42197074ae823 113
+  s_470615ee13fe83::t_5831408e33b318 9
+tui-js/src/app.tsx
+  s_470615ee13fe83::t_e88f2cc894b40c 438-439
+  s_470615ee13fe83::t_f9c1493af46d62 28
+  s_470615ee13fe83::t_dfb1720994e536 66
+  s_470615ee13fe83::t_854b427102a98b 292,294
+tui-js/src/views/cockpit.tsx
+  s_470615ee13fe83::t_42d75a6688edf7 784-808
+  s_470615ee13fe83::t_b9dde14f469fd1 226
+  s_470615ee13fe83::t_531012ecac2629 670
+  s_470615ee13fe83::t_f53facc2485877 112-115
+tui-js/src/theme.test.ts
+  s_470615ee13fe83::t_fde694a0692ce5 143-157
+  s_470615ee13fe83::t_b7b15e7914aee0 4
+  s_470615ee13fe83::t_ce6585cb0d25b3 158-174
+tui-js/src/views/browser.hints.ts
+  s_470615ee13fe83::t_7745a33df5e00f 1-32
+tui-js/src/views/browser.tsx
+  s_470615ee13fe83::t_ad4bf9bc72f172 63
+  s_470615ee13fe83::t_d2f601ddb45434 714-724
+  s_470615ee13fe83::t_6b537b89fd636b 35
+  s_470615ee13fe83::t_89b9479ab1cb58 29,34
+  s_470615ee13fe83::t_a361f2b10d23a3 231
+  s_470615ee13fe83::t_15c98ee8ac6833 314,320
+  s_470615ee13fe83::t_f970bdccfe9fcd 652,657
+  s_470615ee13fe83::t_4395a7be2b1502 837-840
+  s_470615ee13fe83::t_46f899c2fce89e 148
+tui-js/src/components/card.tsx
+  s_470615ee13fe83::t_3e39a66e299a24 35-37
+  s_470615ee13fe83::t_ad0d582e616f56 79
+  s_470615ee13fe83::t_ce643ffa4a3d4c 9,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dea8249ade1f6c5312e21a0dfb2949f6d4ea0909",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
