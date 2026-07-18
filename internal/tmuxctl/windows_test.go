@@ -48,7 +48,7 @@ func TestSessionWindows(t *testing.T) {
 		opts    SessionOpts
 		want    []string
 	}{
-		{"default+root, common parent → root only", shareParent, SessionOpts{Root: "/ws"}, []string{"root"}},
+		{"default+root, multi repo → safe repo windows", shareParent, SessionOpts{Root: "/ws"}, []string{"alpha", "beta"}},
 		{"default no root → repos (sorted)", shareParent, SessionOpts{}, []string{"alpha", "beta"}},
 		{"both, common parent → root then repos", shareParent, SessionOpts{Root: "/ws", Layout: "both"}, []string{"root", "alpha", "beta"}},
 		{"repos explicit unchanged", shareParent, SessionOpts{Root: "/ws", Layout: "repos"}, []string{"alpha", "beta"}},
@@ -63,9 +63,9 @@ func TestSessionWindows(t *testing.T) {
 		}
 	}
 
-	// Common-parent case: the root window cd's into the members' shared parent,
-	// NOT the workspace root (which holds the primary checkouts).
-	w := sessionWindows(shareParent, SessionOpts{Root: "/ws"})
+	// Explicit root layout: cd into the members' shared parent, NOT the workspace
+	// root (which holds the primary checkouts).
+	w := sessionWindows(shareParent, SessionOpts{Root: "/ws", Layout: "root"})
 	if w[0].cwd != "/ws/.slis/worktrees/feat" {
 		t.Errorf("root window cwd = %q, want /ws/.slis/worktrees/feat", w[0].cwd)
 	}

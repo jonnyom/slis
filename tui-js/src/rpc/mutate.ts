@@ -199,6 +199,8 @@ export interface ReviewAddInput {
   branch?: string;
   file: string;
   line: number;
+  endLine?: number;
+  side?: "new" | "old";
   hunk?: string;
   body: string;
 }
@@ -225,6 +227,9 @@ export function reviewAdd(input: ReviewAddInput): Promise<MutateResult> {
     "--body",
     input.body,
   ];
+  if (input.endLine && input.endLine > input.line)
+    args.push("--end-line", String(input.endLine));
+  if (input.side === "old") args.push("--side", "old");
   if (input.hunk) args.push("--hunk", input.hunk);
   return spawnCapture([BIN, ...args]);
 }
@@ -290,6 +295,17 @@ export function editSlice(slice: string): Promise<MutateResult> {
 
 export function editRepo(slice: string, repo: string): Promise<MutateResult> {
   return run(["edit", slice, "--repo", repo]);
+}
+
+export function editPath(
+  slice: string,
+  repo: string,
+  path: string,
+  line?: number,
+): Promise<MutateResult> {
+  const args = ["edit", slice, "--repo", repo, "--file", path];
+  if (line !== undefined && line > 0) args.push("--line", String(line));
+  return run(args);
 }
 
 // ── summary (a read command, but a one-shot spawn like the mutations) ────────

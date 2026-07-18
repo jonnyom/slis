@@ -5,6 +5,8 @@
 import type { FileDiff } from "../diff/parse";
 import type { ReviewComment } from "../rpc/types";
 
+export type DiffSide = "old" | "new";
+
 // The context a composed comment carries. `line` is a 1-based line in the NEW
 // (post-change) file — the same anchor `slis review add --line` expects and the
 // same number the gutter marker matches on.
@@ -14,6 +16,8 @@ export interface CommentContext {
   branch: string;
   file: string;
   line: number;
+  endLine?: number;
+  side?: DiffSide;
   hunk: string;
 }
 
@@ -23,6 +27,7 @@ export interface CommentContext {
 // which is also where the gutter marker then shows.
 export interface HunkComment {
   line: number;
+  endLine?: number;
   hunk: string;
 }
 
@@ -56,6 +61,36 @@ export function hunkComment(file: FileDiff, hunkIndex: number, radius = 3): Hunk
   return { line, hunk: excerpt };
 }
 
+// diffRangeComment captures exactly the selected range on either side of the
+// patch. Old-side ranges let split view review deletion-only lines; DiffView
+// keeps every selection inside one side of one hunk.
+export function diffRangeComment(
+  file: FileDiff,
+  hunkIndex: number,
+  fromLine: number,
+  toLine: number,
+  side: DiffSide = "new",
+): HunkComment | null {
+  const hunk = file.hunks[hunkIndex];
+  if (!hunk) return null;
+
+  const line = Math.min(fromLine, toLine);
+  const endLine = Math.max(fromLine, toLine);
+  const selected = hunk.lines.filter(
+    (l) => {
+      const n = side === "old" ? l.oldNumber : l.newNumber;
+      return n !== undefined && n >= line && n <= endLine;
+    },
+  );
+  if (selected.length === 0) return null;
+
+  return {
+    line,
+    endLine: endLine > line ? endLine : undefined,
+    hunk: selected.map((l) => markerFor(l.type) + l.content).join("\n"),
+  };
+}
+
 // fileComment extracts the comment anchor + excerpt for a cursor line in a file
 // viewed at a revision (F3 file view). `cursor` is 0-based; the returned line is
 // 1-based. The excerpt is the surrounding source lines (no diff markers).
@@ -73,10 +108,14 @@ export function linesWithComments(
   comments: ReviewComment[],
   repo: string,
   file: string,
+  side: DiffSide = "new",
 ): Set<number> {
   const out = new Set<number>();
   for (const c of comments) {
-    if (c.repo === repo && c.file === file) out.add(c.line);
+    if (c.repo === repo && c.file === file && (c.side ?? "new") === side) {
+      const end = Math.max(c.line, c.end_line ?? c.line);
+      for (let line = c.line; line <= end; line++) out.add(line);
+    }
   }
   return out;
 }

@@ -1,6 +1,7 @@
 // End-to-end proof for the inline-review loop (F2): run the REAL app
 // (src/index.tsx) in a Bun PTY with the fake sidecar, drive the whole loop —
-// open the rich diff → `c` compose a comment → submit → `C` list it → `s`/`y`
+// open the rich diff → focus lines → select a range → `c` compose →
+// submit → `C` list it → `s`/`y`
 // send → toast — and read what it actually paints (via ghostty's parser). No
 // human, no real `slis` binary (SLIS_FAKE drives the shared fake review store).
 //
@@ -47,12 +48,17 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const sawDiff = diff.includes("cart.tsx");
   const sawGutterMarker = diff.includes("✎"); // seed comment on cart.tsx line 12
 
-  // c → comment composer; type an instruction; enter → add.
+  // c focuses diff lines; v starts a range; j extends it; c opens composer.
+  pty.write("c");
+  await sleep(300);
+  pty.write("vj");
+  await sleep(300);
   pty.write("c");
   await sleep(700);
   const composer = vt.getText();
   const sawComposer =
-    composer.includes("Comment on this line") || composer.includes("instruction for the agent");
+    composer.includes("Comment on selected lines") &&
+    composer.includes("comment for the agent");
 
   pty.write("rename this variable");
   await sleep(400);
@@ -80,9 +86,12 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const afterSend = vt.getText();
   const sawSendToast = afterSend.includes("Sent");
 
-  // esc chain: overlay closed on send success → esc back to cockpit → esc to browser.
+  // esc chain: send closes overlay; esc leaves line focus, closes diff, then
+  // returns from cockpit to browser.
   pty.write("\x1b");
-  await sleep(500);
+  await sleep(300);
+  pty.write("\x1b");
+  await sleep(300);
   pty.write("\x1b");
   await sleep(700);
   const back = vt.getText();
@@ -103,7 +112,7 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
     cockpit_breadcrumb_comment_badge: sawBadge,
     rich_diff_opens: sawDiff,
     gutter_marker_visible: sawGutterMarker,
-    c_opens_comment_composer: sawComposer,
+    range_opens_comment_composer: sawComposer,
     submit_shows_add_toast: sawAddToast,
     C_lists_pending_comments: sawList,
     s_shows_send_confirm: sawConfirm,

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/jonnyom/slis/internal/hooks"
 	"github.com/spf13/cobra"
 )
 
@@ -79,6 +80,14 @@ func execJSUI(binPath string, launch uiLaunch) error {
 	return execErr
 }
 
+func migrateExistingHooksBestEffort(binPath string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	_, _ = hooks.MigrateExistingHooks(filepath.Join(home, ".claude", "settings.json"), binPath)
+}
+
 var uiCmd = &cobra.Command{
 	Use:   "ui",
 	Short: "Launch the JS (OpenTUI) front-end",
@@ -92,6 +101,7 @@ var uiCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("cannot locate the slis binary: %w", err)
 		}
+		migrateExistingHooksBestEffort(binPath)
 
 		launch, err := resolveUILaunch(binPath, os.Getenv("SLIS_TUI_DIR"), regularFileExists)
 		if err != nil {

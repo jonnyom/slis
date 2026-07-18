@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // hookEvents are the Claude Code events slis installs a handler for.
@@ -43,6 +44,85 @@ func hookGroupsContain(groups []interface{}, cmd string) bool {
 		}
 	}
 	return false
+}
+
+// slisHookForEvent recognizes a hook installed by an older slis executable.
+// This lets init-hooks migrate paths after a Homebrew reinstall instead of
+// leaving Claude invoking a vanished temporary binary forever.
+func slisHookForEvent(command, event string) bool {
+	fields := strings.Fields(command)
+	if len(fields) != 3 || fields[1] != "hook" || fields[2] != event {
+		return false
+	}
+	bin := filepath.Base(strings.Trim(fields[0], "'\""))
+	return strings.HasPrefix(bin, "slis")
+}
+
+// migrateHookCommands updates stale slis executable paths and removes duplicate
+// slis handlers for the same event. Unrelated hooks and malformed entries are
+// preserved exactly as they were.
+func migrateHookCommands(groups []interface{}, event, cmd string) ([]interface{}, bool) {
+	out := make([]interface{}, 0, len(groups))
+	changed := false
+	seen := false
+	for _, group := range groups {
+		gm, ok := group.(map[string]interface{})
+		if !ok {
+			out = append(out, group)
+			continue
+		}
+		inner, ok := gm["hooks"].([]interface{})
+		if !ok {
+			out = append(out, group)
+			continue
+		}
+		innerOut := make([]interface{}, 0, len(inner))
+		groupChanged := false
+		for _, hook := range inner {
+			hm, ok := hook.(map[string]interface{})
+			if !ok {
+				innerOut = append(innerOut, hook)
+				continue
+			}
+			old, _ := hm["command"].(string)
+			if !slisHookForEvent(old, event) {
+				innerOut = append(innerOut, hook)
+				continue
+			}
+			if seen {
+				changed = true
+				groupChanged = true
+				continue
+			}
+			seen = true
+			if old == cmd {
+				innerOut = append(innerOut, hook)
+				continue
+			}
+			hookCopy := make(map[string]interface{}, len(hm))
+			for key, value := range hm {
+				hookCopy[key] = value
+			}
+			hookCopy["command"] = cmd
+			innerOut = append(innerOut, hookCopy)
+			changed = true
+			groupChanged = true
+		}
+		if groupChanged {
+			if len(innerOut) == 0 && len(gm) == 1 {
+				continue
+			}
+			groupCopy := make(map[string]interface{}, len(gm))
+			for key, value := range gm {
+				groupCopy[key] = value
+			}
+			groupCopy["hooks"] = innerOut
+			out = append(out, groupCopy)
+		} else {
+			out = append(out, group)
+		}
+	}
+	return out, changed
 }
 
 // MissingHooks returns the slis hook events that are NOT present in the parsed
@@ -106,6 +186,11 @@ func mergeHookConfig(settings map[string]interface{}, binPath string) (map[strin
 			// If the type is wrong/malformed, treat as absent (groups stays nil).
 		}
 
+		if migrated, ok := migrateHookCommands(groups, event, cmd); ok {
+			hooksMap[event] = migrated
+			changes = append(changes, fmt.Sprintf("updated %s hook", event))
+			continue
+		}
 		if hookGroupsContain(groups, cmd) {
 			continue
 		}
@@ -128,6 +213,64 @@ func mergeHookConfig(settings map[string]interface{}, binPath string) (map[strin
 	return out, changes
 }
 
+// MigrateExistingHooks updates only slis hooks that are already installed. It
+// is safe to run on startup: missing settings and missing hook events remain
+// untouched, while Homebrew path changes and duplicate legacy hooks self-heal.
+func MigrateExistingHooks(settingsPath, binPath string) ([]string, error) {
+	settings, exists, err := readSettings(settingsPath)
+	if err != nil || !exists {
+		return nil, err
+	}
+	hooksMap, ok := settings["hooks"].(map[string]interface{})
+	if !ok {
+		return nil, nil
+	}
+	out := make(map[string]interface{}, len(settings))
+	for key, value := range settings {
+		out[key] = value
+	}
+	hooksOut := make(map[string]interface{}, len(hooksMap))
+	for key, value := range hooksMap {
+		hooksOut[key] = value
+	}
+	var changes []string
+	for _, event := range hookEvents {
+		groups, ok := hooksMap[event].([]interface{})
+		if !ok {
+			continue
+		}
+		if migrated, changed := migrateHookCommands(groups, event, hookCommand(binPath, event)); changed {
+			hooksOut[event] = migrated
+			changes = append(changes, fmt.Sprintf("updated %s hook", event))
+		}
+	}
+	if len(changes) == 0 {
+		return nil, nil
+	}
+	out["hooks"] = hooksOut
+	if err := writeSettings(settingsPath, out); err != nil {
+		return nil, err
+	}
+	return changes, nil
+}
+
+func readSettings(settingsPath string) (map[string]interface{}, bool, error) {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]interface{}{}, false, nil
+		}
+		return nil, false, fmt.Errorf("reading %s: %w", settingsPath, err)
+	}
+	settings := map[string]interface{}{}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return nil, true, fmt.Errorf("parsing %s: %w", settingsPath, err)
+		}
+	}
+	return settings, true, nil
+}
+
 // InitHooks reads settingsPath (JSON; treats missing file as empty {}), merges
 // the slis hooks via mergeHookConfig, and writes the result back
 // (pretty-printed, creating parent dirs as needed).
@@ -135,23 +278,9 @@ func mergeHookConfig(settings map[string]interface{}, binPath string) (map[strin
 // Returns the list of changes made (empty = already installed). binPath is
 // the absolute path to the slis binary.
 func InitHooks(settingsPath, binPath string) ([]string, error) {
-	var settings map[string]interface{}
-
-	data, err := os.ReadFile(settingsPath)
+	settings, _, err := readSettings(settingsPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			settings = map[string]interface{}{}
-		} else {
-			return nil, fmt.Errorf("reading %s: %w", settingsPath, err)
-		}
-	} else {
-		if len(data) == 0 {
-			settings = map[string]interface{}{}
-		} else {
-			if err := json.Unmarshal(data, &settings); err != nil {
-				return nil, fmt.Errorf("parsing %s: %w", settingsPath, err)
-			}
-		}
+		return nil, err
 	}
 
 	merged, changes := mergeHookConfig(settings, binPath)
@@ -161,13 +290,19 @@ func InitHooks(settingsPath, binPath string) ([]string, error) {
 		return nil, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
-		return nil, fmt.Errorf("creating parent dirs: %w", err)
+	if err := writeSettings(settingsPath, merged); err != nil {
+		return nil, err
 	}
+	return changes, nil
+}
 
-	out, err := json.MarshalIndent(merged, "", "  ")
+func writeSettings(settingsPath string, settings map[string]interface{}) error {
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		return fmt.Errorf("creating parent dirs: %w", err)
+	}
+	out, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("marshalling settings: %w", err)
+		return fmt.Errorf("marshalling settings: %w", err)
 	}
 
 	// Resolve symlinks first: settings.json is often a symlink into a dotfiles
@@ -186,26 +321,25 @@ func InitHooks(settingsPath, binPath string) ([]string, error) {
 	// a sibling temp file, then rename over the target (atomic on the same fs).
 	tmp, err := os.CreateTemp(filepath.Dir(target), ".slis-settings-*.tmp")
 	if err != nil {
-		return nil, fmt.Errorf("creating temp settings file: %w", err)
+		return fmt.Errorf("creating temp settings file: %w", err)
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(out); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
-		return nil, fmt.Errorf("writing temp settings file: %w", err)
+		return fmt.Errorf("writing temp settings file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
-		return nil, fmt.Errorf("closing temp settings file: %w", err)
+		return fmt.Errorf("closing temp settings file: %w", err)
 	}
 	if err := os.Chmod(tmpName, 0o644); err != nil {
 		os.Remove(tmpName)
-		return nil, fmt.Errorf("chmod temp settings file: %w", err)
+		return fmt.Errorf("chmod temp settings file: %w", err)
 	}
-	if err := os.Rename(tmpName, settingsPath); err != nil {
+	if err := os.Rename(tmpName, target); err != nil {
 		os.Remove(tmpName)
-		return nil, fmt.Errorf("replacing %s: %w", settingsPath, err)
+		return fmt.Errorf("replacing %s: %w", target, err)
 	}
-
-	return changes, nil
+	return nil
 }

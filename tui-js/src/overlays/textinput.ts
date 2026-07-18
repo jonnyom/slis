@@ -26,3 +26,25 @@ export function editText(text: string, key: EditKey): string {
   }
   return text;
 }
+
+// Soft-wrap a controlled input and retain the tail that fits in its capped
+// viewport. Since the caret is append-only, this is the terminal equivalent of
+// automatically scrolling the textarea as the comment grows.
+export function visibleTextLines(text: string, width: number, maxRows: number): string[] {
+  const columns = Math.max(1, width);
+  const rows = Math.max(1, maxRows);
+  if (text.length === 0) return [""];
+
+  const lines: string[] = [];
+  let rest = text;
+  while (rest.length > columns) {
+    const candidate = rest.slice(0, columns + 1);
+    const space = candidate.lastIndexOf(" ");
+    const cut = space > 0 ? space : columns;
+    lines.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+    if (rest.startsWith(" ")) rest = rest.slice(1);
+  }
+  lines.push(rest);
+  return lines.slice(-rows);
+}

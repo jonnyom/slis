@@ -24,7 +24,14 @@ func ComposePrompt(comments []Comment) string {
 
 	for i, c := range ordered {
 		b.WriteString("\n")
-		location := fmt.Sprintf("%s — %s:%d", c.Repo, c.File, c.Line)
+		line := fmt.Sprintf("%d", c.Line)
+		if c.EndLine > c.Line {
+			line = fmt.Sprintf("%d-%d", c.Line, c.EndLine)
+		}
+		location := fmt.Sprintf("%s — %s:%s", c.Repo, c.File, line)
+		if c.Side == "old" {
+			location += " (old/deleted side)"
+		}
 		fmt.Fprintf(&b, "%d. %s\n", i+1, location)
 
 		if hunk := strings.TrimRight(c.Hunk, "\n"); hunk != "" {

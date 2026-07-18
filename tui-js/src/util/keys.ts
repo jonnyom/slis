@@ -16,3 +16,11 @@ export function normalizeKeyName(key: KeyEvent): string {
   }
   return name;
 }
+
+// Ctrl+C can arrive either as the raw ETX byte (handled globally in app.tsx)
+// or as a normalized KeyEvent under terminal keyboard protocols. Keeping this
+// second guard in React views prevents normalized ctrl+c from falling through
+// to the browser's plain `c` create-slice binding.
+export function isQuitKey(key: KeyEvent, normalizedName = normalizeKeyName(key)): boolean {
+  return normalizedName === "q" || (key.ctrl === true && normalizedName.toLowerCase() === "c");
+}

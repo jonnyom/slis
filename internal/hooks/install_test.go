@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -105,6 +106,91 @@ func TestInitHooksIdempotent(t *testing.T) {
 
 	if string(after1) != string(after2) {
 		t.Errorf("file content changed on second run:\nbefore: %s\nafter:  %s", after1, after2)
+	}
+}
+
+func TestInitHooksMigratesStaleExecutablePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	initial := `{"hooks":{"Notification":[{"hooks":[{"type":"command","command":"/tmp/slis-fx hook Notification"}]}],"Stop":[{"hooks":[{"type":"command","command":"/tmp/slis-fx hook Stop"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/tmp/slis-fx hook UserPromptSubmit"}]}]}}`
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	changes, err := InitHooks(path, "/opt/homebrew/bin/slis")
+	if err != nil {
+		t.Fatalf("InitHooks: %v", err)
+	}
+	if len(changes) != 3 {
+		t.Fatalf("changes = %v, want three migrations", changes)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if strings.Contains(string(data), "/tmp/slis-fx") {
+		t.Fatalf("stale hook path remains: %s", data)
+	}
+	for _, event := range hookEvents {
+		if !strings.Contains(string(data), hookCommand("/opt/homebrew/bin/slis", event)) {
+			t.Errorf("updated %s hook missing", event)
+		}
+	}
+}
+
+func TestMigrateExistingHooksDoesNotInstallMissingEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	initial := `{"model":"opus","hooks":{"Notification":[{"hooks":[{"type":"command","command":"/tmp/slis-old hook Notification"},{"type":"command","command":"/another/slis hook Notification"}]}]}}`
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changes, err := MigrateExistingHooks(path, "/opt/homebrew/bin/slis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("changes = %v, want one migration", changes)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(data), hookCommand("/opt/homebrew/bin/slis", "Notification")) != 1 {
+		t.Fatalf("stale hooks were not migrated and deduplicated: %s", data)
+	}
+	if strings.Contains(string(data), `"Stop"`) || strings.Contains(string(data), `"UserPromptSubmit"`) {
+		t.Fatalf("startup migration installed missing hooks: %s", data)
+	}
+}
+
+func TestInitHooksPreservesSettingsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "dotfiles-settings.json")
+	link := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(target, []byte(`{"model":"opus"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := InitHooks(link, "/opt/homebrew/bin/slis"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("settings symlink was replaced")
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), hookCommand("/opt/homebrew/bin/slis", "Stop")) {
+		t.Fatalf("symlink target was not updated: %s", data)
 	}
 }
 

@@ -1,9 +1,7 @@
 package tui
 
 import (
-	"fmt"
-	"strings"
-
+	"github.com/jonnyom/slis/internal/agentlaunch"
 	"github.com/jonnyom/slis/internal/model"
 )
 
@@ -11,58 +9,14 @@ import (
 // (so it's safe to append a --append-system-prompt flag). A non-claude agent is
 // left untouched.
 func isClaudeAgent(agent string) bool {
-	fields := strings.Fields(agent)
-	if len(fields) == 0 {
-		return false
-	}
-	bin := fields[0]
-	return bin == "claude" || strings.HasSuffix(bin, "/claude")
-}
-
-// slisAgentContext is the one-line context describing the slice, injected into
-// Claude's system prompt so it knows it's running inside a slis slice spanning
-// several repos. The agent's cwd is the workspace root, where both the primary
-// checkouts and the slice worktrees live — so the context must point it at the
-// worktree paths and forbid the primaries, otherwise it edits the wrong tree.
-// Kept to a single line — it's typed into the shell via tmux send-keys, and an
-// embedded newline would submit the command early.
-func slisAgentContext(sl model.Slice) string {
-	repos := sl.Repos() // sorted
-	parts := make([]string, 0, len(repos))
-	for _, r := range repos {
-		m := sl.Members[r]
-		if m.WorktreePath != "" {
-			parts = append(parts, fmt.Sprintf("%s → %s (branch %s)", r, m.WorktreePath, m.Branch))
-		} else {
-			parts = append(parts, fmt.Sprintf("%s (branch %s)", r, m.Branch))
-		}
-	}
-	ctx := fmt.Sprintf("You are running inside slis, a multi-repo worktree cockpit, working on slice %q "+
-		"which spans %d repo(s). Make ALL your edits inside this slice's git worktrees, listed here — "+
-		"do NOT touch the repos' primary checkouts: %s. Each repo is a separate worktree on its own "+
-		"branch; cd into the right worktree for each repo and keep every commit scoped to that worktree.",
-		sl.Name, len(repos), strings.Join(parts, "; "))
-	if sl.Active {
-		ctx += " (This slice is also LIVE — swapped into the primary checkouts so dev servers build it — " +
-			"but still make every edit in the worktrees above, never the primaries.)"
-	}
-	return ctx
-}
-
-// shellSingleQuote wraps s in single quotes for safe shell insertion, escaping
-// any embedded single quotes.
-func shellSingleQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return agentlaunch.IsClaude(agent)
 }
 
 // withSlisContext appends a --append-system-prompt flag carrying the slice
 // context to a Claude agent command. Non-claude agents (e.g. codex, which has no
 // such flag) are returned unchanged.
 func withSlisContext(agent string, sl model.Slice) string {
-	if !isClaudeAgent(agent) {
-		return agent
-	}
-	return agent + " --append-system-prompt " + shellSingleQuote(slisAgentContext(sl))
+	return agentlaunch.WithSliceContext(agent, sl)
 }
 
 // slisEnvPrefix builds the inline env-var prefix prepended to the agent launch
@@ -70,28 +24,12 @@ func withSlisContext(agent string, sl model.Slice) string {
 // values. Each value is single-quoted; the whole thing stays on one line (the
 // send-keys constraint). SLIS_WORKTREES is a comma-separated repo=path list.
 func slisEnvPrefix(sl model.Slice, wsRoot, harness string) string {
-	active := "0"
-	if sl.Active {
-		active = "1"
-	}
-	repos := sl.Repos() // sorted
-	pairs := make([]string, 0, len(repos))
-	for _, r := range repos {
-		pairs = append(pairs, r+"="+sl.Members[r].WorktreePath)
-	}
-	vars := []string{
-		"SLIS_SLICE=" + shellSingleQuote(sl.Name),
-		"SLIS_ROOT=" + shellSingleQuote(wsRoot),
-		"SLIS_ACTIVE=" + shellSingleQuote(active),
-		"SLIS_HARNESS=" + shellSingleQuote(harness),
-		"SLIS_WORKTREES=" + shellSingleQuote(strings.Join(pairs, ",")),
-	}
-	return strings.Join(vars, " ")
+	return agentlaunch.EnvPrefix(sl, wsRoot, harness)
 }
 
 // agentLaunchLine builds the full one-line send-keys command: the SLIS_* env
 // prefix followed by the agent command (with claude's --append-system-prompt
 // flag appended for a claude command; nothing extra for codex).
 func agentLaunchLine(agent string, sl model.Slice, wsRoot, harness string) string {
-	return slisEnvPrefix(sl, wsRoot, harness) + " " + withSlisContext(agent, sl)
+	return agentlaunch.Line(agent, sl, wsRoot, harness)
 }

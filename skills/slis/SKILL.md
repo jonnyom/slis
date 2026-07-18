@@ -84,10 +84,10 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |
 | `slis focus <slice>` | mutate | no | Switch the active tmux client to the slice's session (creates it if missing); prints `tmux attach -t …` when no client is attached. This is what a clicked desktop notification runs |
-| `slis review add <slice>` | mutate | no | Add a pending review comment on a file:line (`--repo --file --line --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
+| `slis review add <slice>` | mutate | no | Add a pending review comment on a line or range (`--repo --file --line [--end-line] --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
 | `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
 | `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
-| `slis review send <slice>` | mutate | no | Compose the pending comments into one prompt and inject it into the slice's running tmux session (bracketed paste + Enter), then clear them (`--keep` to preserve). No session → no change + guidance; never auto-starts an agent |
+| `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active pane, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
 
 `*` `edit` opens an editor / prints a path; it does not change repo state.
 `slis hook <event>` exists but is hidden and machine-invoked by Claude Code — never call it by hand.

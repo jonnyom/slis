@@ -46,6 +46,23 @@ func TestRemoveDeletesWorktreeAndMergedBranch(t *testing.T) {
 	}
 }
 
+func TestRemoveDeletesEmptyManagedSliceDirectories(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	root := t.TempDir()
+	wt := filepath.Join(root, ".slis", "worktrees", "group", "feature", "web")
+	testutil.AddWorktree(t, repo, "feature-clean", wt)
+
+	ws, sl := sliceFor("web", repo, "feature-clean", wt)
+	ws.Root = root
+	sl.Name = "group/feature"
+	if _, err := cleanup.Remove(ws, sl, cleanup.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".slis", "worktrees", "group")); !os.IsNotExist(err) {
+		t.Fatalf("empty managed parent should be removed, stat err = %v", err)
+	}
+}
+
 // TestRemoveRefusesDirtyWithoutForce verifies a dirty worktree is preserved
 // unless Force is set.
 func TestRemoveRefusesDirtyWithoutForce(t *testing.T) {

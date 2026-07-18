@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { editText } from "./textinput";
+import { editText, visibleTextLines } from "./textinput";
 
 describe("editText", () => {
   test("appends a printable character via its sequence", () => {
@@ -27,5 +27,19 @@ describe("editText", () => {
   test("ignores ctrl/meta-modified printable keys", () => {
     expect(editText("ab", { name: "c", sequence: "c", ctrl: true })).toBe("ab");
     expect(editText("ab", { name: "v", sequence: "v", meta: true })).toBe("ab");
+  });
+});
+
+describe("visibleTextLines", () => {
+  test("word-wraps into a capped viewport", () => {
+    expect(visibleTextLines("one two three four five", 9, 2)).toEqual(["three", "four five"]);
+  });
+
+  test("hard-wraps a long word", () => {
+    expect(visibleTextLines("abcdefghij", 4, 3)).toEqual(["abcd", "efgh", "ij"]);
+  });
+
+  test("keeps an empty caret row", () => {
+    expect(visibleTextLines("", 20, 5)).toEqual([""]);
   });
 });

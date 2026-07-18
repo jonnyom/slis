@@ -17,6 +17,11 @@ tui_dir="${script_dir}/../tui-js"
 
 cd "${tui_dir}"
 
+# OpenTUI 0.4.5's bundled worker assets require Bun 1.3.14 or newer when
+# producing a standalone executable. Older compilers can emit a binary that
+# builds successfully but crashes at startup with an undefined asset path.
+bun run ./scripts/require-bun-version.ts 1.3.14
+
 echo "==> installing tui-js deps for all platforms"
 bun install --frozen-lockfile --cpu '*' --os '*'
 

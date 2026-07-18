@@ -72,7 +72,7 @@ type Sessions struct {
 	//   "root"  — a single window at the workspace root (run Claude across the stack)
 	//   "repos" — one window per repo worktree
 	//   "both"  — a root window first, then one per repo
-	// Empty defaults to "root" when a workspace root is set, else "repos".
+	// Empty defaults to "repos" for multi-repo slices, or "root" for one member.
 	Layout string `yaml:"layout"`
 }
 

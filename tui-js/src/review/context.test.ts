@@ -3,6 +3,7 @@ import { parseUnifiedDiff } from "../diff/parse";
 import type { ReviewComment } from "../rpc/types";
 import {
   clampReviewSel,
+  diffRangeComment,
   fileComment,
   hunkComment,
   linesWithComments,
@@ -59,6 +60,40 @@ describe("hunkComment", () => {
   });
 });
 
+describe("diffRangeComment", () => {
+  test("captures the exact selected new-file lines and their range", () => {
+    const selected = diffRangeComment(cartFile(), 0, 11, 12);
+    expect(selected).toEqual({
+      line: 11,
+      endLine: 12,
+      hunk:
+        "+  const totals = useTotals(items);\n" +
+        "+  return <List items={items} totals={totals} />;",
+    });
+  });
+
+  test("a single selected line omits endLine", () => {
+    expect(diffRangeComment(cartFile(), 0, 12, 12)).toEqual({
+      line: 12,
+      endLine: undefined,
+      hunk: "+  return <List items={items} totals={totals} />;",
+    });
+  });
+
+  test("returns null for a missing hunk", () => {
+    expect(diffRangeComment(cartFile(), 9, 11, 12)).toBeNull();
+  });
+
+  test("captures deletion-only lines from the old side", () => {
+    const selected = diffRangeComment(cartFile(), 0, 11, 11, "old");
+    expect(selected).toEqual({
+      line: 11,
+      endLine: undefined,
+      hunk: "-  return <List items={items} />;",
+    });
+  });
+});
+
 describe("fileComment", () => {
   const lines = ["one", "two", "three", "four", "five"];
 
@@ -90,6 +125,35 @@ describe("linesWithComments", () => {
   test("does not bleed across repo or file", () => {
     expect(linesWithComments(comments, "web", "cart.tsx").has(12)).toBe(true);
     expect(linesWithComments(comments, "api", "other.ts").size).toBe(0);
+  });
+
+  test("marks every line covered by a pending range comment", () => {
+    const ranged: ReviewComment = {
+      id: "range",
+      slice: "s",
+      repo: "web",
+      file: "cart.tsx",
+      line: 20,
+      end_line: 22,
+      body: "x",
+      created_at: "",
+    };
+    expect([...linesWithComments([ranged], "web", "cart.tsx")]).toEqual([20, 21, 22]);
+  });
+
+  test("keeps old-side and new-side gutter markers separate", () => {
+    const old: ReviewComment = {
+      id: "old",
+      slice: "s",
+      repo: "web",
+      file: "cart.tsx",
+      line: 11,
+      side: "old",
+      body: "x",
+      created_at: "",
+    };
+    expect(linesWithComments([old], "web", "cart.tsx", "old").has(11)).toBe(true);
+    expect(linesWithComments([old], "web", "cart.tsx", "new").size).toBe(0);
   });
 });
 

@@ -2,6 +2,7 @@
   "name": "slis-tui-js",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "type": "module",
   "description": "OpenTUI front-end for slis, driven by the `slis rpc` Go sidecar.",
   "scripts": {

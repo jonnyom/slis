@@ -35,12 +35,10 @@ import type { CockpitEntry } from "./cockpit.hints";
 import { listHints } from "./browser.hints";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
-import { normalizeKeyName } from "../util/keys";
+import { isQuitKey, normalizeKeyName } from "../util/keys";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
 import { attention, diffColor, glyph, theme } from "../theme";
-import { classifyPatchLine, type PatchLineKind } from "../diff/render";
-import { parseUnifiedDiff } from "../diff/parse";
 import { StatStrip } from "../components/statstrip";
 import { Eyebrow } from "../components/eyebrow";
 import { Divider } from "../components/divider";
@@ -66,19 +64,20 @@ export interface BrowserProps {
   onRefresh: () => void;
   onToggleProcs: () => void;
   onQuit: () => void;
+  // Changes when the mutable semantic palette is switched; also invalidates
+  // memoized slice rows so every cell repaints in the new theme.
+  themeVersion: string;
   // Ambient background-create label for the header (spec D2), or null.
   createBusy?: string | null;
 }
 
-const PATCH_TAIL_CAP = 200;
+const PREVIEW_FILE_CAP = 8;
 
-const FILTER_COLOR: Record<string, string> = {
-  "2": theme.attn,
-  "4": theme.good,
-  "6": theme.attn,
-  "7": theme.good,
-  "8": theme.attn,
-};
+function filterColor(key: string): string {
+  if (key === "4" || key === "7") return theme.good;
+  if (key === "2" || key === "6" || key === "8") return theme.attn;
+  return theme.textDim;
+}
 
 function conflictPartners(conflicts: ConflictsResult | null, slice: string): string[] {
   const set = new Set<string>();
@@ -89,32 +88,18 @@ function conflictPartners(conflicts: ConflictsResult | null, slice: string): str
   return [...set];
 }
 
-function patchLineColor(kind: PatchLineKind): string {
-  switch (kind) {
-    case "add":
-      return diffColor.add;
-    case "del":
-      return diffColor.del;
-    case "hunk":
-      return diffColor.hunk;
-    case "meta":
-      return theme.textFaint;
-    case "context":
-    default:
-      return theme.textDim;
-  }
-}
-
 const SliceRow = memo(function SliceRow({
   view,
   focused,
   listFocused,
   selected,
+  themeVersion: _themeVersion,
 }: {
   view: SliceView;
   focused: boolean;
   listFocused: boolean;
   selected: boolean;
+  themeVersion: string;
 }): ReactNode {
   const a = attention(view);
   const focusRow = focused && listFocused;
@@ -193,7 +178,7 @@ function FilterRail({
       {FILTERS.map((f, i) => {
         const n = views.filter(f.match).length;
         const active = i === filterIndex;
-        const countColor = FILTER_COLOR[f.key] ?? theme.textDim;
+        const countColor = filterColor(f.key);
         return (
           <text key={f.key} wrapMode="none">
             <span fg={active ? theme.focus : theme.textFaint}>
@@ -261,19 +246,11 @@ function prBadge(prs: PrStackEntry[] | undefined, repo: string): ReactNode {
 }
 
 function repoTotals(r: DiffRepo): { added: number; deleted: number; files: number } {
-  if (r.stat?.files) {
-    const files = r.stat.files;
-    return {
-      added: r.stat.added ?? files.reduce((a, f) => a + Math.max(f.added, 0), 0),
-      deleted: r.stat.deleted ?? files.reduce((a, f) => a + Math.max(f.deleted, 0), 0),
-      files: files.length,
-    };
-  }
-  const parsed = r.patch ? parseUnifiedDiff(r.patch) : [];
+  const files = r.stat?.files ?? [];
   return {
-    added: parsed.reduce((a, f) => a + f.added, 0),
-    deleted: parsed.reduce((a, f) => a + f.deleted, 0),
-    files: parsed.length,
+    added: r.stat?.added ?? files.reduce((a, f) => a + Math.max(f.added, 0), 0),
+    deleted: r.stat?.deleted ?? files.reduce((a, f) => a + Math.max(f.deleted, 0), 0),
+    files: files.length,
   };
 }
 
@@ -300,6 +277,18 @@ function previewLines(
     stateSpans.push(
       <span key="wait" fg={theme.attn}>
         {glyph.waiting} needs you{"   "}
+      </span>,
+    );
+  if (view.status === "running")
+    stateSpans.push(
+      <span key="running" fg={theme.good}>
+        {glyph.running} agent running{"   "}
+      </span>,
+    );
+  if (view.status === "done")
+    stateSpans.push(
+      <span key="done" fg={theme.merged}>
+        {glyph.done} agent done{"   "}
       </span>,
     );
   if (workState(view) === "ready")
@@ -371,6 +360,8 @@ function previewLines(
       </text>,
     );
   } else {
+    let shownFiles = 0;
+    let totalFiles = 0;
     for (const r of diff.repos) {
       if (r.err) {
         push(
@@ -383,6 +374,7 @@ function previewLines(
         continue;
       }
       const t = repoTotals(r);
+      totalFiles += t.files;
       push(
         <text key={`d-${r.repo}`} wrapMode="none">
           <span fg={theme.textFaint}>{glyph.filterMarker} </span>
@@ -392,29 +384,32 @@ function previewLines(
           <span fg={theme.textDim}> · {t.files} files</span>
         </text>,
       );
-      if (r.patch) {
-        const patchLines = r.patch.split("\n");
-        const capped = patchLines.slice(0, PATCH_TAIL_CAP);
-        capped.forEach((raw, i) => {
-          const line = stripSgr(raw);
-          push(
-            <text
-              key={`p-${r.repo}-${i}`}
-              wrapMode="none"
-              fg={patchLineColor(classifyPatchLine(line))}
-            >
-              {line === "" ? " " : line}
-            </text>,
-          );
-        });
-        if (patchLines.length > PATCH_TAIL_CAP)
-          push(
-            <text key={`p-more-${r.repo}`} wrapMode="none" fg={theme.textFaint} attributes={DIM}>
-              {`  … ${patchLines.length - PATCH_TAIL_CAP} more lines — open cockpit (enter) for the full diff`}
-            </text>,
-          );
+      for (const file of r.stat?.files ?? []) {
+        if (shownFiles >= PREVIEW_FILE_CAP) break;
+        const binary = file.added < 0 || file.deleted < 0;
+        push(
+          <text key={`f-${r.repo}-${file.path}`} wrapMode="none">
+            <span fg={theme.textFaint}>{"    "}</span>
+            <span fg={theme.text}>{file.path}</span>
+            {binary ? (
+              <span fg={theme.textDim}> binary</span>
+            ) : (
+              <>
+                <span fg={diffColor.add}> +{file.added}</span>
+                <span fg={diffColor.del}> -{file.deleted}</span>
+              </>
+            )}
+          </text>,
+        );
+        shownFiles++;
       }
     }
+    if (totalFiles > shownFiles)
+      push(
+        <text key="files-more" wrapMode="none" fg={theme.textFaint} attributes={DIM}>
+          {`    … ${totalFiles - shownFiles} more files · enter for stack details`}
+        </text>,
+      );
   }
   blank();
 
@@ -465,9 +460,9 @@ function Preview({
     let live = true;
     setCapture(null);
     setDiff(null);
-    client.capture({ slice, lines: 8 }).then((r) => live && setCapture(r), () => {});
+    client.capture({ slice, lines: 3 }).then((r) => live && setCapture(r), () => {});
     client
-      .diff({ slice, scope: "working", format: "patch" })
+      .diff({ slice, scope: "working", format: "stat" })
       .then((r) => live && setDiff(r), () => {});
     return () => {
       live = false;
@@ -612,7 +607,7 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
 
-    if (name === "q") return props.onQuit();
+    if (isQuitKey(key, name)) return props.onQuit();
     if (name === "?") return overlays.help();
     if (name === "P") return props.onToggleProcs();
     if (name === "r") return props.onRefresh();
@@ -814,6 +809,7 @@ export function Browser(props: BrowserProps): ReactNode {
                       focused={i === focusIndex}
                       listFocused={hubFocus === "list"}
                       selected={selected.has(row.view.slice.name)}
+                      themeVersion={props.themeVersion}
                     />
                   </box>
                 );

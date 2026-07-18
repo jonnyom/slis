@@ -15,6 +15,7 @@ import (
 
 	"github.com/jonnyom/slis/internal/commentcache"
 	"github.com/jonnyom/slis/internal/config"
+	diffpkg "github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/gt"
@@ -22,6 +23,7 @@ import (
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/radar"
 	"github.com/jonnyom/slis/internal/swap"
+	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
 // MemberDTO is a JSON-friendly representation of a single slice member.
@@ -99,6 +101,8 @@ type OrderedBranchDTO struct {
 	Depth        int    `json:"depth"`
 	Trunk        bool   `json:"trunk"`
 	NeedsRestack bool   `json:"needs_restack"`
+	Added        *int   `json:"added,omitempty"`
+	Deleted      *int   `json:"deleted,omitempty"`
 }
 
 // MemberDetailDTO extends MemberDTO with a gt stack.
@@ -119,6 +123,17 @@ type SliceDetailDTO struct {
 type StatusDTO struct {
 	Slice  string `json:"slice"`
 	Status string `json:"status"`
+}
+
+// SliceStatus returns the semantic hook status when one has been recorded. A
+// live tmux session is a conservative running fallback for older/broken hook
+// installations, matching the legacy TUI instead of labelling active work idle.
+func SliceStatus(eventsDir, slice string) model.SessionStatus {
+	status := notify.ReadStatus(eventsDir, slice)
+	if status == model.SessNone && tmuxctl.SessionExists(slice) {
+		return model.SessRunning
+	}
+	return status
 }
 
 // PRStackRowDTO is a JSON-friendly representation of one repo's PR in a slice's
@@ -297,15 +312,48 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 		if m.WorktreePath != "" {
 			st, err := gt.ReadStack(m.WorktreePath)
 			if err == nil {
-				ordered := st.Ordered()
-				stack := make([]OrderedBranchDTO, 0, len(ordered))
+				dirtyAdded, dirtyDeleted, dirtyOK := memberDirtyCounts(m)
+				// A slice owns the branch checked out in this worktree. Include only
+				// its downstack ancestry for context; siblings and upstack branches
+				// belong to other worktrees/slices and must never leak into this view.
+				ordered := st.Lineage(m.Branch)
+				stack := make([]OrderedBranchDTO, 0, len(ordered)+1)
+				sawCurrent := false
+				maxDepth := -1
 				for _, ob := range ordered {
-					stack = append(stack, OrderedBranchDTO{
+					if ob.Name == m.Branch {
+						sawCurrent = true
+					}
+					if ob.Depth > maxDepth {
+						maxDepth = ob.Depth
+					}
+					node := OrderedBranchDTO{
 						Name:         ob.Name,
 						Depth:        ob.Depth,
 						Trunk:        ob.Trunk,
 						NeedsRestack: ob.NeedsRestack,
-					})
+					}
+					switch {
+					case ob.Trunk:
+						// Trunk has no stack parent, so a +/- comparison is undefined.
+					case ob.Name == m.Branch && dirtyOK:
+						node.Added, node.Deleted = intPtr(dirtyAdded), intPtr(dirtyDeleted)
+					default:
+						if bd, err := BranchDiff(m.WorktreePath, m.Repo, ob.Name, "stat"); err == nil && bd.Err == "" && bd.Stat != nil {
+							node.Added, node.Deleted = intPtr(bd.Stat.Added), intPtr(bd.Stat.Deleted)
+						}
+					}
+					stack = append(stack, node)
+				}
+				// A newly-created/untracked Graphite branch may be absent from gt's
+				// lineage even though it is the worktree's actual branch. Never hide
+				// the member: append it after the known lineage as a best-effort leaf.
+				if !sawCurrent {
+					node := OrderedBranchDTO{Name: m.Branch, Depth: maxDepth + 1}
+					if dirtyOK {
+						node.Added, node.Deleted = intPtr(dirtyAdded), intPtr(dirtyDeleted)
+					}
+					stack = append(stack, node)
 				}
 				mdet.Stack = stack
 			}
@@ -320,10 +368,31 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 	}
 }
 
+func intPtr(n int) *int { return &n }
+
+// memberDirtyCounts matches the cockpit's default "working" scope for the
+// currently checked-out member branch. Other stack rows use committed
+// branch-vs-parent counts above.
+func memberDirtyCounts(m MemberDTO) (added, deleted int, ok bool) {
+	sl := model.Slice{Members: map[string]model.SliceMember{
+		m.Repo: {
+			Repo:         m.Repo,
+			Branch:       m.Branch,
+			WorktreePath: m.WorktreePath,
+			TipSHA:       m.TipSHA,
+		},
+	}}
+	diffs, err := diffpkg.SliceDirtyStat(sl)
+	if err != nil || len(diffs) != 1 || diffs[0].Err != "" {
+		return 0, 0, false
+	}
+	return diffs[0].TotalAdded(), diffs[0].TotalDeleted(), true
+}
+
 // SliceStatuses returns the session status for every slice in the workspace,
-// sorted by name. A slice with no recorded event reports "none". The slice set
-// is the same canonical set ls shows (discovery + overrides), so the output is
-// stable regardless of which slices happen to have event files.
+// sorted by name. Without a recorded event, a live tmux session reports
+// "running" and a slice with no session reports "none". The slice set is the
+// same canonical set ls shows (discovery + overrides).
 func SliceStatuses(ws config.Workspace, sp config.Paths) ([]StatusDTO, error) {
 	dtos, err := ListSlices(ws, sp.Overrides, sp.ActiveJournal)
 	if err != nil {
@@ -332,10 +401,7 @@ func SliceStatuses(ws config.Workspace, sp config.Paths) ([]StatusDTO, error) {
 
 	out := make([]StatusDTO, 0, len(dtos))
 	for _, s := range dtos {
-		out = append(out, StatusDTO{
-			Slice:  s.Name,
-			Status: notify.ReadStatus(sp.EventsDir, s.Name).String(),
-		})
+		out = append(out, StatusDTO{Slice: s.Name, Status: SliceStatus(sp.EventsDir, s.Name).String()})
 	}
 	sort.Slice(out, func(i, k int) bool { return out[i].Slice < out[k].Slice })
 	return out, nil

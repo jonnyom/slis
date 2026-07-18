@@ -56,6 +56,8 @@ export interface FakeReviewAddInput {
   branch?: string;
   file: string;
   line: number;
+  endLine?: number;
+  side?: "new" | "old";
   hunk?: string;
   body: string;
 }
@@ -68,6 +70,8 @@ export function fakeReviewAdd(input: FakeReviewAddInput): ReviewComment {
     branch: input.branch ?? "",
     file: input.file,
     line: input.line,
+    end_line: input.endLine,
+    side: input.side,
     hunk: input.hunk,
     body: input.body,
     created_at: new Date().toISOString(),

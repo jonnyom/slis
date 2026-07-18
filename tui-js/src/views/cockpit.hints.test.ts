@@ -52,7 +52,6 @@ describe("breadcrumbSection", () => {
 describe("cockpitHints", () => {
   const base = {
     scope: "working",
-    showPatch: false,
     zoomed: false,
     killPending: false,
     reviewMode: "diff" as const,
@@ -74,14 +73,11 @@ describe("cockpitHints", () => {
     expect(hints.some((h) => h.label === "scroll")).toBe(true);
   });
 
-  test("stack hints surface rich diff + scope + patch toggle", () => {
+  test("stack hints surface the rich-diff drill-down and scope", () => {
     const hints = cockpitHints("stack", base);
     expect(hints.some((h) => h.label === "rich diff")).toBe(true);
     expect(hints.some((h) => h.label === "scope: working")).toBe(true);
-    expect(hints.find((h) => h.key === "t")?.label).toBe("patch");
-    expect(cockpitHints("stack", { ...base, showPatch: true }).find((h) => h.key === "t")?.label).toBe(
-      "stat",
-    );
+    expect(hints.some((h) => h.key === "t")).toBe(false);
   });
 
   test("stack diff hides scope on a non-member branch, hides f without sidecar support", () => {
@@ -96,11 +92,21 @@ describe("cockpitHints", () => {
     const tree = cockpitHints("stack", { ...base, reviewMode: "tree" }).map((h) => h.label);
     expect(tree).toContain("open/expand");
     expect(tree).toContain("collapse");
+    expect(tree).toContain("edit");
+    expect(tree).toContain("repo/slice");
     const file = cockpitHints("stack", { ...base, reviewMode: "file" });
     const fileLabels = file.map((h) => h.label);
     expect(fileLabels).toContain("line");
     expect(fileLabels).toContain("comment");
+    expect(fileLabels).toContain("edit");
     expect(file.some((h) => h.key === "C" && h.label === "review")).toBe(true);
+
+    const readOnlyTree = cockpitHints("stack", {
+      ...base,
+      reviewMode: "tree",
+      onMember: false,
+    });
+    expect(readOnlyTree.some((h) => h.key === "e")).toBe(false);
   });
 
   test("prs hints surface CI log, fix-ci and open PR", () => {

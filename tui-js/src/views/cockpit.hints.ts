@@ -44,7 +44,6 @@ export type ReviewMode = "diff" | "tree" | "file";
 
 export interface CockpitHintState {
   scope: string; // short scope name for the stack panel (working/parent/trunk)
-  showPatch: boolean;
   zoomed: boolean;
   killPending: boolean;
   // Stack-panel review context (F3).
@@ -74,6 +73,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
       if (s.reviewMode === "file")
         return [
           { key: "j/k", label: "line" },
+          ...(s.onMember ? [{ key: "e", label: "edit" }] : []),
           { key: "c", label: "comment" },
           { key: "C", label: "review" },
           { key: "^d/u", label: "page" },
@@ -84,6 +84,8 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
           { key: "j/k", label: "move" },
           { key: "l", label: "open/expand" },
           { key: "h", label: "collapse" },
+          ...(s.onMember ? [{ key: "e", label: "edit" }] : []),
+          { key: "o/E", label: "repo/slice" },
           { key: "esc", label: "diff" },
         ];
       return [
@@ -91,7 +93,6 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         ...(s.stackReview ? [{ key: "f", label: "files" }] : []),
         { key: "enter", label: "rich diff" },
         ...(s.onMember ? [{ key: "b", label: `scope: ${s.scope}` }] : []),
-        { key: "t", label: s.showPatch ? "stat" : "patch" },
         { key: "C", label: "review" },
         { key: "w", label: "swap" },
       ];

@@ -13,6 +13,7 @@ import { Card } from "../components/card";
 import { Spinner } from "../components/spinner";
 import { BOLD } from "../components/ui";
 import { stripSgr } from "../util/ansi";
+import { visibleTextLines } from "./textinput";
 
 export function SwapOverlay({
   slice,
@@ -60,13 +61,21 @@ export function EditorPickerOverlay({
   sel,
   slice,
   repo,
+  path,
+  line,
 }: {
   editors: EditorSpec[];
   sel: number;
   slice: string;
   repo?: string;
+  path?: string;
+  line?: number;
 }): ReactNode {
-  const target = repo ? `${slice} · ${repo}` : slice;
+  const target = path
+    ? `${slice} · ${repo} · ${path}${line ? `:${line}` : ""}`
+    : repo
+      ? `${slice} · ${repo}`
+      : slice;
   return (
     <Card
       title="Open in which editor?"
@@ -164,7 +173,7 @@ export function ResultOverlay({
       ]}
     >
       {lines.map((l, i) => (
-        <text key={i} wrapMode="none" fg={theme.text}>
+        <text key={i} wrapMode="word" fg={theme.text}>
           {l === "" ? " " : stripSgr(l)}
         </text>
       ))}
@@ -360,10 +369,8 @@ export function CandidatesOverlay({
 
 // ── inline review (F2) ────────────────────────────────────────────────────────
 
-// The comment composer: captured context (repo · branch · file:line) + a short
-// excerpt for reference, and a single-line body input. Submitting persists via
-// `slis review add`. Body is single-line in v1 (the shared editText reducer has
-// no soft-wrap); enter submits, esc cancels.
+// The comment composer: captured context (repo · branch · file:line range) +
+// the exact selected lines and a capped, auto-scrolling wrapped input.
 export function CommentComposerOverlay({
   ctx,
   text,
@@ -372,15 +379,14 @@ export function CommentComposerOverlay({
   text: string;
 }): ReactNode {
   const excerpt = ctx.hunk ? ctx.hunk.split("\n").slice(0, 6) : [];
+  const location = `${ctx.file}:${ctx.line}${ctx.endLine && ctx.endLine > ctx.line ? `-${ctx.endLine}` : ""}`;
+  const side = ctx.side === "old" ? " · old/deleted" : " · new/added";
+  const inputLines = visibleTextLines(text, 68, 5);
   return (
     <Card
-      title="Comment on this line"
-      subtitle={`${ctx.repo} · ${ctx.branch || "?"} ${glyph.arrow} ${ctx.file}:${ctx.line}`}
+      title={ctx.endLine && ctx.endLine > ctx.line ? "Comment on selected lines" : "Comment on selected line"}
+      subtitle={`${ctx.repo} · ${ctx.branch || "?"} ${glyph.arrow} ${location}${side}`}
       width={76}
-      hints={[
-        { key: "enter", label: "add comment" },
-        { key: "esc", label: "cancel" },
-      ]}
     >
       {excerpt.length > 0 ? (
         <box flexDirection="column" marginBottom={1}>
@@ -391,13 +397,25 @@ export function CommentComposerOverlay({
           ))}
         </box>
       ) : null}
-      <text fg={theme.focus} attributes={BOLD} wrapMode="none">
-        instruction for the agent
-      </text>
-      <TextInputRow text={text} />
       <text fg={theme.textDim} wrapMode="none">
-        Delivered with `C` {glyph.arrow} `s`, or `slis review send {ctx.slice}`.
+        <span fg={theme.focus} attributes={BOLD}>enter</span> add comment  ·  <span fg={theme.focus} attributes={BOLD}>esc</span> cancel
       </text>
+      <text fg={theme.focus} attributes={BOLD} wrapMode="none">comment for the agent</text>
+      <box
+        flexDirection="column"
+        backgroundColor={theme.surfaceAlt}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        {inputLines.map((line, index) => (
+          <text key={index} wrapMode="none">
+            <span fg={theme.textBright}>{line}</span>
+            {index === inputLines.length - 1 ? (
+              <span fg={theme.focus} attributes={BOLD}>{glyph.focusBar}</span>
+            ) : null}
+          </text>
+        ))}
+      </box>
     </Card>
   );
 }
@@ -439,7 +457,7 @@ export function ReviewListOverlay({
           <span fg={theme.text}> to {slice}'s agent session?</span>
         </text>
         <text fg={theme.textDim} wrapMode="word">
-          Injects one structured prompt into the running tmux session, then clears the batch.
+          Starts the configured agent if needed, delivers one structured prompt, then clears the batch.
         </text>
       </Card>
     );
@@ -460,6 +478,7 @@ export function ReviewListOverlay({
         { key: "j/k", label: "move" },
         { key: "x", label: "delete" },
         ...(count > 0 ? [{ key: "s", label: "send to agent" }] : []),
+        { key: "?", label: "more" },
         { key: "esc", label: "close" },
       ]}
     >
@@ -488,6 +507,8 @@ export function ReviewListOverlay({
                   <span fg={theme.textDim}>{c.repo} </span>
                   <span fg={focused ? theme.textBright : theme.text}>
                     {c.file}:{c.line}
+                    {c.end_line && c.end_line > c.line ? `-${c.end_line}` : ""}
+                    {c.side === "old" ? " (old/deleted)" : ""}
                   </span>
                 </text>
                 <text wrapMode="none">

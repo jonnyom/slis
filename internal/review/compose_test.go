@@ -1,6 +1,9 @@
 package review
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestComposePromptEmpty(t *testing.T) {
 	if got := ComposePrompt(nil); got != "" {
@@ -37,5 +40,26 @@ func TestComposePromptOmitsEmptyHunk(t *testing.T) {
 		"do x\n"
 	if got != want {
 		t.Errorf("ComposePrompt mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestComposePromptIncludesLineRange(t *testing.T) {
+	got := ComposePrompt([]Comment{{
+		Slice: "s", Repo: "web", File: "a.go", Line: 4, EndLine: 7, Body: "extract this block",
+	}})
+	want := "Code review feedback on slice s — address each item:\n" +
+		"\n1. web — a.go:4-7\n" +
+		"extract this block\n"
+	if got != want {
+		t.Errorf("ComposePrompt mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestComposePromptIdentifiesOldSide(t *testing.T) {
+	got := ComposePrompt([]Comment{{
+		Slice: "s", Repo: "web", File: "a.go", Line: 9, Side: "old", Body: "keep this behavior",
+	}})
+	if !strings.Contains(got, "web — a.go:9 (old/deleted side)") {
+		t.Fatalf("old-side prompt location missing:\n%s", got)
 	}
 }

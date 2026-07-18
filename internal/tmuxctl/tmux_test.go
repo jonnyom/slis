@@ -90,6 +90,16 @@ func TestEnsureSessionLifecycle(t *testing.T) {
 		t.Fatal("session should exist after EnsureSession")
 	}
 
+	// Slis sessions enable mouse mode locally so wheel input forwarded by the
+	// embedded terminal scrolls tmux history without changing global settings.
+	mouse, err := exec.Command("tmux", "show-options", "-v", "-t", tmuxctl.SessionName(slice), "mouse").Output()
+	if err != nil {
+		t.Fatalf("read session mouse option: %v", err)
+	}
+	if strings.TrimSpace(string(mouse)) != "on" {
+		t.Fatalf("session mouse option = %q, want on", strings.TrimSpace(string(mouse)))
+	}
+
 	// Calling EnsureSession again must be idempotent.
 	if err := tmuxctl.EnsureSession(slice, members, tmuxctl.SessionOpts{}); err != nil {
 		t.Fatalf("idempotent EnsureSession: %v", err)

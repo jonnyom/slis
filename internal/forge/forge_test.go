@@ -52,6 +52,17 @@ func TestParsePR(t *testing.T) {
 	}
 }
 
+func TestParsePRPreservesHeadSHA(t *testing.T) {
+	raw := `{"number":151,"state":"MERGED","headRefName":"test","headRefOid":"8b14a2fedf02b1cc73e0282b6c6caf0d86d4dd23"}`
+	pr, err := forge.ParsePR("test", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr.HeadSHA != "8b14a2fedf02b1cc73e0282b6c6caf0d86d4dd23" {
+		t.Fatalf("HeadSHA = %q", pr.HeadSHA)
+	}
+}
+
 func TestCISummary(t *testing.T) {
 	pr, err := forge.ParsePR("demo/pr-features", fixture(t))
 	if err != nil {

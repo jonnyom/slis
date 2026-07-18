@@ -3,8 +3,9 @@
 // in the cockpit; the flat rows come from state/filetree.flattenTree.
 
 import type { ReactNode } from "react";
-import type { FileRow } from "../state/filetree";
-import { color, glyph } from "../theme";
+import type { ChangeIndex, FileRow } from "../state/filetree";
+import { statusGlyph } from "../diff/parse";
+import { color, glyph, statusColor } from "../theme";
 import { BOLD, DIM } from "./ui";
 
 function sizeLabel(size: number): string {
@@ -17,10 +18,12 @@ export function FileTree({
   rows,
   sel,
   loading,
+  changes,
 }: {
   rows: FileRow[];
   sel: number;
   loading: boolean;
+  changes: ChangeIndex;
 }): ReactNode {
   if (rows.length === 0) {
     return (
@@ -35,12 +38,29 @@ export function FileTree({
         const selected = i === sel;
         const isDir = row.type === "tree";
         const twisty = isDir ? (row.expanded ? "▾ " : "▸ ") : "  ";
-        const nameColor = isDir ? color.repoHeader : color.fg;
+        const status = !isDir ? changes.files.get(row.path) : undefined;
+        const containsChange = isDir && changes.directories.has(row.path);
+        const marker = status ? statusGlyph(status) : containsChange ? "•" : " ";
+        const markerColor = status
+          ? statusColor(status)
+          : containsChange
+            ? color.wait
+            : color.dim;
+        const nameColor = status
+          ? statusColor(status)
+          : containsChange
+            ? color.wait
+            : isDir
+              ? color.repoHeader
+              : color.fg;
         return (
           <text key={row.path} wrapMode="none">
             <span fg={color.cursorBar}>{selected ? glyph.focusBar : " "}</span>
             <span fg={color.dim}>{"  ".repeat(row.depth)}</span>
             <span fg={isDir ? color.synced : color.dim}>{twisty}</span>
+            <span fg={markerColor} attributes={status || containsChange ? BOLD : 0}>
+              {marker}{" "}
+            </span>
             <span fg={nameColor} attributes={selected ? BOLD : 0}>
               {row.name}
               {isDir ? "/" : ""}

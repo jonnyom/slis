@@ -19,7 +19,7 @@ var rmCmd = &cobra.Command{
 	Long: `Remove a finished slice. For each member repo it removes the git worktree
 (refusing if dirty unless --force), and by default deletes the feature branch
 if it is merged (git branch -d). It also kills the slice's tmux session and
-clears its grouping override and status file.
+clears its grouping override, status file, and managed-slice registry entry.
 
 Refuses if the slice is currently live (swapped in) — run 'slis deactivate' first.`,
 	Args: cobra.ExactArgs(1),
@@ -67,7 +67,9 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 		if err != nil {
 			return err
 		}
-		clearSliceState(sp, name)
+		if err := clearSliceState(sp, name, cleanupFullyRemoved(rep)); err != nil {
+			return fmt.Errorf("clear slice state: %w", err)
+		}
 
 		fmt.Printf("Removed slice %q:\n", rep.Slice)
 		for _, r := range rep.Repos {
@@ -89,8 +91,25 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 	},
 }
 
-// clearSliceState removes a slice's grouping override entry and its status file.
-func clearSliceState(sp config.Paths, name string) {
+// cleanupFullyRemoved reports whether every discovered member worktree was
+// removed. A partial cleanup must remain registered so discovery can surface
+// the missing members instead of silently forgetting unfinished work.
+func cleanupFullyRemoved(rep cleanup.Report) bool {
+	if len(rep.Repos) == 0 {
+		return false
+	}
+	for _, r := range rep.Repos {
+		if !r.WorktreeRemoved {
+			return false
+		}
+	}
+	return true
+}
+
+// clearSliceState removes a slice's grouping override and status. Once every
+// worktree was removed successfully it also forgets the managed-slice registry
+// entry, preventing an intentional clear from reappearing as "missing".
+func clearSliceState(sp config.Paths, name string, forgetRegistry bool) error {
 	if ov, err := discovery.LoadOverrides(sp.Overrides); err == nil {
 		if _, present := ov[name]; present {
 			delete(ov, name)
@@ -98,6 +117,25 @@ func clearSliceState(sp config.Paths, name string) {
 		}
 	}
 	_ = notify.RemoveStatus(sp.EventsDir, name)
+
+	if !forgetRegistry {
+		return nil
+	}
+	reg, exists, err := config.LoadRegistry(sp.Registry)
+	if err != nil {
+		return fmt.Errorf("read registry: %w", err)
+	}
+	if !exists {
+		return nil
+	}
+	if _, present := reg.Slices[name]; !present {
+		return nil
+	}
+	delete(reg.Slices, name)
+	if err := config.SaveRegistry(sp.Registry, reg); err != nil {
+		return fmt.Errorf("save registry: %w", err)
+	}
+	return nil
 }
 
 func init() {

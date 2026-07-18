@@ -24,8 +24,9 @@ import (
 )
 
 // Comment is one pending inline-review comment awaiting delivery to a slice's
-// agent. Line is a 1-based line number in the new (post-change) file; Hunk is an
-// optional excerpt of the diff giving the agent surrounding context.
+// agent. Line and EndLine are 1-based line numbers in the new (post-change)
+// file; EndLine is omitted for a single-line comment. Hunk is an optional
+// excerpt of the selected diff lines giving the agent surrounding context.
 type Comment struct {
 	ID        string    `json:"id"`
 	Slice     string    `json:"slice"`
@@ -33,6 +34,8 @@ type Comment struct {
 	Branch    string    `json:"branch,omitempty"`
 	File      string    `json:"file"`
 	Line      int       `json:"line"`
+	EndLine   int       `json:"end_line,omitempty"`
+	Side      string    `json:"side,omitempty"`
 	Hunk      string    `json:"hunk,omitempty"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`

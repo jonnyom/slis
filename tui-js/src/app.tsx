@@ -1,7 +1,7 @@
 // Top-level app: owns the RPC client lifecycle, workspace data, live session
 // badges, view routing (browser ⇄ cockpit) and the overlay layer (useOverlays).
 
-import { useRenderer, useTerminalDimensions } from "@opentui/react";
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import {
   useCallback,
   useEffect,
@@ -23,7 +23,7 @@ import type {
   ShowResult,
 } from "./rpc/types";
 import type { SliceView } from "./state/derive";
-import { theme } from "./theme";
+import { setTheme, theme, themeName, type ThemeName } from "./theme";
 import { Browser } from "./views/browser";
 import { Cockpit } from "./views/cockpit";
 import type { CockpitEntry } from "./views/cockpit.hints";
@@ -46,8 +46,23 @@ import {
   initialCreateState,
 } from "./state/create";
 import { tickPlan } from "./state/tick";
+import { normalizeKeyName } from "./util/keys";
+import {
+  normalizeDiffScope,
+  normalizeThemePreference,
+  updatePrefs,
+  type ThemePreference,
+  type UiPrefs,
+} from "./prefs";
 
-export function App(): ReactNode {
+export interface AppProps {
+  initialPrefs: UiPrefs;
+  initialThemeMode: "dark" | "light" | null;
+}
+
+const THEME_PREFERENCES: ThemePreference[] = ["auto", "midnight", "violet", "light"];
+
+export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const renderer = useRenderer();
   const { width, height } = useTerminalDimensions();
 
@@ -67,6 +82,22 @@ export function App(): ReactNode {
   const [current, setCurrent] = useState<string | null>(null);
   const [cockpitEntry, setCockpitEntry] = useState<CockpitEntry | null>(null);
   const [procsOpen, setProcsOpen] = useState(false);
+  const [activeTheme, setActiveTheme] = useState(themeName);
+  const [uiPrefs, setUiPrefs] = useState(initialPrefs);
+  const requestedTheme = process.env.SLIS_THEME?.trim().toLowerCase();
+  const initialThemePreference: ThemePreference = requestedTheme
+    ? requestedTheme === "auto" || requestedTheme === "system"
+      ? "auto"
+      : themeName()
+    : normalizeThemePreference(initialPrefs.theme);
+  const themePreferenceRef = useRef(initialThemePreference);
+  const automaticThemeRef = useRef(initialThemePreference === "auto");
+  const terminalThemeModeRef = useRef<"dark" | "light">(initialThemeMode ?? "dark");
+
+  const persistUiPrefs = useCallback((patch: Partial<UiPrefs>) => {
+    setUiPrefs((current) => ({ ...current, ...patch }));
+    updatePrefs(patch);
+  }, []);
 
   // Embedded terminal session tabs.
   const managerRef = useRef<TermManager | null>(null);
@@ -217,6 +248,22 @@ export function App(): ReactNode {
     process.exit(0);
   }, [client, renderer, manager]);
 
+  // Ctrl+C quits from every React UI state (browser, cockpit, diff, overlays),
+  // before the key parser can turn it into the browser's plain `c` action.
+  // A focused terminal is the exception: its raw-input handler must forward the
+  // interrupt to the embedded shell/agent instead of exiting Slis.
+  const termModeRef = useRef(termMode);
+  termModeRef.current = termMode;
+  useEffect(() => {
+    const handler = (sequence: string): boolean => {
+      if (sequence !== "\x03" || termModeRef.current) return false;
+      quit();
+      return true;
+    };
+    renderer.prependInputHandler(handler);
+    return () => renderer.removeInputHandler(handler);
+  }, [renderer, quit]);
+
   // Editors found on PATH (probed once). Combined with the configured editor
   // from `hello`, the overlay layer decides whether to open directly or prompt.
   const editorList = useMemo(() => availableEditors((b) => !!Bun.which(b)), []);
@@ -274,6 +321,39 @@ export function App(): ReactNode {
   });
   overlaysRef.current = overlays;
 
+  // Theme switching is global across browser/cockpit/diff, but never steals a
+  // T from a text-entry overlay or embedded terminal. Use the parsed key event
+  // so Shift+T works under both legacy and modern kitty keyboard protocols.
+  useKeyboard((key) => {
+    const enabled = !overlays.active && !procsOpen && bulkPromptCount === null && !termMode;
+    if (!enabled || normalizeKeyName(key) !== "T") return;
+    const index = THEME_PREFERENCES.indexOf(themePreferenceRef.current);
+    const next = THEME_PREFERENCES[(index + 1) % THEME_PREFERENCES.length]!;
+    themePreferenceRef.current = next;
+    automaticThemeRef.current = next === "auto";
+    const applied = next === "auto"
+      ? setTheme(terminalThemeModeRef.current === "light" ? "light" : "midnight")
+      : setTheme(next as ThemeName);
+    setActiveTheme(applied);
+    persistUiPrefs({ theme: next });
+    pushToast(`Theme: ${next === "auto" ? "system" : next}`, "idle");
+  });
+
+  // Some terminals report live profile/OS appearance changes. Continue
+  // following those until the user explicitly cycles to a palette with T.
+  useEffect(() => {
+    const handler = (mode: "dark" | "light") => {
+      terminalThemeModeRef.current = mode;
+      if (!automaticThemeRef.current) return;
+      const next = setTheme(mode === "light" ? "light" : "midnight");
+      setActiveTheme(next);
+    };
+    renderer.on("theme_mode", handler);
+    return () => {
+      renderer.off("theme_mode", handler);
+    };
+  }, [renderer]);
+
   // Build per-slice view records.
   const views: SliceView[] = useMemo(() => {
     if (!ls) return [];
@@ -288,6 +368,11 @@ export function App(): ReactNode {
   const currentView = useMemo(
     () => views.find((v) => v.slice.name === current),
     [views, current],
+  );
+
+  const preferredAgent = useMemo(
+    () => hello?.agents?.find((agent) => agent.name === uiPrefs.agent),
+    [hello?.agents, uiPrefs.agent],
   );
 
   const onEnter = useCallback(
@@ -318,6 +403,7 @@ export function App(): ReactNode {
         branch: m.branch,
         worktreePath: m.worktree_path,
       }));
+      const selectedAgent = choice ?? preferredAgent;
       return {
         slice,
         members,
@@ -325,12 +411,12 @@ export function App(): ReactNode {
         wsRoot,
         sessionOpts: { root: wsRoot, layout: sessions?.layout ?? "" },
         launchAgent: launchAgent || (sessions?.autostart ?? false),
-        agent: choice ? agentCmdline(choice.cmd) : sessions?.agent || "claude",
+        agent: selectedAgent ? agentCmdline(selectedAgent.cmd) : sessions?.agent || "claude",
         harness: sessions?.harness || "claude",
-        agentLabel: choice?.name,
+        agentLabel: selectedAgent?.name,
       };
     },
-    [views, hello],
+    [views, hello, preferredAgent],
   );
 
   // Open (or reuse) the slice's terminal tab, attaching a tmux client and — when
@@ -362,13 +448,21 @@ export function App(): ReactNode {
       if (launchAgent) {
         const choices = pickableAgents(hello?.agents);
         if (choices.length > 1) {
-          overlays.agentPicker(slice, choices, (choice) => launchTermTab(slice, true, choice));
+          overlays.agentPicker(
+            slice,
+            choices,
+            (choice) => {
+              persistUiPrefs({ agent: choice.name });
+              launchTermTab(slice, true, choice);
+            },
+            preferredAgent?.name,
+          );
           return;
         }
       }
       launchTermTab(slice, launchAgent);
     },
-    [launchTermTab, overlays, hello],
+    [launchTermTab, overlays, hello, persistUiPrefs, preferredAgent],
   );
 
   // Remove a tab and re-point the active tab / term mode. When a *command* tab
@@ -415,7 +509,13 @@ export function App(): ReactNode {
 
   if (!ls) {
     return (
-      <box width="100%" height="100%" alignItems="center" justifyContent="center">
+      <box
+        width="100%"
+        height="100%"
+        alignItems="center"
+        justifyContent="center"
+        backgroundColor={theme.bg}
+      >
         <text fg={theme.textDim} attributes={DIM}>
           {connected ? "loading workspace…" : "connecting to slis rpc…"}
         </text>
@@ -427,7 +527,7 @@ export function App(): ReactNode {
   const overlayEnabled = !overlays.active && !procsOpen && !bulkPromptOpen;
 
   return (
-    <box width="100%" height="100%">
+    <box width="100%" height="100%" backgroundColor={theme.bg}>
       {view === "browser" || !currentView ? (
         <Browser
           enabled={overlayEnabled && !termMode && view === "browser"}
@@ -447,6 +547,7 @@ export function App(): ReactNode {
           onToggleProcs={() => setProcsOpen(true)}
           onQuit={quit}
           createBusy={createBusyLabel(createState)}
+          themeVersion={activeTheme}
         />
       ) : (
         <Cockpit
@@ -458,6 +559,10 @@ export function App(): ReactNode {
           height={height}
           initialPanel={cockpitEntry?.panel}
           openCiLog={cockpitEntry?.ciLog}
+          initialDiffMode={uiPrefs.split_diff ? "split" : "unified"}
+          initialDiffScope={normalizeDiffScope(uiPrefs.diff_scope)}
+          onDiffModeChange={(mode) => persistUiPrefs({ split_diff: mode === "split" })}
+          onDiffScopeChange={(scope) => persistUiPrefs({ diff_scope: scope })}
           onBack={() => setView("browser")}
           onOpenTerm={openTerm}
           onToggleProcs={() => setProcsOpen(true)}

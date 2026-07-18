@@ -25,6 +25,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
       ["enter / l", "open slice cockpit"],
       ["/", "search slices by name"],
       ["r", "refresh workspace"],
+      ["T", "cycle colour theme"],
       ["?", "toggle this help"],
       ["q", "quit"],
     ],
@@ -72,9 +73,9 @@ const COCKPIT_GROUPS: BindingGroup[] = [
       ["enter / l", "open rich diff (Stack panel)"],
       ["enter", "zoom right pane full-width (other panels)"],
       ["b", "cycle diff scope working → parent → trunk (member branch)"],
-      ["t", "toggle stat / patch"],
       ["ctrl+d / ctrl+u", "scroll right pane"],
       ["g / G", "top / bottom of right pane"],
+      ["T", "cycle colour theme"],
       ["esc / h", "back to browser"],
       ["q", "quit"],
     ],
@@ -84,7 +85,9 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     bindings: [
       ["j / k", "select any branch → right pane shows its diff vs its stack parent"],
       ["f", "browse the selected branch's files at that revision"],
-      ["j / k · l / enter", "in the file tree: move · expand dir / open file"],
+      ["j / k · l / enter", "in the file tree: move · expand dir / preview file"],
+      ["e", "in the file tree/file view: edit selection at the current line"],
+      ["o / E", "open selected repo worktree / whole slice workspace"],
       ["h", "in the file tree: collapse dir (or its parent)"],
       ["esc", "step back: file → tree → diff → browser"],
     ],
@@ -92,14 +95,14 @@ const COCKPIT_GROUPS: BindingGroup[] = [
   {
     label: "review",
     bindings: [
-      ["c", "comment on the selected line / hunk (rich diff or file view)"],
+      ["c", "focus rich-diff lines, then comment on the selected line / range"],
       ["C", "pending-review overlay: list comments · x delete · s send to agent"],
     ],
   },
   {
     label: "act",
     bindings: [
-      ["e / o", "editor: whole slice / selected repo"],
+      ["e / o / E", "editor: contextual selection / repo worktree / whole slice"],
       ["w", "swap slice in / out (live)"],
       ["d", "clear this finished slice"],
     ],
@@ -129,16 +132,19 @@ const COCKPIT_GROUPS: BindingGroup[] = [
 ];
 
 const DIFF_BINDINGS: Binding[] = [
-  ["j / k", "next / prev file"],
-  ["enter / l", "jump to the selected file's first hunk"],
+  ["j / k", "move in the focused file list or diff lines"],
   ["[ / ]  ·  p / n", "prev / next hunk"],
-  ["c", "comment on the selected hunk (feeds the agent)"],
+  ["Tab / Enter", "move focus between the file list and diff lines"],
+  ["v / Space", "toggle multi-line selection, then extend it with j / k"],
+  ["c", "comment on the selected diff line / range (feeds the agent)"],
   ["C", "pending-review overlay (list / delete / send)"],
+  ["a", "attach to the slice agent without leaving the diff"],
+  ["h / l", "in side-by-side mode, select old/deleted or new/added side"],
   ["t", "toggle unified / side-by-side"],
   ["b", "cycle diff scope"],
   ["ctrl+d / ctrl+u", "scroll diff"],
   ["g / G", "top / bottom"],
-  ["esc / h", "back to cockpit"],
+  ["esc", "back to the file list, then cockpit"],
 ];
 
 function BindingRows({ bindings }: { bindings: Binding[] }): ReactNode {

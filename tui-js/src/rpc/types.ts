@@ -110,6 +110,8 @@ export interface StackNode {
   depth: number;
   trunk: boolean;
   needs_restack: boolean;
+  added?: number;
+  deleted?: number;
 }
 
 export interface ShowMember extends SliceMember {
@@ -269,9 +271,9 @@ export interface FileResult {
 
 // One pending inline-review comment — GitHub-review-style feedback awaiting
 // delivery to a slice's agent. Mirrors `slis review list --json` (docs/AGENT.md
-// §review). `line` is a 1-based line in the new (post-change) file; `branch` is
-// the reviewed member/branch (filled at add time, may be ""); `hunk` is an
-// optional diff/source excerpt (absent when empty).
+// §review). `line` and optional `end_line` are a 1-based range in the new
+// (post-change) file; `branch` is the reviewed member/branch (filled at add
+// time, may be ""); `hunk` is an optional selected diff/source excerpt.
 export interface ReviewComment {
   id: string;
   slice: string;
@@ -279,6 +281,8 @@ export interface ReviewComment {
   branch?: string;
   file: string;
   line: number;
+  end_line?: number;
+  side?: "new" | "old";
   hunk?: string;
   body: string;
   created_at: string;

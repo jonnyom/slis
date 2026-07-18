@@ -12,7 +12,7 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DiffRepo, DiffScope, ReviewComment } from "../rpc/types";
 import { parseUnifiedDiff, statusGlyph, type FileDiff } from "../diff/parse";
-import { hunkComment, linesWithComments } from "../review/context";
+import { diffRangeComment, linesWithComments, type DiffSide } from "../review/context";
 import { langForPath } from "../diff/tokenize";
 import {
   buildFileRows,
@@ -46,16 +46,18 @@ interface FlatFile {
   file: FileDiff;
 }
 
-// A one-column left gutter carrying the pending-comment marker (✎), so a line
-// that already has review feedback is obvious at a glance. Always one column
-// wide (blank when unmarked) so it never shifts the diff's own alignment.
-function CommentMark({ marked }: { marked: boolean }): ReactNode {
-  return marked ? (
-    <span fg={color.candidate} attributes={BOLD}>
-      {glyph.comment}
-    </span>
-  ) : (
-    <span> </span>
+// Two stable gutter columns: the visible line/range cursor, then the pending
+// comment marker (✎). Blank cells preserve the diff's alignment.
+function LineMark({ marked, cursor, selected }: { marked: boolean; cursor: boolean; selected: boolean }): ReactNode {
+  return (
+    <>
+      <span fg={color.cursorBar} attributes={BOLD}>
+        {cursor ? glyph.focusBar : selected ? "│" : " "}
+      </span>
+      <span fg={color.candidate} attributes={BOLD}>
+        {marked ? glyph.comment : " "}
+      </span>
+    </>
   );
 }
 
@@ -92,35 +94,64 @@ function CellSpans({ cells, lineType }: { cells: Cell[]; lineType: string }): Re
 function UnifiedLine({
   row,
   marked,
+  cursor,
+  selected,
+  rowIndex,
 }: {
   row: Extract<UnifiedRow, { kind: "line" }>;
   marked: boolean;
+  cursor: boolean;
+  selected: boolean;
+  rowIndex: number;
 }): ReactNode {
   return (
-    <text wrapMode="none">
-      <CommentMark marked={marked} />
-      <span fg={diffColor.gutter}>
-        {gutter(row.oldNumber)} {gutter(row.newNumber)}{" "}
-      </span>
-      <span fg={markerColor(row.lineType)} attributes={BOLD}>
-        {markerChar(row.lineType)}{" "}
-      </span>
-      <CellSpans cells={row.cells} lineType={row.lineType} />
-    </text>
+    <box
+      id={`diffline-${rowIndex}`}
+      backgroundColor={row.lineType === "add" ? diffColor.addBg : undefined}
+    >
+      <text wrapMode="none">
+        <LineMark marked={marked} cursor={cursor} selected={selected} />
+        <span fg={cursor || selected ? color.white : diffColor.gutter}>
+          {gutter(row.oldNumber)} {gutter(row.newNumber)}{" "}
+        </span>
+        <span fg={markerColor(row.lineType)} attributes={BOLD}>
+          {markerChar(row.lineType)}{" "}
+        </span>
+        <CellSpans cells={row.cells} lineType={row.lineType} />
+      </text>
+    </box>
   );
 }
 
-function SbsCell({ side, half }: { side: SbsSide; half: number }): ReactNode {
+function SbsCell({
+  side,
+  half,
+  marked,
+  cursor,
+  selected,
+}: {
+  side: SbsSide;
+  half: number;
+  marked: boolean;
+  cursor: boolean;
+  selected: boolean;
+}): ReactNode {
   const isBlank = side.lineType === "blank";
   const g = side.lineType === "add" ? gutter(side.newNumber) : gutter(side.oldNumber);
   return (
-    <box width={half} overflow="hidden" flexShrink={0}>
+    <box
+      width={half}
+      overflow="hidden"
+      flexShrink={0}
+      backgroundColor={side.lineType === "add" ? diffColor.addBg : undefined}
+    >
       <text wrapMode="none">
         {isBlank ? (
           <span fg={color.dim}> </span>
         ) : (
           <>
-            <span fg={diffColor.gutter}>{g} </span>
+            <LineMark marked={marked} cursor={cursor} selected={selected} />
+            <span fg={cursor || selected ? color.white : diffColor.gutter}>{g} </span>
             <span fg={markerColor(side.lineType)} attributes={BOLD}>
               {markerChar(side.lineType)}{" "}
             </span>
@@ -135,24 +166,41 @@ function SbsCell({ side, half }: { side: SbsSide; half: number }): ReactNode {
 function SbsLine({
   row,
   half,
-  marked,
+  markedOld,
+  markedNew,
+  cursorSide,
+  selectedOld,
+  selectedNew,
+  rowIndex,
 }: {
   row: Extract<SbsRowR, { kind: "line" }>;
   half: number;
-  marked: boolean;
+  markedOld: boolean;
+  markedNew: boolean;
+  cursorSide?: DiffSide;
+  selectedOld: boolean;
+  selectedNew: boolean;
+  rowIndex: number;
 }): ReactNode {
   return (
-    <box flexDirection="row">
-      <box width={1} flexShrink={0}>
-        <text wrapMode="none">
-          <CommentMark marked={marked} />
-        </text>
-      </box>
-      <SbsCell side={row.left} half={half} />
+    <box id={`diffline-${rowIndex}`} flexDirection="row">
+      <SbsCell
+        side={row.left}
+        half={half}
+        marked={markedOld}
+        cursor={cursorSide === "old"}
+        selected={selectedOld}
+      />
       <box width={1} flexShrink={0}>
         <text fg={color.border}>│</text>
       </box>
-      <SbsCell side={row.right} half={half} />
+      <SbsCell
+        side={row.right}
+        half={half}
+        marked={markedNew}
+        cursor={cursorSide === "new"}
+        selected={selectedNew}
+      />
     </box>
   );
 }
@@ -166,6 +214,8 @@ export interface DiffCommentTarget {
   branch: string;
   file: string;
   line: number;
+  endLine?: number;
+  side: DiffSide;
   hunk: string;
 }
 
@@ -182,7 +232,8 @@ export interface DiffViewProps {
   onToggleMode: () => void;
   onClose: () => void;
   onQuit: () => void;
-  // c → comment on the selected hunk; C → open the pending-review overlay.
+  onAttach: () => void;
+  // c → comment on the selected line/range; C → open pending review.
   onComment: (target: DiffCommentTarget) => void;
   onReview: () => void;
 }
@@ -192,7 +243,10 @@ export function DiffView(props: DiffViewProps): ReactNode {
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const fileScrollRef = useRef<ScrollBoxRenderable>(null);
   const [fileSel, setFileSel] = useState(0);
-  const [hunkSel, setHunkSel] = useState(0);
+  const [pane, setPane] = useState<"files" | "diff">("files");
+  const [lineSel, setLineSel] = useState(0);
+  const [rangeAnchor, setRangeAnchor] = useState<number | null>(null);
+  const [diffSide, setDiffSide] = useState<DiffSide>("new");
 
   // Parse every repo's patch once per scope refetch (memoized on `repos`).
   const groups: RepoGroup[] = useMemo(
@@ -229,31 +283,101 @@ export function DiffView(props: DiffViewProps): ReactNode {
   const hunkOffsets = mode === "split" ? built?.sbsHunkOffsets : built?.unifiedHunkOffsets;
   const hunkCount = hunkOffsets?.length ?? 0;
 
-  // New-file lines of the selected file that carry a pending comment (F2).
-  const markedLines = useMemo(
-    () => (selected ? linesWithComments(props.comments, selected.repo, selected.file.path) : new Set<number>()),
+  type ReviewableLine = {
+    renderIndex: number;
+    hunkIndex: number;
+    line: number;
+    side: DiffSide;
+  };
+
+  // Split view exposes two independent review surfaces. Unified view derives
+  // the side from each row: deletion rows anchor old-file lines; additions and
+  // context rows anchor new-file lines.
+  const reviewableBySide = useMemo(() => {
+    const old: ReviewableLine[] = [];
+    const newLines: ReviewableLine[] = [];
+    for (const [renderIndex, row] of (built?.sideBySide ?? []).entries()) {
+      if (row.kind !== "line") continue;
+      if (row.left.oldNumber !== undefined)
+        old.push({ renderIndex, hunkIndex: row.hunkIndex, line: row.left.oldNumber, side: "old" });
+      if (row.right.newNumber !== undefined)
+        newLines.push({ renderIndex, hunkIndex: row.hunkIndex, line: row.right.newNumber, side: "new" });
+    }
+    return { old, new: newLines };
+  }, [built]);
+
+  const unifiedReviewable = useMemo(() => {
+    const out: ReviewableLine[] = [];
+    for (const [renderIndex, row] of (built?.unified ?? []).entries()) {
+      if (row.kind !== "line") continue;
+      if (row.lineType === "del" && row.oldNumber !== undefined)
+        out.push({ renderIndex, hunkIndex: row.hunkIndex, line: row.oldNumber, side: "old" });
+      else if (row.newNumber !== undefined)
+        out.push({ renderIndex, hunkIndex: row.hunkIndex, line: row.newNumber, side: "new" });
+    }
+    return out;
+  }, [built]);
+
+  const reviewable = mode === "split" ? reviewableBySide[diffSide] : unifiedReviewable;
+
+  const activeLine = reviewable[lineSel];
+  const selectedRenderRows = useMemo(() => {
+    const out = new Set<number>();
+    if (!activeLine) return out;
+    const from = rangeAnchor === null ? lineSel : Math.min(rangeAnchor, lineSel);
+    const to = rangeAnchor === null ? lineSel : Math.max(rangeAnchor, lineSel);
+    for (let i = from; i <= to; i++) {
+      const row = reviewable[i];
+      if (row?.hunkIndex === activeLine.hunkIndex && row.side === activeLine.side)
+        out.add(row.renderIndex);
+    }
+    return out;
+  }, [activeLine, lineSel, rangeAnchor, reviewable]);
+
+  const markedOldLines = useMemo(
+    () => (selected ? linesWithComments(props.comments, selected.repo, selected.file.path, "old") : new Set<number>()),
+    [props.comments, selected],
+  );
+  const markedNewLines = useMemo(
+    () => (selected ? linesWithComments(props.comments, selected.repo, selected.file.path, "new") : new Set<number>()),
     [props.comments, selected],
   );
 
-  // Compose a comment target from the currently selected file + hunk.
-  const commentOnHunk = () => {
-    if (!selected) return;
-    const hc = hunkComment(selected.file, hunkSel);
+  // Compose a comment target from the exact selected new-file line range.
+  const commentOnSelection = () => {
+    if (!selected || !activeLine) return;
+    const anchor = rangeAnchor === null ? activeLine : reviewable[rangeAnchor];
+    if (!anchor) return;
+    const hc = diffRangeComment(
+      selected.file,
+      activeLine.hunkIndex,
+      anchor.line,
+      activeLine.line,
+      activeLine.side,
+    );
     if (!hc) return;
     props.onComment({
       repo: selected.repo,
       branch: selected.branch,
       file: selected.file.path,
       line: hc.line,
+      endLine: hc.endLine,
+      side: activeLine.side,
       hunk: hc.hunk,
     });
+    // The range has been consumed by the composer. Return to normal line
+    // navigation immediately so adding (or cancelling) a comment never leaves
+    // the diff stuck in a temporary selection mode.
+    setRangeAnchor(null);
   };
 
-  // Reset scroll + hunk cursor whenever the selected file or view mode changes.
+  // Reset the visible line cursor whenever the selected file or mode changes.
   const fileKey = selected ? `${selected.repo}:${selected.file.path}` : "";
   useEffect(() => {
     scrollRef.current?.scrollTo(0);
-    setHunkSel(0);
+    setLineSel(0);
+    setRangeAnchor(null);
+    setDiffSide("new");
   }, [fileKey, mode]);
 
   // Keep the selected file row visible in the file list.
@@ -261,39 +385,121 @@ export function DiffView(props: DiffViewProps): ReactNode {
     fileScrollRef.current?.scrollChildIntoView(`file-${fileSel}`);
   }, [fileSel]);
 
+  const moveLine = (delta: number) => {
+    if (reviewable.length === 0) return;
+    setLineSel((current) => {
+      let next = Math.max(0, Math.min(reviewable.length - 1, current + delta));
+      if (rangeAnchor !== null) {
+        const hunk = reviewable[rangeAnchor]?.hunkIndex;
+        const side = reviewable[rangeAnchor]?.side;
+        while (
+          next !== current &&
+          (reviewable[next]?.hunkIndex !== hunk || reviewable[next]?.side !== side)
+        )
+          next -= Math.sign(delta);
+      }
+      const row = reviewable[next];
+      if (row) scrollRef.current?.scrollChildIntoView(`diffline-${row.renderIndex}`);
+      return next;
+    });
+  };
+
+  const switchDiffSide = (side: DiffSide) => {
+    if (mode !== "split" || side === diffSide) return;
+    const nextRows = reviewableBySide[side];
+    const renderIndex = activeLine?.renderIndex ?? 0;
+    let next = nextRows.findIndex((row) => row.renderIndex === renderIndex);
+    if (next < 0 && nextRows.length > 0) {
+      next = nextRows.reduce(
+        (best, row, i) =>
+          Math.abs(row.renderIndex - renderIndex) <
+          Math.abs(nextRows[best]!.renderIndex - renderIndex)
+            ? i
+            : best,
+        0,
+      );
+    }
+    setDiffSide(side);
+    setLineSel(Math.max(0, next));
+    setRangeAnchor(null);
+    const row = nextRows[Math.max(0, next)];
+    if (row) scrollRef.current?.scrollChildIntoView(`diffline-${row.renderIndex}`);
+  };
+
   const jumpHunk = (delta: number) => {
-    if (!hunkOffsets || hunkOffsets.length === 0) return;
-    const next = Math.max(0, Math.min(hunkOffsets.length - 1, hunkSel + delta));
-    setHunkSel(next);
-    scrollRef.current?.scrollTo(hunkOffsets[next]!);
+    if (!activeLine || reviewable.length === 0) return;
+    const hunks = [...new Set(reviewable.map((r) => r.hunkIndex))];
+    const at = Math.max(0, hunks.indexOf(activeLine.hunkIndex));
+    const target = hunks[Math.max(0, Math.min(hunks.length - 1, at + delta))];
+    const next = reviewable.findIndex((r) => r.hunkIndex === target);
+    if (next >= 0) {
+      setLineSel(next);
+      setRangeAnchor(null);
+      scrollRef.current?.scrollChildIntoView(`diffline-${reviewable[next]!.renderIndex}`);
+    }
   };
 
   useKeyboard((key) => {
     if (!enabled) return;
     const name = normalizeKeyName(key);
     if (name === "q") return props.onQuit();
-    if (name === "escape" || name === "h") return props.onClose();
-    if (name === "c") return commentOnHunk();
+    if (name === "a") return props.onAttach();
+    if (pane === "diff" && mode === "split" && (name === "h" || name === "left")) {
+      switchDiffSide("old");
+      return;
+    }
+    if (pane === "diff" && mode === "split" && (name === "l" || name === "right")) {
+      switchDiffSide("new");
+      return;
+    }
+    if (name === "escape" || (name === "h" && mode !== "split")) {
+      if (pane === "diff") {
+        setPane("files");
+        setRangeAnchor(null);
+        return;
+      }
+      return props.onClose();
+    }
+    if (name === "tab") {
+      setPane((p) => (p === "files" ? "diff" : "files"));
+      setRangeAnchor(null);
+      return;
+    }
+    if (name === "c") {
+      if (pane === "files") return setPane("diff");
+      return commentOnSelection();
+    }
     if (name === "C") return props.onReview();
     if (name === "t") return props.onToggleMode();
     if (name === "b") return props.onCycleScope();
     if (name === "j" || name === "down")
-      return setFileSel((i) => Math.min(flat.length - 1, i + 1));
+      return pane === "files"
+        ? setFileSel((i) => Math.min(flat.length - 1, i + 1))
+        : moveLine(1);
     if (name === "k" || name === "up")
-      return setFileSel((i) => Math.max(0, i - 1));
+      return pane === "files" ? setFileSel((i) => Math.max(0, i - 1)) : moveLine(-1);
+    if (pane === "diff" && (name === "v" || name === "space")) {
+      setRangeAnchor((anchor) => (anchor === null ? lineSel : null));
+      return;
+    }
     if (name === "]" || name === "n") return jumpHunk(1);
     if (name === "[" || name === "p") return jumpHunk(-1);
-    // enter/l drills into the selected file: jump to its first hunk (P4).
+    // enter/l moves focus from the file list into its diff lines.
     if (name === "return" || name === "enter" || name === "l" || name === "right") {
-      if (hunkOffsets && hunkOffsets.length > 0) {
-        setHunkSel(0);
-        scrollRef.current?.scrollTo(hunkOffsets[0]!);
-      }
+      setPane("diff");
+      const row = reviewable[lineSel];
+      if (row) scrollRef.current?.scrollChildIntoView(`diffline-${row.renderIndex}`);
       return;
     }
     if (name === "left") return scrollRef.current?.scrollBy({ x: -8, y: 0 });
-    if (name === "g") return scrollRef.current?.scrollTo(0);
-    if (name === "G") return scrollRef.current?.scrollTo(scrollRef.current.scrollHeight);
+    if ((name === "g" || name === "G") && pane === "diff") {
+      const next = name === "g" ? 0 : Math.max(0, reviewable.length - 1);
+      setLineSel(next);
+      setRangeAnchor(null);
+      const row = reviewable[next];
+      if (row) scrollRef.current?.scrollChildIntoView(`diffline-${row.renderIndex}`);
+      return;
+    }
     if (key.ctrl && name === "d") return scrollRef.current?.scrollBy(10);
     if (key.ctrl && name === "u") return scrollRef.current?.scrollBy(-10);
     if (name === "pagedown") return scrollRef.current?.scrollBy(15);
@@ -332,7 +538,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           <span fg={color.candidate}>{mode === "split" ? "side-by-side" : "unified"}</span>
         </text>
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          [c] comment  [C] review  [esc] back
+          {pane === "files" ? "[enter/tab] select lines" : "[v/space] toggle range  [c] comment"}  [C] review  [a] agent  [esc] back
         </text>
       </box>
 
@@ -349,15 +555,16 @@ export function DiffView(props: DiffViewProps): ReactNode {
             width={listW}
             height={bodyH}
             scrollRef={fileScrollRef}
+            focused={pane === "files"}
           />
         </box>
         <box flexGrow={1} flexDirection="column">
           <box
             border
             borderStyle="rounded"
-            borderColor={color.borderFocus}
+            borderColor={pane === "diff" ? color.borderFocus : color.border}
             title={rightTitle}
-            titleColor={color.borderFocus}
+            titleColor={pane === "diff" ? color.borderFocus : color.dim}
             height={bodyH}
             paddingLeft={1}
             paddingRight={1}
@@ -377,14 +584,27 @@ export function DiffView(props: DiffViewProps): ReactNode {
                 built.sideBySide.map((row, i) =>
                   row.kind === "hunk" ? (
                     <text key={i} fg={diffColor.hunk} wrapMode="none">
-                      {"  " + row.header}
+                      {"   " + row.header}
                     </text>
                   ) : (
                     <SbsLine
                       key={i}
                       row={row}
                       half={half}
-                      marked={markedLines.has(row.right.newNumber ?? row.left.newNumber ?? -1)}
+                      markedOld={markedOldLines.has(row.left.oldNumber ?? -1)}
+                      markedNew={markedNewLines.has(row.right.newNumber ?? -1)}
+                      cursorSide={
+                        pane === "diff" && activeLine?.renderIndex === i
+                          ? activeLine.side
+                          : undefined
+                      }
+                      selectedOld={
+                        pane === "diff" && diffSide === "old" && selectedRenderRows.has(i)
+                      }
+                      selectedNew={
+                        pane === "diff" && diffSide === "new" && selectedRenderRows.has(i)
+                      }
+                      rowIndex={i}
                     />
                   ),
                 )
@@ -392,10 +612,21 @@ export function DiffView(props: DiffViewProps): ReactNode {
                 built.unified.map((row, i) =>
                   row.kind === "hunk" ? (
                     <text key={i} fg={diffColor.hunk} wrapMode="none">
-                      {" " + row.header}
+                      {"  " + row.header}
                     </text>
                   ) : (
-                    <UnifiedLine key={i} row={row} marked={markedLines.has(row.newNumber ?? -1)} />
+                    <UnifiedLine
+                      key={i}
+                      row={row}
+                      marked={
+                        row.lineType === "del"
+                          ? markedOldLines.has(row.oldNumber ?? -1)
+                          : markedNewLines.has(row.newNumber ?? -1)
+                      }
+                      cursor={pane === "diff" && activeLine?.renderIndex === i}
+                      selected={pane === "diff" && selectedRenderRows.has(i)}
+                      rowIndex={i}
+                    />
                   ),
                 )
               )}
@@ -408,8 +639,10 @@ export function DiffView(props: DiffViewProps): ReactNode {
           into the file panel's bottom rule (P3) */}
       <box width="100%" height={1} overflow="hidden">
         <text wrapMode="none" fg={color.dim} attributes={DIM}>
-          j/k file · [ ] / n p hunk{hunkCount ? ` (${hunkSel + 1}/${hunkCount})` : ""} · c comment
-          · C review · t unified/split · b scope · ^d/^u scroll · esc back
+          {pane === "files"
+            ? "j/k file · enter/tab review lines · c start comment"
+            : `j/k ${activeLine?.side ?? diffSide} line${activeLine ? ` ${activeLine.line}` : ""}${mode === "split" ? " · h/l old/new side" : ""} · v/space range · c comment · n/p hunk`}
+          {hunkCount ? ` (${hunkCount})` : ""} · C review · a agent · t unified/split · b scope · esc back
         </text>
       </box>
     </box>
@@ -425,6 +658,7 @@ function FileListScroller({
   width,
   height,
   scrollRef,
+  focused,
 }: {
   groups: RepoGroup[];
   flat: FlatFile[];
@@ -432,14 +666,15 @@ function FileListScroller({
   width: number;
   height: number;
   scrollRef: React.RefObject<ScrollBoxRenderable | null>;
+  focused: boolean;
 }): ReactNode {
   return (
     <box
       border
       borderStyle="rounded"
-      borderColor={color.borderFocus}
+      borderColor={focused ? color.borderFocus : color.border}
       title="Files"
-      titleColor={color.borderFocus}
+      titleColor={focused ? color.borderFocus : color.dim}
       width={width}
       height={height}
       paddingLeft={1}
@@ -471,7 +706,9 @@ function FileListScroller({
                 const selected = idx === sel;
                 return (
                   <text key={f.path} id={`file-${idx}`} wrapMode="none">
-                    <span fg={color.cursorBar}>{selected ? glyph.focusBar : " "}</span>
+                    <span fg={color.cursorBar}>
+                      {selected && focused ? glyph.focusBar : " "}
+                    </span>
                     <span fg={statusColor(f.status)} attributes={BOLD}>
                       {statusGlyph(f.status)}{" "}
                     </span>

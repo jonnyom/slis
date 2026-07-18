@@ -1,9 +1,11 @@
-// Five-hue design system for the JS TUI (redesign spec §2). Dark-terminal-first,
-// truecolor. OpenTUI accepts hex strings directly, so tokens stay plain hex.
+// Semantic theme system for the JS TUI (redesign spec §2). OpenTUI accepts hex
+// strings directly, so tokens stay plain hex. Widgets consume the mutable
+// `theme` object below; switching a theme updates it in place so imports remain
+// stable while React repaints with the new values.
 //
-// The palette is: a neutral ramp (bg → textBright), one focus/identity blue, and
-// exactly four semantic hues (good / attn / bad / merged). Diff and syntax colors
-// are derived from these — no new hues. `attention(view)` collapses work-state +
+// Each palette has a neutral ramp, one focus/identity accent, and four semantic
+// slots (good / attn / bad / merged). Diff and syntax colors are derived from
+// these rather than introducing widget-local hues. `attention(view)` collapses work-state +
 // session status into the scannable "left edge" glyph; `badgeFor(state)` maps a
 // state keyword to a Badge's glyph+color.
 //
@@ -16,28 +18,91 @@ import type { FileStatus } from "./diff/parse";
 import type { TokenKind } from "./diff/tokenize";
 import type { SliceView } from "./state/derive";
 
-// ── Neutral ramp + focus + four semantics ────────────────────────────────────
+// ── Palettes ────────────────────────────────────────────────────────────────
 
-export const theme = {
-  // Neutral ramp
-  bg: "#0b0d12",
-  surface: "#14181f",
-  surfaceAlt: "#1c2029",
-  hairline: "#262b34",
-  border: "#3a414c",
-  textFaint: "#5b6472",
-  textDim: "#8a93a3",
-  text: "#c3cad6",
-  textBright: "#f4f7fb",
-  // Focus / identity
-  focus: "#4c9dff",
-  focusDim: "#2d5c8f",
-  // Semantic (the only four hues)
-  good: "#34d399",
-  attn: "#f5a623",
-  bad: "#ff5d5d",
-  merged: "#b28bff",
-} as const;
+export interface ThemeTokens {
+  bg: string;
+  surface: string;
+  surfaceAlt: string;
+  hairline: string;
+  border: string;
+  textFaint: string;
+  textDim: string;
+  text: string;
+  textBright: string;
+  focus: string;
+  focusDim: string;
+  good: string;
+  attn: string;
+  bad: string;
+  merged: string;
+  diffAddBg: string;
+  diffAddChangeBg: string;
+  diffDelChangeBg: string;
+}
+
+export const themes = {
+  midnight: {
+    bg: "#0b0d12", surface: "#14181f", surfaceAlt: "#1c2029",
+    hairline: "#262b34", border: "#3a414c", textFaint: "#5b6472",
+    textDim: "#8a93a3", text: "#c3cad6", textBright: "#f4f7fb",
+    focus: "#4c9dff", focusDim: "#2d5c8f", good: "#34d399",
+    attn: "#f5a623", bad: "#ff5d5d", merged: "#b28bff",
+    diffAddBg: "#0d2117", diffAddChangeBg: "#16452e", diffDelChangeBg: "#2e1214",
+  },
+  violet: {
+    bg: "#100e17", surface: "#191624", surfaceAlt: "#242033",
+    hairline: "#302b40", border: "#49425e", textFaint: "#6e6681",
+    textDim: "#a39bb5", text: "#d2ccdf", textBright: "#fffaff",
+    focus: "#c084fc", focusDim: "#704b93", good: "#4ade80",
+    attn: "#fbbf24", bad: "#fb7185", merged: "#67e8f9",
+    diffAddBg: "#10251a", diffAddChangeBg: "#174b2a", diffDelChangeBg: "#35151e",
+  },
+  light: {
+    bg: "#f7f5f2", surface: "#ffffff", surfaceAlt: "#ebe7e1",
+    hairline: "#d8d3cc", border: "#9b948b", textFaint: "#716a62",
+    textDim: "#57514b", text: "#292622", textBright: "#11100e",
+    focus: "#075fc8", focusDim: "#8eb7e3", good: "#087443",
+    attn: "#9a5800", bad: "#bd202d", merged: "#7248a5",
+    diffAddBg: "#e8f5ed", diffAddChangeBg: "#c5e8d2", diffDelChangeBg: "#f4ccd0",
+  },
+  mono: {
+    bg: "#101010", surface: "#181818", surfaceAlt: "#252525",
+    hairline: "#383838", border: "#666666", textFaint: "#777777",
+    textDim: "#a0a0a0", text: "#d0d0d0", textBright: "#ffffff",
+    focus: "#ffffff", focusDim: "#888888", good: "#d8d8d8",
+    attn: "#ffffff", bad: "#a8a8a8", merged: "#c0c0c0",
+    diffAddBg: "#202020", diffAddChangeBg: "#383838", diffDelChangeBg: "#383838",
+  },
+  "mono-light": {
+    bg: "#f7f7f7", surface: "#ffffff", surfaceAlt: "#e8e8e8",
+    hairline: "#d0d0d0", border: "#929292", textFaint: "#696969",
+    textDim: "#505050", text: "#282828", textBright: "#101010",
+    focus: "#101010", focusDim: "#888888", good: "#303030",
+    attn: "#101010", bad: "#585858", merged: "#404040",
+    diffAddBg: "#e8e8e8", diffAddChangeBg: "#d0d0d0", diffDelChangeBg: "#d0d0d0",
+  },
+} as const satisfies Record<string, ThemeTokens>;
+
+export type ThemeName = keyof typeof themes;
+const CYCLING_THEMES: ThemeName[] = ["midnight", "violet", "light"];
+
+export function resolveThemeName(value?: string, noColor = false): ThemeName {
+  const normalized = value?.trim().toLowerCase();
+  if (noColor) return normalized === "light" || normalized === "mono-light" ? "mono-light" : "mono";
+  if (normalized === "dark" || normalized === "blue") return "midnight";
+  if (normalized === "purple") return "violet";
+  if (normalized === "no-color" || normalized === "monochrome") return "mono";
+  if (normalized && normalized in themes) return normalized as ThemeName;
+  return "midnight";
+}
+
+let activeTheme: ThemeName = resolveThemeName(process.env.SLIS_THEME, process.env.NO_COLOR !== undefined);
+export const theme: ThemeTokens = { ...themes[activeTheme] };
+
+export function themeName(): ThemeName {
+  return activeTheme;
+}
 
 // ── Back-compat `color` map (old names → new tokens) ─────────────────────────
 
@@ -67,7 +132,7 @@ export const color = {
   fg: theme.text,
   white: theme.textBright,
   cursorBar: theme.focus,
-} as const;
+};
 
 // ── Diff colors (derived — no new hues) ──────────────────────────────────────
 
@@ -76,10 +141,13 @@ export const diffColor = {
   del: theme.bad,
   hunk: theme.focus,
   header: theme.textDim,
-  addChangeBg: "#10281c",
-  delChangeBg: "#2e1214",
+  // A quiet full-row tint makes additions scannable even when syntax colours
+  // override the green foreground; changed words get the stronger layer.
+  addBg: theme.diffAddBg,
+  addChangeBg: theme.diffAddChangeBg,
+  delChangeBg: theme.diffDelChangeBg,
   gutter: theme.border,
-} as const;
+};
 
 // ── Syntax tokens (re-pinned to the five-hue system) ─────────────────────────
 
@@ -93,6 +161,45 @@ export const syntaxColor: Record<TokenKind, string> = {
   punct: theme.textDim,
   plain: theme.text,
 };
+
+function syncDerivedColors(): void {
+  Object.assign(color, {
+    title: theme.focus, live: theme.good, synced: theme.good, wait: theme.attn,
+    done: theme.merged, ready: theme.good, merged: theme.merged, missing: theme.bad,
+    candidate: theme.focus, restack: theme.attn, repoHeader: theme.focus, code: theme.good,
+    border: theme.hairline, borderFocus: theme.focus, boxBorder: theme.focus,
+    overlayBg: theme.surface, dim: theme.textDim, stackHeader: theme.textFaint,
+    diffHeader: theme.textDim, fg: theme.text, white: theme.textBright, cursorBar: theme.focus,
+  });
+  Object.assign(diffColor, {
+    add: theme.good, del: theme.bad, hunk: theme.focus, header: theme.textDim,
+    addBg: theme.diffAddBg, addChangeBg: theme.diffAddChangeBg,
+    delChangeBg: theme.diffDelChangeBg, gutter: theme.border,
+  });
+  Object.assign(syntaxColor, {
+    keyword: theme.merged, string: theme.good, number: theme.attn,
+    type: theme.focus, function: theme.focus, comment: theme.textFaint,
+    punct: theme.textDim, plain: theme.text,
+  });
+}
+
+export function setTheme(name: ThemeName): ThemeName {
+  // NO_COLOR is a contract, not merely a startup suggestion.
+  const next = process.env.NO_COLOR !== undefined
+    ? name === "light" || name === "mono-light" ? "mono-light" : "mono"
+    : name;
+  Object.assign(theme, themes[next]);
+  activeTheme = next;
+  syncDerivedColors();
+  return activeTheme;
+}
+
+export function cycleTheme(): ThemeName {
+  if (process.env.NO_COLOR !== undefined)
+    return setTheme(activeTheme === "mono-light" ? "midnight" : "light");
+  const index = CYCLING_THEMES.indexOf(activeTheme);
+  return setTheme(CYCLING_THEMES[(index + 1) % CYCLING_THEMES.length]!);
+}
 
 export function colorForKind(kind: TokenKind): string {
   return syntaxColor[kind];

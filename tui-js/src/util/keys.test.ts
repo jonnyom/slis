@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeKeyName } from "./keys";
+import { isQuitKey, normalizeKeyName } from "./keys";
 import type { KeyEvent } from "@opentui/core";
 
 function key(name: string, shift = false): KeyEvent {
@@ -30,5 +30,16 @@ describe("normalizeKeyName", () => {
   test("named keys pass through", () => {
     expect(normalizeKeyName(key("escape", false))).toBe("escape");
     expect(normalizeKeyName(key("return", true))).toBe("return");
+  });
+});
+
+describe("isQuitKey", () => {
+  test("accepts q and normalized ctrl+c", () => {
+    expect(isQuitKey(key("q"))).toBe(true);
+    expect(isQuitKey({ name: "c", ctrl: true } as KeyEvent)).toBe(true);
+  });
+
+  test("plain c remains the create-slice key", () => {
+    expect(isQuitKey(key("c"))).toBe(false);
   });
 });

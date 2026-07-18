@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import type { PrStackEntry, Slice } from "./rpc/types";
 import type { SliceView } from "./state/derive";
-import { attention, badgeFor, glyph, resultStatusStyle, theme } from "./theme";
+import {
+  attention,
+  badgeFor,
+  diffColor,
+  glyph,
+  resolveThemeName,
+  resultStatusStyle,
+  setTheme,
+  syntaxColor,
+  theme,
+  themeName,
+} from "./theme";
 
 function view(extra: Partial<Slice> = {}, vextra: Partial<SliceView> = {}): SliceView {
   return {
@@ -14,6 +25,31 @@ function view(extra: Partial<Slice> = {}, vextra: Partial<SliceView> = {}): Slic
 function pr(extra: Partial<PrStackEntry> = {}): PrStackEntry {
   return { repo: "r", branch: "b", number: 1, ...extra };
 }
+
+describe("themes", () => {
+  test("resolves names, aliases, invalid values, and NO_COLOR", () => {
+    expect(resolveThemeName("light")).toBe("light");
+    expect(resolveThemeName("purple")).toBe("violet");
+    expect(resolveThemeName("unknown")).toBe("midnight");
+    expect(resolveThemeName("light", true)).toBe("mono-light");
+  });
+
+  test("switches semantic and derived tokens together", () => {
+    const original = themeName();
+    const noColor = process.env.NO_COLOR;
+    delete process.env.NO_COLOR;
+    try {
+      setTheme("light");
+      expect(theme.bg).toBe("#f7f5f2");
+      expect(diffColor.add).toBe(theme.good);
+      expect(diffColor.addBg).toBe(theme.diffAddBg);
+      expect(syntaxColor.plain).toBe(theme.text);
+    } finally {
+      setTheme(original);
+      if (noColor !== undefined) process.env.NO_COLOR = noColor;
+    }
+  });
+});
 
 describe("attention", () => {
   test("waiting-input is needs-you (attn, ⏸)", () => {

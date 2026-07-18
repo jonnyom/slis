@@ -11,7 +11,9 @@ import (
 // user's hand-edited workspace config.
 type Prefs struct {
 	SplitDiff bool   `json:"split_diff"`           // cockpit: side-by-side diff
-	DiffScope string `json:"diff_scope,omitempty"` // cockpit: "dirty" | "parent" | "trunk"
+	DiffScope string `json:"diff_scope,omitempty"` // cockpit: "dirty"/"working" | "parent" | "trunk"
+	Theme     string `json:"theme,omitempty"`      // OpenTUI: "auto" or a palette name
+	Agent     string `json:"agent,omitempty"`      // OpenTUI: last selected agent name
 	// DiffVsTrunk is the legacy pre-scope toggle, kept only so an old prefs file
 	// migrates cleanly: true → trunk scope, false → parent scope, absent (nil) →
 	// dirty (the new default). It is no longer written.

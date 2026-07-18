@@ -8,6 +8,8 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
+	"github.com/jonnyom/slis/internal/report"
+	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
 // statusTestPaths returns a config.Paths pointing at fresh temp dirs so the
@@ -100,5 +102,30 @@ func TestReadStatusSingleSlice(t *testing.T) {
 	}
 	if got := notify.ReadStatus(sp.EventsDir, "feat").String(); got != "done" {
 		t.Errorf("feat status = %q, want done", got)
+	}
+}
+
+func TestSliceStatusFallsBackToLiveTmuxSession(t *testing.T) {
+	if !tmuxctl.Available() {
+		t.Skip("tmux not on PATH")
+	}
+	const slice = "status-live-fallback-test"
+	_ = tmuxctl.KillSession(slice)
+	t.Cleanup(func() { _ = tmuxctl.KillSession(slice) })
+	if err := tmuxctl.EnsureSession(slice, nil, tmuxctl.SessionOpts{}); err != nil {
+		t.Fatalf("EnsureSession: %v", err)
+	}
+
+	sp := statusTestPaths(t)
+	if got := report.SliceStatus(sp.EventsDir, slice); got != model.SessRunning {
+		t.Fatalf("live session status = %v, want running", got)
+	}
+
+	// Hook events are more precise than process presence and retain precedence.
+	if err := notify.WriteStatus(sp.EventsDir, slice, model.SessWaitingInput, 1); err != nil {
+		t.Fatalf("WriteStatus: %v", err)
+	}
+	if got := report.SliceStatus(sp.EventsDir, slice); got != model.SessWaitingInput {
+		t.Fatalf("hook status = %v, want waiting-input", got)
 	}
 }

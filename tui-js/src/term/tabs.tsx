@@ -9,9 +9,10 @@ import { GhosttyTerminalRenderable } from "ghostty-opentui/terminal-buffer";
 import { extend, useRenderer } from "@opentui/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import type { SessionStatus } from "../rpc/types";
-import { color, sessionBadge } from "../theme";
+import { color, sessionBadge, theme } from "../theme";
 import { BOLD, DIM } from "../components/ui";
 import { TermManager } from "./manager";
+import { tmuxWheelSequence } from "./mouse";
 import type { TermSessionOpts } from "./session";
 
 // Register <ghosttyTerminal> as an OpenTUI intrinsic element.
@@ -147,6 +148,21 @@ function TermTab({
       persistent
       showCursor
       focusable
+      onMouseScroll={(event) => {
+        if (!visible || entry.kind !== "session") return;
+        const direction = event.scroll?.direction;
+        if (!direction) return;
+
+        // OpenTUI reports screen coordinates; tmux's SGR protocol expects
+        // one-based coordinates relative to the embedded terminal.
+        const column = Math.min(cols, Math.max(1, event.x + 1));
+        const row = Math.min(rows, Math.max(1, event.y - top + 1));
+        manager.get(key)?.write(
+          tmuxWheelSequence(direction, column, row, event.modifiers),
+        );
+        event.preventDefault();
+        event.stopPropagation();
+      }}
     />
   );
 }
@@ -263,6 +279,7 @@ export function TerminalLayer({
       top={0}
       width={width}
       height={height}
+      backgroundColor={theme.bg}
       visible={focused}
       zIndex={100}
     >

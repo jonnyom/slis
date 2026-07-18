@@ -7,7 +7,7 @@
 // We never own the agent process — we `tmux attach` a client (see session.ts).
 // Everything here is a thin shell-out to the `tmux` binary; nothing mutates a repo.
 
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 /** A slice member reduced to what session windows + agent context need. */
 export interface TermMember {
@@ -20,7 +20,7 @@ export interface TermMember {
 export interface SessionOpts {
   /** Workspace root; a "root"/"both" layout opens one window here. */
   root?: string;
-  /** "root" | "repos" | "both". Empty → "root" when root is set, else "repos". */
+  /** "root" | "repos" | "both". Empty → repos for multi-repo slices. */
   layout?: string;
 }
 
@@ -42,6 +42,31 @@ export function tmuxAvailable(): boolean {
 
 export async function sessionExists(slice: string): Promise<boolean> {
   return (await sh(["tmux", "has-session", "-t", sessionName(slice)])).code === 0;
+}
+
+/** Current directories for every pane in a slice session. */
+export async function sessionPanePaths(slice: string): Promise<string[]> {
+  const r = await sh([
+    "tmux",
+    "list-panes",
+    "-s",
+    "-t",
+    sessionName(slice),
+    "-F",
+    "#{pane_current_path}",
+  ]);
+  if (r.code !== 0) return [];
+  return [...new Set(r.out.split("\n").map((path) => path.trim()).filter(Boolean))];
+}
+
+function pathIsWithin(path: string, parent: string): boolean {
+  const rel = relative(resolve(parent), resolve(path));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/** True when any session pane is operating outside all configured worktrees. */
+export function sessionHasPaneOutsideMembers(paths: string[], members: TermMember[]): boolean {
+  return paths.some((path) => !members.some((member) => pathIsWithin(path, member.worktreePath)));
 }
 
 interface Window {
@@ -70,7 +95,7 @@ function sessionWindows(members: TermMember[], opts: SessionOpts): Window[] {
   const sorted = [...members].sort((a, b) => a.repo.localeCompare(b.repo));
 
   let layout = opts.layout ?? "";
-  if (layout === "") layout = opts.root ? "root" : "repos";
+  if (layout === "") layout = opts.root && sorted.length === 1 ? "root" : "repos";
 
   let wins: Window[] = [];
   if ((layout === "root" || layout === "both") && opts.root) {
@@ -90,6 +115,9 @@ function sessionWindows(members: TermMember[], opts: SessionOpts): Window[] {
 const DETACH_HINT = " detach: C-b d  (Ctrl-D quits Claude) ";
 
 async function setStatusHint(name: string): Promise<void> {
+  // Per-session mouse mode lets the embedded client use wheel scrolling without
+  // changing the user's global tmux configuration.
+  await sh(["tmux", "set-option", "-t", name, "mouse", "on"]);
   await sh(["tmux", "set-option", "-t", name, "status-right-length", "40"]);
   await sh(["tmux", "set-option", "-t", name, "status-right", DETACH_HINT]);
 }

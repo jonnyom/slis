@@ -4,6 +4,7 @@
 // paints. React-free so expand/collapse and flattening are unit-testable.
 
 import type { TreeEntry, TreeEntryType } from "../rpc/types";
+import type { FileDiff, FileStatus } from "../diff/parse";
 
 // childrenByPath maps a directory path (repo-relative; "" = root) to the entries
 // directly under it, as returned by the `tree` RPC. A path absent from the map
@@ -17,6 +18,30 @@ export interface FileRow {
   size: number;
   depth: number;
   expanded: boolean; // dir only: whether its children are shown
+}
+
+// ChangeIndex decorates a branch-revision tree with its diff against the stack
+// parent. Exact file paths carry their Git status; ancestor directories are
+// tracked separately so collapsed folders still reveal that they contain work.
+export interface ChangeIndex {
+  files: ReadonlyMap<string, FileStatus>;
+  directories: ReadonlySet<string>;
+}
+
+export function indexChanges(
+  changes: ReadonlyArray<Pick<FileDiff, "path" | "status">>,
+): ChangeIndex {
+  const files = new Map<string, FileStatus>();
+  const directories = new Set<string>();
+  for (const change of changes) {
+    files.set(change.path, change.status);
+    let parent = parentPath(change.path);
+    while (parent !== "") {
+      directories.add(parent);
+      parent = parentPath(parent);
+    }
+  }
+  return { files, directories };
 }
 
 // childPath joins a parent directory path and a leaf name (root parent = "").

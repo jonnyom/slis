@@ -8,7 +8,6 @@ import (
 	"text/tabwriter"
 
 	"github.com/jonnyom/slis/internal/config"
-	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/spf13/cobra"
 )
@@ -39,7 +38,7 @@ var statusCmd = &cobra.Command{
 		if len(args) == 1 {
 			dto := StatusDTO{
 				Slice:  args[0],
-				Status: notify.ReadStatus(sp.EventsDir, args[0]).String(),
+				Status: report.SliceStatus(sp.EventsDir, args[0]).String(),
 			}
 			if useJSON {
 				enc := json.NewEncoder(os.Stdout)

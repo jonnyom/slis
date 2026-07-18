@@ -12,12 +12,14 @@ import (
 // fakeSession records what Send injects and controls whether a session exists.
 type fakeSession struct {
 	exists     bool
+	hasAgent   bool
 	gotSlice   string
 	gotPrompt  string
 	sendCalled bool
 }
 
-func (f *fakeSession) Exists(string) bool { return f.exists }
+func (f *fakeSession) Exists(string) bool   { return f.exists }
+func (f *fakeSession) HasAgent(string) bool { return f.hasAgent }
 func (f *fakeSession) SendPrompt(slice, prompt string) error {
 	f.sendCalled = true
 	f.gotSlice = slice
@@ -26,12 +28,23 @@ func (f *fakeSession) SendPrompt(slice, prompt string) error {
 }
 
 func TestSendEmptyBatch(t *testing.T) {
-	f := &fakeSession{exists: true}
+	f := &fakeSession{exists: true, hasAgent: true}
 	if err := Send("s", nil, f); !errors.Is(err, ErrNoComments) {
 		t.Errorf("Send(empty) = %v, want ErrNoComments", err)
 	}
 	if f.sendCalled {
 		t.Error("Send injected an empty batch")
+	}
+}
+
+func TestSendNoAgentInActivePane(t *testing.T) {
+	f := &fakeSession{exists: true, hasAgent: false}
+	c := []Comment{{Slice: "s", Repo: "web", File: "a.go", Line: 1, Body: "x"}}
+	if err := Send("s", c, f); !errors.Is(err, ErrNoAgent) {
+		t.Errorf("Send(no agent) = %v, want ErrNoAgent", err)
+	}
+	if f.sendCalled {
+		t.Error("Send injected into a shell-only pane")
 	}
 }
 
@@ -47,7 +60,7 @@ func TestSendNoSession(t *testing.T) {
 }
 
 func TestSendInjectsComposedPrompt(t *testing.T) {
-	f := &fakeSession{exists: true}
+	f := &fakeSession{exists: true, hasAgent: true}
 	c := []Comment{{Slice: "checkout", Repo: "web", File: "a.go", Line: 3, Body: "tidy up"}}
 	if err := Send("checkout", c, f); err != nil {
 		t.Fatalf("Send: %v", err)
@@ -60,6 +73,37 @@ func TestSendInjectsComposedPrompt(t *testing.T) {
 	}
 	if f.gotPrompt != ComposePrompt(c) {
 		t.Errorf("injected prompt = %q, want the composed prompt", f.gotPrompt)
+	}
+}
+
+func TestCommandLineMatchesAgent(t *testing.T) {
+	tests := []struct {
+		name, current, cmdline string
+		agents                 []string
+		want                   bool
+	}{
+		{"direct claude", "claude", "claude --resume", []string{"claude"}, true},
+		{"node claude package", "node", "node /opt/@anthropic-ai/claude-code/cli.js", []string{"claude"}, true},
+		{"configured codex", "codex", "/opt/bin/codex", []string{"claude", "codex"}, true},
+		{"plain shell", "zsh", "-zsh", []string{"claude", "codex"}, false},
+		{"editor is not agent", "code", "code review feedback on slice", []string{"claude", "codex"}, false},
+		{"unrelated node", "node", "node server.js", []string{"claude", "codex"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := commandLineMatchesAgent(tt.current, tt.cmdline, tt.agents); got != tt.want {
+				t.Errorf("commandLineMatchesAgent(%q, %q, %v) = %v, want %v", tt.current, tt.cmdline, tt.agents, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAgentInputBlocker(t *testing.T) {
+	if got := agentInputBlocker("2 new MCP servers found in this project\nSelect any you wish to enable."); !strings.Contains(got, "MCP") {
+		t.Fatalf("agentInputBlocker did not detect MCP approval: %q", got)
+	}
+	if got := agentInputBlocker("Claude Code\n> ready for a prompt"); got != "" {
+		t.Fatalf("agentInputBlocker rejected a ready prompt: %q", got)
 	}
 }
 
@@ -87,7 +131,7 @@ func TestTmuxSessionRoundTrip(t *testing.T) {
 	}
 
 	prompt := "line one\nline two\nline three"
-	if err := sess.SendPrompt(slice, prompt); err != nil {
+	if err := tmuxctl.SendPrompt(slice, prompt); err != nil {
 		t.Fatalf("SendPrompt: %v", err)
 	}
 

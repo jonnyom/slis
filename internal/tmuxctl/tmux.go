@@ -40,8 +40,9 @@ type SessionOpts struct {
 	// Root is the workspace root. When set and the layout includes it, the
 	// session opens a window there (so you can run Claude across the whole stack).
 	Root string
-	// Layout is "root", "repos", or "both". Empty defaults to "root" when Root is
-	// set, else "repos".
+	// Layout is "root", "repos", or "both". Empty defaults to "repos" for a
+	// multi-repo slice (avoids an ambiguous enclosing Git checkout), and "root"
+	// for a single member when Root is set.
 	Layout string
 }
 
@@ -88,7 +89,7 @@ func sessionWindows(members []model.SliceMember, opts SessionOpts) []window {
 
 	layout := opts.Layout
 	if layout == "" {
-		if opts.Root != "" {
+		if opts.Root != "" && len(sorted) == 1 {
 			layout = "root"
 		} else {
 			layout = "repos"
@@ -126,6 +127,9 @@ const detachHint = " detach: C-b d  (Ctrl-D quits Claude) "
 // other tmux sessions. Best-effort: any failure (e.g. status bar disabled) is
 // ignored — it is a hint, not load-bearing.
 func setStatusHint(name string) {
+	// Mouse mode is scoped to this session, so embedded wheel scrolling works
+	// without altering the user's global tmux configuration.
+	_ = exec.Command("tmux", "set-option", "-t", name, "mouse", "on").Run()
 	_ = exec.Command("tmux", "set-option", "-t", name, "status-right-length", "40").Run()
 	_ = exec.Command("tmux", "set-option", "-t", name, "status-right", detachHint).Run()
 }
@@ -204,6 +208,17 @@ func CapturePane(slice string) (string, error) {
 	return sb.String(), nil
 }
 
+// CaptureActivePane returns plain visible text from the pane that would receive
+// SendPrompt. It intentionally omits colour escapes so callers can reliably
+// detect interactive startup gates before pasting into them.
+func CaptureActivePane(slice string) (string, error) {
+	out, err := exec.Command("tmux", "capture-pane", "-p", "-t", SessionName(slice)).Output()
+	if err != nil {
+		return "", fmt.Errorf("tmux capture-pane: %w", err)
+	}
+	return string(out), nil
+}
+
 // SendKeys types keys into the slice session's active pane followed by Enter
 // (used to launch an agent). No-op error if the session is absent.
 func SendKeys(slice, keys string) error {
@@ -248,6 +263,88 @@ func ActivePaneCommand(slice string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// ActivePanePID returns the shell/process-tree root for the session's active
+// pane, or 0 if it cannot be determined.
+func ActivePanePID(slice string) int {
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", SessionName(slice), "#{pane_pid}").Output()
+	if err != nil {
+		return 0
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return pid
+}
+
+// Pane describes one tmux pane that may host a slice agent.
+type Pane struct {
+	Target  string
+	PID     int
+	Command string
+}
+
+// Panes returns every pane in a slice session with an address suitable for
+// SelectPane.
+func Panes(slice string) ([]Pane, error) {
+	name := SessionName(slice)
+	format := "#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_current_command}"
+	out, err := exec.Command("tmux", "list-panes", "-s", "-t", name, "-F", format).Output()
+	if err != nil {
+		return nil, fmt.Errorf("tmux list-panes: %w", err)
+	}
+	var panes []Pane
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		pid, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
+		panes = append(panes, Pane{Target: parts[0], PID: pid, Command: parts[2]})
+	}
+	return panes, nil
+}
+
+// SelectPane activates a pane and its containing window.
+func SelectPane(target string) error {
+	if out, err := exec.Command("tmux", "select-window", "-t", target).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux select-window: %w: %s", err, out)
+	}
+	if out, err := exec.Command("tmux", "select-pane", "-t", target).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux select-pane: %w: %s", err, out)
+	}
+	return nil
+}
+
+// IsShellCommand reports whether cmd is an interactive shell that is safe to
+// receive an agent launch command.
+func IsShellCommand(cmd string) bool {
+	switch cmd {
+	case "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh":
+		return true
+	}
+	return false
+}
+
+// SelectOrCreateWindow activates the named window in a slice session, creating
+// it at cwd when it does not exist. It is used for a dedicated agent window
+// when the currently active pane is busy with an unrelated process.
+func SelectOrCreateWindow(slice, window, cwd string) error {
+	name := SessionName(slice)
+	target := name + ":" + window
+	if exec.Command("tmux", "select-window", "-t", target).Run() == nil {
+		return nil
+	}
+	args := []string{"new-window", "-t", name, "-n", window}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux new-window %q: %w: %s", window, err, out)
+	}
+	return nil
 }
 
 // PanePIDs returns the pane PIDs across all windows of the slice's session.

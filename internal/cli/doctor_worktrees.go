@@ -12,7 +12,8 @@ import (
 )
 
 // reasonAdvice maps a discovery skip reason to a doctor severity and the manual
-// remedy to suggest. doctor never repairs these itself (nothing destructive).
+// remedy to suggest. Discovery already performs provably safe housekeeping;
+// doctor reports anything that remains and leaves ambiguous repairs to people.
 type reasonAdvice struct {
 	level  doctorLevel
 	remedy string
@@ -22,7 +23,7 @@ var skipReasonAdvice = map[string]reasonAdvice{
 	discovery.ReasonDetached: {lvlWarn,
 		"HEAD is detached — `git switch <branch>` inside the worktree (or `slis adopt`) to re-attach it so it shows up as a slice."},
 	discovery.ReasonPrunable: {lvlWarn,
-		"its working directory is gone — `git worktree prune` in the repo to clear the stale metadata (doctor won't prune for you)."},
+		"its working directory is gone — Slis normally prunes stale unlocked metadata automatically; inspect locks, then run `git worktree prune` in the repo if it remains."},
 	discovery.ReasonBranchless: {lvlWarn,
 		"no branch checked out — `git switch <branch>` inside the worktree."},
 	discovery.ReasonBare: {lvlInfo,

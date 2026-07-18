@@ -34,6 +34,7 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("cannot locate the slis binary: %w", err)
 		}
+		migrateExistingHooksBestEffort(binPath)
 
 		launch, resolveErr := resolveUILaunch(binPath, os.Getenv("SLIS_TUI_DIR"), regularFileExists)
 		launchJS, notice := chooseDefaultUI(os.Getenv("SLIS_TUI"), resolveErr)

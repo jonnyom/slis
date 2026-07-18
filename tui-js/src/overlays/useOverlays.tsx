@@ -5,7 +5,7 @@
 // the one that handles keys and renders. Browser / cockpit stay disabled while
 // `active` is true, so exactly one keyboard owner is live at a time.
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
 import type {
@@ -27,6 +27,7 @@ import {
   copyToClipboard,
   deactivate,
   editorSet,
+  editPath,
   editRepo,
   editSlice,
   fixCiSlice,
@@ -83,7 +84,15 @@ type Overlay =
   | { kind: "adopt"; text: string }
   | { kind: "group"; slices: string[]; text: string; onDone: () => void }
   | { kind: "candidates"; items: Candidate[]; sel: number }
-  | { kind: "editorPicker"; editors: EditorSpec[]; sel: number; slice: string; repo?: string }
+  | {
+      kind: "editorPicker";
+      editors: EditorSpec[];
+      sel: number;
+      slice: string;
+      repo?: string;
+      path?: string;
+      line?: number;
+    }
   | { kind: "agentPicker"; agents: AgentSpec[]; sel: number; slice: string; onPick: (agent: AgentSpec) => void }
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
@@ -120,8 +129,13 @@ export interface OverlayApi {
   // F2 inline review: comment composer + pending-review overlay.
   comment(ctx: CommentContext, onAdded: () => void): void;
   review(slice: string, onChanged: () => void): void;
-  editor(slice: string, repo?: string): void;
-  agentPicker(slice: string, agents: AgentSpec[], onPick: (agent: AgentSpec) => void): void;
+  editor(slice: string, repo?: string, path?: string, line?: number): void;
+  agentPicker(
+    slice: string,
+    agents: AgentSpec[],
+    onPick: (agent: AgentSpec) => void,
+    preferredAgent?: string,
+  ): void;
   info(title: string, body: string): void;
   error(title: string, body: string): void;
   // immediate actions (still funnel through the shared runner)
@@ -182,7 +196,15 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     startCreate,
   } = args;
   const [overlay, setOverlay] = useState<Overlay>(null);
-  const close = useCallback(() => setOverlay(null), []);
+  const helpReturn = useRef<Overlay>(null);
+  const close = useCallback(() => {
+    helpReturn.current = null;
+    setOverlay(null);
+  }, []);
+  const openHelp = useCallback(() => {
+    helpReturn.current = null;
+    setOverlay({ kind: "help" });
+  }, []);
 
   // Working → Result → refresh. A `successToast` routes a clean run to a
   // transient toast (and closes the modal) instead of a Result overlay; a
@@ -221,7 +243,11 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
   // No modal at all: run in the background, confirm success with a toast, and
   // only raise a Result overlay when it fails. For quick clipboard writes.
   const runQuiet = useCallback(
-    (successToast: string, fn: () => Promise<MutateResult>) => {
+    (
+      successToast: string,
+      fn: () => Promise<MutateResult>,
+      failureTitle = "Failed",
+    ) => {
       close();
       fn().then(
         (res) => {
@@ -229,12 +255,13 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           else
             setOverlay({
               kind: "result",
-              title: "Failed",
+              title: failureTitle,
               body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
               status: "failure",
             });
         },
-        (err) => setOverlay({ kind: "result", title: "Failed", body: String(err), status: "failure" }),
+        (err) =>
+          setOverlay({ kind: "result", title: failureTitle, body: String(err), status: "failure" }),
       );
     },
     [toast, close],
@@ -320,27 +347,50 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     [client],
   );
 
-  // Open a slice/repo in the editor. Mirrors editorpane.go's openInEditor: a
+  // Open a path/repo/slice in the editor. Successful GUI launches are quiet:
+  // dismiss immediately and confirm with a toast; only failures deserve a
+  // blocking result overlay. A configured editor (or a lone available one)
+  // opens immediately; several
   // configured editor (or a lone available one) opens immediately; several
   // detected and none configured raises the picker (which persists the choice).
   const runEdit = useCallback(
-    (slice: string, repo: string | undefined, persistBin?: string) => {
-      const label = repo ? `Open ${repo} in editor` : "Open editor";
-      runMutation(label, async () => {
-        if (persistBin) {
-          const set = await editorSet(persistBin);
-          if (set.code !== 0) return set;
-        }
-        return repo ? editRepo(slice, repo) : editSlice(slice);
-      });
+    (
+      slice: string,
+      repo: string | undefined,
+      path: string | undefined,
+      line: number | undefined,
+      persistBin?: string,
+    ) => {
+      const label = path
+        ? `Open ${path}${line ? `:${line}` : ""} in editor`
+        : repo
+          ? `Open ${repo} in editor`
+          : "Open editor";
+      const bin = persistBin ?? configuredEditor ?? (editors.length === 1 ? editors[0]?.bin : undefined);
+      const editorName = editors.find((editor) => editor.bin === bin)?.name ?? bin ?? "editor";
+      const target = path
+        ? `${path.split("/").at(-1) ?? path}${line ? `:${line}` : ""}`
+        : repo ?? slice;
+      runQuiet(
+        `Opened ${target} in ${editorName}`,
+        async () => {
+          if (persistBin) {
+            const set = await editorSet(persistBin);
+            if (set.code !== 0) return set;
+          }
+          if (path && repo) return editPath(slice, repo, path, line);
+          return repo ? editRepo(slice, repo) : editSlice(slice);
+        },
+        label + " — failed",
+      );
     },
-    [runMutation],
+    [configuredEditor, editors, runQuiet],
   );
 
   const openEditor = useCallback(
-    (slice: string, repo?: string) => {
+    (slice: string, repo?: string, path?: string, line?: number) => {
       if (configuredEditor || editors.length === 1) {
-        runEdit(slice, repo);
+        runEdit(slice, repo, path, line);
         return;
       }
       if (editors.length === 0) {
@@ -352,7 +402,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         });
         return;
       }
-      setOverlay({ kind: "editorPicker", editors, sel: 0, slice, repo });
+      setOverlay({ kind: "editorPicker", editors, sel: 0, slice, repo, path, line });
     },
     [configuredEditor, editors, runEdit],
   );
@@ -361,7 +411,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     active: overlay !== null,
     view,
     node: renderOverlay(overlay, conflicts, view, height),
-    help: () => setOverlay({ kind: "help" }),
+    help: openHelp,
     swap: openSwap,
     stack: (slices, conflictWith) => setOverlay({ kind: "stack", slices, conflictWith }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
@@ -377,8 +427,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     comment: (ctx, onAdded) => setOverlay({ kind: "comment", ctx, text: "", onAdded }),
     review: openReview,
     editor: openEditor,
-    agentPicker: (slice, agents, onPick) =>
-      setOverlay({ kind: "agentPicker", slice, agents, sel: 0, onPick }),
+    agentPicker: (slice, agents, onPick, preferredAgent) => {
+      const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
+      setOverlay({ kind: "agentPicker", slice, agents, sel: preferred >= 0 ? preferred : 0, onPick });
+    },
     info: (title, body) => setOverlay({ kind: "result", title, body, status: "warn" }),
     error: (title, body) => setOverlay({ kind: "result", title, body, status: "failure" }),
     ungroup: (slice) => runMutation("Ungroup " + slice, () => ungroupSlice(slice)),
@@ -400,7 +452,11 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
 
     switch (overlay.kind) {
       case "help":
-        if (name === "?" || isCancel || name === "q") close();
+        if (name === "?" || isCancel || name === "q") {
+          const previous = helpReturn.current;
+          helpReturn.current = null;
+          setOverlay(previous);
+        }
         return;
       case "working":
         return;
@@ -512,7 +568,13 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           setOverlay({ ...overlay, sel: Math.max(0, sel - 1) });
         else if (isCancel || name === "q") close();
         else if (isEnter && eds[sel])
-          runEdit(overlay.slice, overlay.repo, eds[sel]!.bin);
+          runEdit(
+            overlay.slice,
+            overlay.repo,
+            overlay.path,
+            overlay.line,
+            eds[sel]!.bin,
+          );
         return;
       }
       case "agentPicker": {
@@ -563,6 +625,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
             branch: ctx.branch,
             file: ctx.file,
             line: ctx.line,
+            endLine: ctx.endLine,
+            side: ctx.side,
             hunk: ctx.hunk,
             body,
           }).then(
@@ -626,7 +690,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           return;
         }
         const list = comments ?? [];
-        if (name === "j" || name === "down")
+        if (name === "?") {
+          helpReturn.current = overlay;
+          setOverlay({ kind: "help" });
+        } else if (name === "j" || name === "down")
           setOverlay({ ...overlay, sel: clampReviewSel(sel + 1, list.length) });
         else if (name === "k" || name === "up")
           setOverlay({ ...overlay, sel: clampReviewSel(sel - 1, list.length) });
@@ -684,6 +751,8 @@ function renderOverlay(
           sel={overlay.sel}
           slice={overlay.slice}
           repo={overlay.repo}
+          path={overlay.path}
+          line={overlay.line}
         />
       );
     case "agentPicker":

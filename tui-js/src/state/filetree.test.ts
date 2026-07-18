@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   childPath,
   flattenTree,
+  indexChanges,
   parentPath,
   toggled,
   withChildren,
@@ -26,6 +27,31 @@ describe("childPath / parentPath", () => {
     expect(childPath("src", "app.ts")).toBe("src/app.ts");
     expect(parentPath("src/checkout/cart.tsx")).toBe("src/checkout");
     expect(parentPath("README.md")).toBe("");
+  });
+});
+
+describe("indexChanges", () => {
+  test("indexes exact statuses and every non-root ancestor directory", () => {
+    const changes = indexChanges([
+      { path: "src/components/card.tsx", status: "modified" },
+      { path: "README.md", status: "added" },
+      { path: "test/old.ts", status: "deleted" },
+    ]);
+
+    expect([...changes.files]).toEqual([
+      ["src/components/card.tsx", "modified"],
+      ["README.md", "added"],
+      ["test/old.ts", "deleted"],
+    ]);
+    expect([...changes.directories]).toEqual(["src/components", "src", "test"]);
+  });
+
+  test("deduplicates shared ancestor directories", () => {
+    const changes = indexChanges([
+      { path: "src/a.ts", status: "added" },
+      { path: "src/b.ts", status: "renamed" },
+    ]);
+    expect([...changes.directories]).toEqual(["src"]);
   });
 });
 

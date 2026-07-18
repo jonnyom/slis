@@ -7,7 +7,6 @@ import (
 
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/git"
-	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/jonnyom/slis/internal/review"
@@ -77,7 +76,7 @@ func (s *Server) status(raw json.RawMessage) (interface{}, *rpcError) {
 	if p.Slice != "" {
 		return report.StatusDTO{
 			Slice:  p.Slice,
-			Status: notify.ReadStatus(s.sp.EventsDir, p.Slice).String(),
+			Status: report.SliceStatus(s.sp.EventsDir, p.Slice).String(),
 		}, nil
 	}
 	dtos, err := report.SliceStatuses(s.ws, s.sp)
