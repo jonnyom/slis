@@ -298,6 +298,52 @@ func TestDiffInvalidScope(t *testing.T) {
 	}
 }
 
+func TestCILogRequiresSlice(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	resp := h.call(1, "ciLog", `{}`)
+	if resp.Error == nil || resp.Error.Code != codeInvalidParams {
+		t.Fatalf("expected invalid-params for missing slice, got %+v", resp.Error)
+	}
+}
+
+func TestCILogSliceNotFound(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	resp := h.call(1, "ciLog", `{"slice":"nope"}`)
+	if resp.Error == nil || resp.Error.Data == nil || resp.Error.Data.Kind != "slice-not-found" {
+		t.Fatalf("expected slice-not-found error, got %+v", resp.Error)
+	}
+}
+
+func TestCILogUnknownRepoRejected(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	resp := h.call(1, "ciLog", `{"slice":"checkout","repo":"ops"}`)
+	if resp.Error == nil || resp.Error.Code != codeInvalidParams {
+		t.Fatalf("expected invalid-params for non-member repo, got %+v", resp.Error)
+	}
+}
+
+// TestCILogNoPR: with no gh (or no PR), each member repo comes back with an
+// Error rather than a Log, and the call itself succeeds. Asserts the read-only,
+// degrade-gracefully contract; independent of whether gh is installed since the
+// throwaway repos have no real PRs.
+func TestCILogNoPR(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	resp := h.call(1, "ciLog", `{"slice":"checkout"}`)
+	var got ciLogResult
+	decodeResult(t, resp, &got)
+	if len(got.Repos) != 2 {
+		t.Fatalf("ciLog repos = %d, want 2 (web+api)", len(got.Repos))
+	}
+	for _, r := range got.Repos {
+		if r.Log != "" {
+			t.Errorf("repo %s unexpectedly has a log without a PR: %q", r.Repo, r.Log)
+		}
+		if r.Error == "" {
+			t.Errorf("repo %s should carry an error when it has no PR", r.Repo)
+		}
+	}
+}
+
 func TestConflicts(t *testing.T) {
 	h := newHarness(t, makeWorkspace(t))
 	resp := h.call(1, "conflicts", "")

@@ -125,6 +125,8 @@ type StatusDTO struct {
 // stack. Number/URL/State/Title are empty when the branch has no PR. StackOrder
 // is the branch's trunk-relative Graphite depth (1 = directly off trunk),
 // omitted when the repo has no stack data; rows are ordered trunk-first by it.
+// CI/CIPass/CIFail/CIPending carry the check rollup so a front-end can show a CI
+// badge per row without a second fetch; they are omitted for a branch with no PR.
 type PRStackRowDTO struct {
 	Repo           string `json:"repo"`
 	Branch         string `json:"branch"`
@@ -134,6 +136,27 @@ type PRStackRowDTO struct {
 	Title          string `json:"title,omitempty"`
 	ReviewDecision string `json:"review_decision,omitempty"`
 	StackOrder     int    `json:"stack_order,omitempty"`
+	CI             string `json:"ci,omitempty"`
+	CIPass         int    `json:"ci_pass,omitempty"`
+	CIFail         int    `json:"ci_fail,omitempty"`
+	CIPending      int    `json:"ci_pending,omitempty"`
+}
+
+// SetPR fills a row's PR-derived fields (identity, review decision, and the CI
+// check rollup) from a resolved PR. A nil pr leaves the row as a bare
+// repo/branch entry, so callers can call it unconditionally.
+func (r *PRStackRowDTO) SetPR(pr *forge.PR) {
+	if pr == nil {
+		return
+	}
+	r.Number = pr.Number
+	r.URL = pr.URL
+	r.State = pr.State
+	r.Title = pr.Title
+	r.ReviewDecision = pr.ReviewDecision
+	overall, pass, fail, pending := pr.CISummary()
+	r.CI = forge.CIStateName(overall)
+	r.CIPass, r.CIFail, r.CIPending = pass, fail, pending
 }
 
 // ConflictsDTO is the JSON shape for `slis conflicts --json`.
@@ -404,13 +427,8 @@ func PRStackRows(sl model.Slice) []PRStackRowDTO {
 	for _, repo := range repos {
 		m := sl.Members[repo]
 		row := PRStackRowDTO{Repo: repo, Branch: m.Branch, StackOrder: depths[repo]}
-		if pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch); pr != nil {
-			row.Number = pr.Number
-			row.URL = pr.URL
-			row.State = pr.State
-			row.Title = pr.Title
-			row.ReviewDecision = pr.ReviewDecision
-		}
+		pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
+		row.SetPR(pr)
 		rows = append(rows, row)
 	}
 	return rows

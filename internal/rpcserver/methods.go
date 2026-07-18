@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/report"
@@ -156,6 +157,53 @@ func (s *Server) diff(raw json.RawMessage) (interface{}, *rpcError) {
 		return nil, serverErr(err.Error(), "")
 	}
 	return res, nil
+}
+
+// ciLog fetches the failing-CI log excerpt for a slice's PRs (`gh run view
+// --log-failed` behind forge.FailedLog). With a repo named it fetches just that
+// repo; otherwise every member repo. Per-repo failures (no PR, no failing run,
+// gh absent) become an Error on that repo's entry rather than failing the call.
+// Read-only: it never re-runs or mutates CI.
+func (s *Server) ciLog(raw json.RawMessage) (interface{}, *rpcError) {
+	var p ciLogParams
+	if rerr := decodeParams(raw, &p); rerr != nil {
+		return nil, rerr
+	}
+	if p.Slice == "" {
+		return nil, invalidParams("slice is required")
+	}
+	sl, err := report.FindSliceIn(s.ws, s.sp, p.Slice)
+	if err != nil {
+		return nil, serverErr(err.Error(), "slice-not-found")
+	}
+
+	repos := sl.Repos()
+	if p.Repo != "" {
+		if _, ok := sl.Members[p.Repo]; !ok {
+			return nil, invalidParams(fmt.Sprintf("repo %q is not a member of slice %q", p.Repo, p.Slice))
+		}
+		repos = []string{p.Repo}
+	}
+
+	out := make([]ciLogRepoResult, 0, len(repos))
+	for _, repo := range repos {
+		m := sl.Members[repo]
+		entry := ciLogRepoResult{Repo: repo, Branch: m.Branch}
+		pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
+		if pr == nil {
+			entry.Error = "no open PR for this branch"
+			out = append(out, entry)
+			continue
+		}
+		log, ferr := forge.FailedLog(m.WorktreePath, pr)
+		if ferr != nil {
+			entry.Error = ferr.Error()
+		} else {
+			entry.Log = safeterm.StripNonSGR(log)
+		}
+		out = append(out, entry)
+	}
+	return ciLogResult{Repos: out}, nil
 }
 
 // capture returns the safeterm-stripped tail of a slice's tmux session. A

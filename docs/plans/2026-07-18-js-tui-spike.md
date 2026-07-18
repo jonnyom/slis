@@ -26,9 +26,11 @@ of ms (accepted trade-off).
    sampling, derived browser aggregates. Server pushes session-status
    notifications (fsnotify stays Go-side).
 3. **Mutations are one-shot `slis <cmd>` spawns from JS** (activate,
-   deactivate, rm, restack, submit, merge, sync, create, import, group…).
-   The sidecar must never mutate — keeps the data-safety-critical swap
-   engine behind its existing, tested CLI entry points.
+   deactivate, rm, restack, submit, merge, sync, create, import, group,
+   ci-rerun, fix-ci…). The sidecar must never mutate — keeps the
+   data-safety-critical swap engine (and CI writes like `gh run rerun`)
+   behind existing, tested CLI entry points. `slis ci-rerun <slice>` wraps
+   `forge.RerunFailedChecks` per repo for exactly this reason.
 4. **Embedded terminal session tabs (wave 2): tmux stays the persistence
    layer.** The TUI embeds a viewer: PTY running `tmux attach -t <session>`,
    VT-parsed, painted into an OpenTUI pane. One reserved key (candidate:
@@ -68,7 +70,8 @@ the RPC result is byte-for-byte that shape — same structs, same marshalling.
 | `ls` | — | same as `slis ls --json` |
 | `show` | `{ "slice": string }` | same as `slis show <slice> --json` |
 | `status` | `{ "slice"?: string }` | same as `slis status --json` |
-| `prStack` | `{ "slice": string }` | same as `slis pr-stack <slice> --json` |
+| `prStack` | `{ "slice": string }` | same as `slis pr-stack <slice> --json` (now carries the `ci`/`ci_pass`/`ci_fail`/`ci_pending` rollup per row) |
+| `ciLog` | `{ "slice": string, "repo"?: string }` | `{ "repos": [ { "repo": string, "branch": string, "log"?: string, "error"?: string } ] }` — failing-CI log excerpt per repo (`forge.FailedLog`); `repo` filters to one member. Read-only. |
 | `comments` | `{ "slice": string }` | same as `slis comments <slice> --json` |
 | `conflicts` | — | same as `slis conflicts --json` |
 | `diff` | `{ "slice": string, "scope": "working"\|"parent"\|"trunk", "format": "stat"\|"patch"\|"both" }` | `{ "repos": [ { "repo": string, "branch": string, "stat": SliceStat?, "patch": string? } ] }` |

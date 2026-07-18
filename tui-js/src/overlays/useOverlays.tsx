@@ -12,9 +12,11 @@ import type { Candidate, ConflictsResult } from "../rpc/types";
 import {
   activate,
   adoptBranch,
+  ciRerunSlice,
   copyToClipboard,
   createSlice,
   deactivate,
+  fixCiSlice,
   groupSlices,
   ignoreCandidate,
   importCandidate,
@@ -32,6 +34,7 @@ import {
 import { editText } from "./textinput";
 import {
   CandidatesOverlay,
+  CiRerunOverlay,
   ConflictRadarOverlay,
   CreateOverlay,
   GroupOverlay,
@@ -49,6 +52,7 @@ type Overlay =
   | { kind: "swap"; slice: string; active: boolean }
   | { kind: "stack"; slices: string[]; conflictWith: string[] }
   | { kind: "remove"; slices: string[] }
+  | { kind: "ciRerun"; slice: string }
   | { kind: "create"; text: string }
   | { kind: "group"; slices: string[]; text: string; onDone: () => void }
   | { kind: "candidates"; items: Candidate[]; sel: number }
@@ -67,6 +71,8 @@ export interface OverlayApi {
   swap(slice: string, active: boolean): void;
   stack(slices: string[], conflictWith: string[]): void;
   remove(slices: string[]): void;
+  ciRerun(slice: string): void;
+  fixCi(slice: string): void;
   create(): void;
   candidates(items: Candidate[]): void;
   group(slices: string[], onDone: () => void): void;
@@ -152,6 +158,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     swap: (slice, active) => setOverlay({ kind: "swap", slice, active }),
     stack: (slices, conflictWith) => setOverlay({ kind: "stack", slices, conflictWith }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
+    ciRerun: (slice) => setOverlay({ kind: "ciRerun", slice }),
+    fixCi: (slice) => runMutation("Fix CI " + slice, () => fixCiSlice(slice)),
     create: () => setOverlay({ kind: "create", text: "" }),
     candidates: (items) => setOverlay({ kind: "candidates", items, sel: 0 }),
     group: (slices, onDone) => setOverlay({ kind: "group", slices, text: "", onDone }),
@@ -216,6 +224,11 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           runMutation("Force clear " + overlay.slices.join(", "), () =>
             runSequential(overlay.slices, (s) => removeSlice(s, true)),
           );
+        else if (name === "n" || isCancel) close();
+        return;
+      case "ciRerun":
+        if (name === "y" || isEnter)
+          runMutation("Re-run CI " + overlay.slice, () => ciRerunSlice(overlay.slice));
         else if (name === "n" || isCancel) close();
         return;
       case "create":
@@ -290,6 +303,8 @@ function renderOverlay(
       return <StackActionsOverlay slices={overlay.slices} conflictWith={overlay.conflictWith} />;
     case "remove":
       return <RemoveOverlay slices={overlay.slices} />;
+    case "ciRerun":
+      return <CiRerunOverlay slice={overlay.slice} />;
     case "create":
       return <CreateOverlay text={overlay.text} />;
     case "group":

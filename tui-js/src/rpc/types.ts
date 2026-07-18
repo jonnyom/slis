@@ -126,6 +126,25 @@ export interface PrStackEntry {
   title?: string;
   review_decision?: ReviewDecision;
   stack_order?: number;
+  // CI check rollup, carried so a PR row can show a badge without a second
+  // fetch. Omitted (all absent) for a branch with no PR.
+  ci?: CiRollup;
+  ci_pass?: number;
+  ci_fail?: number;
+  ci_pending?: number;
+}
+
+// ── ciLog (spec v0) ──────────────────────────────────────────────────────────
+
+export interface CiLogRepo {
+  repo: string;
+  branch: string;
+  log?: string; // safeterm-stripped `gh run view --log-failed` output
+  error?: string; // set (log omitted) when no log is available for the repo
+}
+
+export interface CiLogResult {
+  repos: CiLogRepo[];
 }
 
 // ── comments ───────────────────────────────────────────────────────────────
@@ -239,6 +258,7 @@ export interface RpcClient {
   }): Promise<DiffResult>;
   capture(params: { slice: string; lines: number }): Promise<CaptureResult>;
   procs(slice?: string): Promise<ProcsResult>;
+  ciLog(params: { slice: string; repo?: string }): Promise<CiLogResult>;
 
   /** Subscribe to live session-status changes. Returns an unsubscribe fn. */
   onSessionEvent(handler: (event: SessionEvent) => void): () => void;

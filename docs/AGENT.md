@@ -108,13 +108,17 @@ per-check counts. `number` is omitted when the branch has no PR.
 ```jsonc
 [{ "repo": "web", "branch": "jonny/checkout", "number": 8107,
    "url": "https://github.com/...", "state": "OPEN", "title": "Checkout revamp",
-   "review_decision": "APPROVED", "stack_order": 1 }]
+   "review_decision": "APPROVED", "stack_order": 1,
+   "ci": "fail", "ci_pass": 5, "ci_fail": 2, "ci_pending": 0 }]
 ```
 `review_decision` ∈ `APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | ""`. All
 PR fields are omitted for a branch with no PR (only `repo`/`branch` remain).
 `stack_order` is the branch's trunk-relative Graphite depth (1 = directly off
 trunk), omitted when the repo has no stack data. Rows are ordered trunk-first by
-depth when any repo has Graphite data, otherwise alphabetically by repo.
+depth when any repo has Graphite data, otherwise alphabetically by repo. `ci` is
+the lowercase rollup `pass | fail | pending`; `ci_pass`/`ci_fail`/`ci_pending`
+are the per-check counts (each omitted when 0) — so a front-end can badge CI per
+row without a second fetch.
 
 ### `slis conflicts --json` → object
 ```jsonc
@@ -216,7 +220,7 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 |---|---|---|
 | **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
 | **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). |
-| **remote / destructive** | `submit merge sync fix-ci` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits. Require explicit intent. |
+| **remote / destructive** | `submit merge sync fix-ci ci-rerun` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits; `ci-rerun <slice>` re-triggers each repo's failed CI runs (`gh run rerun --failed`) — the one CI write. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before
 running anything in the last two rows.

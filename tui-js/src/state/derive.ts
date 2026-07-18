@@ -1,7 +1,7 @@
 // Slice classification for the browser's states rail. Mirrors the Bubble Tea
-// browser's work-state buckets, adapted to the data the RPC spike surface
-// exposes (no CI rollup in `prStack`, so CI-fail is not a signal here — the
-// review decision and session status are).
+// browser's work-state buckets. `prStack` now carries a per-PR CI rollup, but
+// the buckets here still key off review decision and session status (a CI-fail
+// signal is surfaced per-row in the cockpit's PRs panel, not the states rail).
 
 import type {
   PrStackEntry,

@@ -7,6 +7,7 @@
 
 import type {
   CaptureResult,
+  CiLogResult,
   CommentsResult,
   ConflictsResult,
   DiffFormat,
@@ -270,6 +271,9 @@ export class SlisRpcClient implements RpcClient {
   }
   procs(slice?: string): Promise<ProcsResult> {
     return this.call<ProcsResult>("procs", slice ? { slice } : {});
+  }
+  ciLog(params: { slice: string; repo?: string }): Promise<CiLogResult> {
+    return this.call<CiLogResult>("ciLog", params);
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────

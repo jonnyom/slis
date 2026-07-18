@@ -80,6 +80,19 @@ export function syncSlice(slice: string): Promise<MutateResult> {
   return run(["sync", slice]);
 }
 
+// ── CI (mutations — the sidecar stays read-only) ─────────────────────────────
+
+// Re-trigger the failed CI runs for every repo's PR in a slice (`slis ci-rerun`,
+// which wraps forge.RerunFailedChecks — the one CI write slis makes).
+export function ciRerunSlice(slice: string): Promise<MutateResult> {
+  return run(["ci-rerun", slice]);
+}
+
+// Point the agent harness at a slice's failing CI to fix it (`slis fix-ci`).
+export function fixCiSlice(slice: string): Promise<MutateResult> {
+  return run(["fix-ci", slice]);
+}
+
 // ── grouping ─────────────────────────────────────────────────────────────────
 
 export function groupSlices(name: string, slices: string[]): Promise<MutateResult> {

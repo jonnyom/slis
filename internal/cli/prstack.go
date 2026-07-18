@@ -84,12 +84,8 @@ var prStackCmd = &cobra.Command{
 			m := sl.Members[repo]
 			pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
 			row := PRStackRowDTO{Repo: repo, Branch: m.Branch, StackOrder: depths[repo]}
+			row.SetPR(pr)
 			if pr != nil {
-				row.Number = pr.Number
-				row.URL = pr.URL
-				row.State = pr.State
-				row.Title = pr.Title
-				row.ReviewDecision = pr.ReviewDecision
 				// Prefix branch with repo name so each markdown line is clearly scoped.
 				labeled := *pr
 				labeled.Branch = repo + ": " + pr.Branch

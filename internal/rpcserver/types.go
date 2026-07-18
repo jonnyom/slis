@@ -105,6 +105,28 @@ type diffParams struct {
 	Format string `json:"format"`
 }
 
+// ciLogParams names a slice and, optionally, a single repo to fetch the failing
+// CI log for. An empty repo fetches every member repo that has a PR.
+type ciLogParams struct {
+	Slice string `json:"slice"`
+	Repo  string `json:"repo"`
+}
+
+// ciLogRepoResult is one repo's failing-CI log excerpt. Exactly one of Log/Error
+// is set: Log carries the safeterm-stripped `gh run view --log-failed` output;
+// Error explains why no log is available (no PR, no failing run, gh absent).
+type ciLogRepoResult struct {
+	Repo   string `json:"repo"`
+	Branch string `json:"branch"`
+	Log    string `json:"log,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+// ciLogResult is the `ciLog` method's result: one entry per target repo.
+type ciLogResult struct {
+	Repos []ciLogRepoResult `json:"repos"`
+}
+
 // captureParams selects how many trailing lines the `capture` method returns.
 type captureParams struct {
 	Slice string `json:"slice"`

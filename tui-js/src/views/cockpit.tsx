@@ -17,8 +17,10 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  CiLogResult,
   DiffResult,
   DiffScope,
+  PrStackEntry,
   ProcsResult,
   RpcClient,
 } from "../rpc/types";
@@ -53,6 +55,16 @@ const SCOPE_LABEL: Record<DiffScope, string> = {
   parent: "vs parent",
   trunk: "vs trunk",
 };
+
+// ciBadge maps a PR's CI rollup to a coloured emoji (failing rollups append the
+// failing-check count, e.g. ❌2). Returns null when the PR carries no CI data.
+function ciBadge(pr: PrStackEntry): { glyph: string; color: string } | null {
+  if (!pr.ci) return null;
+  if (pr.ci === "pass") return { glyph: "✅", color: color.synced };
+  if (pr.ci === "fail")
+    return { glyph: "❌" + (pr.ci_fail ? String(pr.ci_fail) : ""), color: color.missing };
+  return { glyph: "⏳", color: color.wait };
+}
 
 export interface CockpitProps {
   enabled: boolean;
@@ -185,6 +197,7 @@ function PrsPanel({
               : pr.state === "OPEN"
                 ? color.synced
                 : color.dim;
+          const ci = ciBadge(pr);
           return (
             <text key={pr.repo + pr.branch} wrapMode="none">
               <span fg={color.cursorBar}>
@@ -195,6 +208,7 @@ function PrsPanel({
                 <>
                   <span fg={color.dim}> #{pr.number} </span>
                   <span fg={stateColor}>{(pr.state ?? "").toLowerCase()}</span>
+                  {ci ? <span fg={ci.color}> {ci.glyph}</span> : null}
                   {pr.review_decision === "APPROVED" ? (
                     <span fg={color.synced}> ✓</span>
                   ) : pr.review_decision === "CHANGES_REQUESTED" ? (
@@ -363,6 +377,47 @@ function PrDetailRight({ view, prSel }: { view: SliceView; prSel: number }): Rea
   );
 }
 
+interface CiLogState {
+  repo: string;
+  loading: boolean;
+  result: CiLogResult | null;
+}
+
+function CiLogRight({ state }: { state: CiLogState }): ReactNode {
+  if (state.loading) {
+    return (
+      <text fg={color.dim} attributes={DIM}>
+        loading CI log…
+      </text>
+    );
+  }
+  const repo = state.result?.repos.find((r) => r.repo === state.repo);
+  if (!repo || (!repo.log && !repo.error)) {
+    return (
+      <text fg={color.dim} attributes={DIM}>
+        no CI log for {state.repo}
+      </text>
+    );
+  }
+  if (repo.error) {
+    return (
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        {repo.error}
+      </text>
+    );
+  }
+  const lines = (repo.log ?? "").split("\n");
+  return (
+    <>
+      {lines.map((l, i) => (
+        <text key={i} fg={color.fg} wrapMode="none">
+          {l === "" ? " " : stripSgr(l)}
+        </text>
+      ))}
+    </>
+  );
+}
+
 function SessionRight({ lines }: { lines: string[] }): ReactNode {
   if (lines.length === 0) {
     return (
@@ -459,6 +514,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [killStatus, setKillStatus] = useState<KillStatus | null>(null);
   const [scopeIdx, setScopeIdx] = useState(0);
   const [showPatch, setShowPatch] = useState(false);
+  const [ciLog, setCiLog] = useState<CiLogState | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffMode, setDiffMode] = useState<DiffMode>("unified");
@@ -492,7 +548,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
   // Reset scroll to top whenever the right-pane content identity changes.
   useEffect(() => {
     scrollRef.current?.scrollTo(0);
-  }, [panel, selectedRepo, scope, showPatch, prSel]);
+  }, [panel, selectedRepo, scope, showPatch, prSel, ciLog?.repo, ciLog?.loading]);
+
+  // Drop any open CI log when the focus moves off it (new PR, panel, or slice).
+  useEffect(() => {
+    setCiLog(null);
+  }, [slice, panel, prSel]);
 
   const moveSel = (delta: number) => {
     if (panel === "stack")
@@ -533,6 +594,26 @@ export function Cockpit(props: CockpitProps): ReactNode {
     panel === "prs"
       ? (view.prs ?? [])[prSel]
       : (view.prs ?? []).find((p) => p.repo === selectedRepo);
+
+  // Toggle the failing-CI log for the focused PR into the right pane. Fetched
+  // lazily via the read-only sidecar; a second press closes it.
+  const toggleCiLog = () => {
+    const pr = focusedPr();
+    if (!pr || pr.number === undefined) return;
+    if (ciLog && ciLog.repo === pr.repo) {
+      setCiLog(null);
+      return;
+    }
+    const repo = pr.repo;
+    setCiLog({ repo, loading: true, result: null });
+    client.ciLog({ slice, repo }).then(
+      (r) => setCiLog((c) => (c && c.repo === repo ? { repo, loading: false, result: r } : c)),
+      () =>
+        setCiLog((c) =>
+          c && c.repo === repo ? { repo, loading: false, result: { repos: [] } } : c,
+        ),
+    );
+  };
 
   const yankDiff = () => {
     const build = diff
@@ -589,6 +670,11 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (name === "s") return setProcSort((s) => nextSort(s));
       if (name === "x") return requestKill(false);
       if (name === "X") return requestKill(true);
+    }
+    if (panel === "prs") {
+      if (name === "v") return toggleCiLog();
+      if (key.ctrl && name === "r") return overlays.ciRerun(slice);
+      if (name === "F") return overlays.fixCi(slice);
     }
     if (name === "j" || name === "down") return moveSel(1);
     if (name === "k" || name === "up") return moveSel(-1);
@@ -655,13 +741,15 @@ export function Cockpit(props: CockpitProps): ReactNode {
       case "stack":
         return `${selectedRepo} · Changes`;
       case "prs":
-        return `${view.prs?.[prSel]?.repo ?? slice} · PR`;
+        return ciLog
+          ? `${ciLog.repo} · CI log`
+          : `${view.prs?.[prSel]?.repo ?? slice} · PR`;
       case "session":
         return `Session · ${slice}`;
       case "procs":
         return `Processes · ${slice}`;
     }
-  }, [panel, selectedRepo, view.prs, prSel, slice]);
+  }, [panel, selectedRepo, view.prs, prSel, slice, ciLog]);
 
   const footer = useMemo(() => {
     const common = "w swap · R stack · s/S summary · y/Y yank · d clear · esc back";
@@ -669,7 +757,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       case "stack":
         return `tab panel · j/k repo · enter rich diff · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · a/C term · ${common}`;
       case "prs":
-        return `tab panel · j/k pr · O open PR · a/C term · ${common}`;
+        return `tab panel · j/k pr · v CI log · ^r re-run CI · F fix-ci · O open PR · a/C term · ${common}`;
       case "session":
         return `tab panel · a/C term · ${common}`;
       case "procs":
@@ -759,7 +847,11 @@ export function Cockpit(props: CockpitProps): ReactNode {
                   showPatch={showPatch}
                 />
               ) : panel === "prs" ? (
-                <PrDetailRight view={view} prSel={prSel} />
+                ciLog ? (
+                  <CiLogRight state={ciLog} />
+                ) : (
+                  <PrDetailRight view={view} prSel={prSel} />
+                )
               ) : panel === "session" ? (
                 <SessionRight lines={captureLines} />
               ) : (

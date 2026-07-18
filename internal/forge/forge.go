@@ -533,6 +533,19 @@ func Available() bool {
 	return err == nil
 }
 
+// CIStateName returns the lowercase rollup word for a CheckState:
+// Pass → "pass", Fail → "fail", Pending → "pending".
+func CIStateName(s CheckState) string {
+	switch s {
+	case CheckPass:
+		return "pass"
+	case CheckFail:
+		return "fail"
+	default:
+		return "pending"
+	}
+}
+
 // CIEmoji returns the display emoji for a given CheckState.
 // Pass → ✅, Fail → ❌, Pending → ⏳.
 func CIEmoji(s CheckState) string {

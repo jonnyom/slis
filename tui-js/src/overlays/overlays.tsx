@@ -127,6 +127,28 @@ export function StackActionsOverlay({
   );
 }
 
+export function CiRerunOverlay({ slice }: { slice: string }): ReactNode {
+  return (
+    <Overlay title={`Re-run failing CI — ${slice}`} width={62}>
+      <text wrapMode="none">
+        <span fg={color.fg}>re-trigger failed CI runs for </span>
+        <span fg={color.title} attributes={BOLD}>
+          {slice}
+        </span>
+        <span fg={color.fg}>?</span>
+      </text>
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        Runs `gh run rerun --failed` for each repo's PR (a CI write).
+      </text>
+      <text> </text>
+      <text wrapMode="none">
+        <KeyHint k="y" label="re-run" />
+        <KeyHint k="n/esc" label="cancel" />
+      </text>
+    </Overlay>
+  );
+}
+
 export function RemoveOverlay({ slices }: { slices: string[] }): ReactNode {
   return (
     <Overlay title="Clear finished slice(s)" width={64}>

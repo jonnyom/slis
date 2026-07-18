@@ -147,6 +147,8 @@ func (s *Server) dispatch(ctx context.Context, req request) (interface{}, *rpcEr
 		return s.gated(func() (interface{}, *rpcError) { return s.status(req.Params) })
 	case "prStack":
 		return s.gated(func() (interface{}, *rpcError) { return s.prStack(req.Params) })
+	case "ciLog":
+		return s.gated(func() (interface{}, *rpcError) { return s.ciLog(req.Params) })
 	case "comments":
 		return s.comments(req.Params)
 	case "conflicts":
