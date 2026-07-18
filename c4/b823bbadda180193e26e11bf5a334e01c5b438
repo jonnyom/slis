@@ -1,0 +1,48 @@
+tui-js/src/state/selection.test.ts
+  s_197478f89af866::t_991c6e64085166 1-44
+tui-js/src/overlays/textinput.test.ts
+  s_197478f89af866::t_ade41e2765d22a 1-31
+tui-js/src/overlays/textinput.ts
+  s_197478f89af866::t_565470e2ef0ff4 1-28
+tui-js/src/rpc/mutate.test.ts
+  s_197478f89af866::t_93928854cda709 1-23
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_9079b65a0c78cd 46
+  s_197478f89af866::t_4fe49c25b6852f 577,580,582,584,586
+  s_197478f89af866::t_f426a525dae42c 26
+  s_197478f89af866::t_89b6caed1eccad 427
+  s_197478f89af866::t_2a6880c0183e67 477-494,499,501,520-537
+tui-js/src/rpc/mutate.ts
+  s_197478f89af866::t_31630453694412 2-5,9-12,19,21-22,27-29,38-46,54-163
+  s_197478f89af866::t_327560db32260a 26
+tui-js/src/overlays/overlays.tsx
+  s_197478f89af866::t_0b4504137ba269 1-355
+tui-js/src/app.tsx
+  s_197478f89af866::t_66d70b2e03be37 2,4,6,20,89,122,135,147,158,163
+tui-js/src/state/selection.ts
+  s_197478f89af866::t_18a961e277df96 1-33
+tui-js/src/overlays/useOverlays.tsx
+  s_197478f89af866::t_893c467166ad94 1-105,107-149,151-318
+  s_197478f89af866::t_8a261cdc5d93c7 150
+  s_197478f89af866::t_5e1a1f54bc4d62 106
+tui-js/src/views/browser.tsx
+  s_197478f89af866::t_426f603322e1f2 9,26-28,42,50-60,80,85,93,111-112,117-118,132-137,162-166,350,354-356,360,368,377-382,385-398,400,402-410,436-443,445-476,488-494,519,533-535
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_4c713915df8c27 17-25,27,40-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c4b823bbadda180193e26e11bf5a334e01c5b438",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
