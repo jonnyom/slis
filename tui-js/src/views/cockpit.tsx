@@ -1,11 +1,20 @@
-// Cockpit view: the lazygit-style detail screen for a single slice.
+// Cockpit view: the lazygit-style detail screen for a single slice (spec §3.2).
 //
-//   slis ▸ checkout            ● LIVE — swapped in · [w] back   [esc] back ? help
-//   ┌ 1 Repos & Stack ┐ ┌ right pane (driven by focused panel) ──────────────┐
-//   ┌ 2 PRs           ┐ │  Stack → diff (b: scope, t: stat/patch)             │
-//   ┌ 3 Session       ┐ │  PRs → PR detail                                    │
-//   ┌ 4 Processes     ┐ │  Session → capture tail + worktrees                 │
-//   └ footer hints ───┘ │  Processes → process table                         │
+//   slis › payroll-ssp-fix › Stack     ● LIVE · swapped in       esc back  ? help
+//  ▎REPOS & STACK             2 repos  │ nory/Node-Middleware › Changes · working
+//    …                                 │  …
+//   ─────────────────────────────────  │
+//    PRS                     2 open     │
+//   ─────────────────────────────────  │
+//    SESSION                ⏸ waiting   │
+//   ─────────────────────────────────  │
+//    PROCESSES                Σ 38%     │
+//   ─────────────────────────────────────────────────────────────────────────────
+//   tab panel   j/k repo   enter rich diff   b scope: working   w swap   ? more
+//
+// Left column: one seamless column of hairline-separated sections (focused
+// section = bright eyebrow + ▎ bar + right-aligned headline summary). The right
+// pane is the only bordered region — the content stage driven by the focus.
 
 import { useKeyboard } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
@@ -29,8 +38,12 @@ import type { SliceView } from "../state/derive";
 import type { OverlayApi } from "../overlays/useOverlays";
 import { commentBlocks } from "../pr/comments";
 import { sessionName } from "../term/tmux";
-import { color, glyph, sessionBadge, sessionLabel } from "../theme";
+import { color, glyph, sessionBadge, sessionLabel, theme } from "../theme";
 import { Panel } from "../components/panel";
+import { Breadcrumb } from "../components/breadcrumb";
+import { Badge } from "../components/badge";
+import { Divider } from "../components/divider";
+import { HintBar } from "../components/hintbar";
 import { DiffPane } from "../components/diffpane";
 import { DiffView, type DiffMode } from "../components/diffview";
 import { BOLD, DIM } from "../components/ui";
@@ -49,24 +62,43 @@ import {
   type KillStatus,
   type KillTarget,
 } from "../components/procview";
+import {
+  breadcrumbSection,
+  cockpitHints,
+  cyclePanel,
+  PANEL_ORDER,
+  type PanelId,
+} from "./cockpit.hints";
 
-type PanelId = "stack" | "prs" | "session" | "procs";
-const PANEL_ORDER: PanelId[] = ["stack", "prs", "session", "procs"];
 const SCOPES: DiffScope[] = ["working", "parent", "trunk"];
-const SCOPE_LABEL: Record<DiffScope, string> = {
-  working: "working tree (dirty)",
-  parent: "vs parent",
-  trunk: "vs trunk",
+const SCOPE_SHORT: Record<DiffScope, string> = {
+  working: "working",
+  parent: "parent",
+  trunk: "trunk",
 };
 
-// ciBadge maps a PR's CI rollup to a coloured emoji (failing rollups append the
-// failing-check count, e.g. ❌2). Returns null when the PR carries no CI data.
+// A short session-state word for the eyebrow's right-aligned headline.
+function sessionSummary(status: SliceView["status"]): string {
+  switch (status) {
+    case "waiting-input":
+      return "waiting";
+    case "running":
+      return "running";
+    case "done":
+      return "done";
+    default:
+      return "idle";
+  }
+}
+
+// ciBadge maps a PR's CI rollup to a coloured glyph (failing rollups append the
+// failing-check count, e.g. ✗2). Returns null when the PR carries no CI data.
 function ciBadge(pr: PrStackEntry): { glyph: string; color: string } | null {
   if (!pr.ci) return null;
-  if (pr.ci === "pass") return { glyph: "✅", color: color.synced };
+  if (pr.ci === "pass") return { glyph: glyph.ciPass, color: color.synced };
   if (pr.ci === "fail")
-    return { glyph: "❌" + (pr.ci_fail ? String(pr.ci_fail) : ""), color: color.missing };
-  return { glyph: "⏳", color: color.wait };
+    return { glyph: glyph.ciFail + (pr.ci_fail ? String(pr.ci_fail) : ""), color: color.missing };
+  return { glyph: glyph.ciPending, color: color.wait };
 }
 
 export interface CockpitProps {
@@ -79,6 +111,7 @@ export interface CockpitProps {
   onBack: () => void;
   onOpenTerm: (slice: string, launchAgent: boolean) => void;
   onToggleProcs: () => void;
+  onRefresh: () => void;
   onQuit: () => void;
 }
 
@@ -86,6 +119,7 @@ function useCapture(
   client: RpcClient,
   slice: string,
   tick: boolean,
+  reloadNonce: number,
 ): string[] {
   const [lines, setLines] = useState<string[]>([]);
   useEffect(() => {
@@ -103,7 +137,7 @@ function useCapture(
       live = false;
       clearInterval(id);
     };
-  }, [client, slice, tick]);
+  }, [client, slice, tick, reloadNonce]);
   return lines;
 }
 
@@ -130,21 +164,28 @@ function useComments(
   return byRepo;
 }
 
-// ── left panels ──────────────────────────────────────────────────────────────
+// ── left sections (seamless — eyebrow + hairline, no box) ─────────────────────
 
-function StackPanel({
+function StackSection({
   view,
   focused,
   repoSel,
-  height,
+  flexGrow,
 }: {
   view: SliceView;
   focused: boolean;
   repoSel: number;
-  height: number;
+  flexGrow?: number;
 }): ReactNode {
+  const n = view.slice.members.length;
   return (
-    <Panel title="Repos & Stack" index={1} focused={focused} height={height}>
+    <Panel
+      title="Repos & Stack"
+      variant="seamless"
+      focused={focused}
+      flexGrow={flexGrow}
+      trailing={`${n} ${n === 1 ? "repo" : "repos"}`}
+    >
       {view.slice.members.map((m, i) => {
         const stack = view.show?.members.find((s) => s.repo === m.repo)?.stack;
         const selected = i === repoSel;
@@ -159,25 +200,25 @@ function StackPanel({
               </span>
             </text>
             {stack && stack.length > 0 ? (
-              stack.map((n) => {
-                const isMember = n.name === m.branch;
-                const c = n.trunk
+              stack.map((node) => {
+                const isMember = node.name === m.branch;
+                const c = node.trunk
                   ? color.synced
-                  : n.needs_restack
+                  : node.needs_restack
                     ? color.restack
                     : isMember
                       ? color.white
                       : color.fg;
-                const pad = "  ".repeat(Math.max(0, n.depth));
+                const pad = "  ".repeat(Math.max(0, node.depth));
                 return (
-                  <text key={n.name} wrapMode="none">
+                  <text key={node.name} wrapMode="none">
                     <span fg={color.dim}>{"  " + pad}</span>
                     <span fg={c} attributes={isMember ? BOLD : 0}>
-                      {n.name}
+                      {node.name}
                     </span>
-                    {n.trunk ? <span fg={color.synced}> [trunk]</span> : null}
-                    {n.needs_restack ? (
-                      <span fg={color.restack}> ⚠ restack</span>
+                    {node.trunk ? <span fg={color.synced}> [trunk]</span> : null}
+                    {node.needs_restack ? (
+                      <span fg={color.restack}> {glyph.dirty} restack</span>
                     ) : null}
                   </text>
                 );
@@ -195,21 +236,25 @@ function StackPanel({
   );
 }
 
-function PrsPanel({
+function PrsSection({
   view,
   focused,
   prSel,
-  height,
 }: {
   view: SliceView;
   focused: boolean;
   prSel: number;
-  height: number;
 }): ReactNode {
   const prs = view.prs ?? [];
   const loading = view.prs === undefined;
+  const openCount = prs.filter((p) => p.state === "OPEN").length;
   return (
-    <Panel title="PRs" index={2} focused={focused} height={height}>
+    <Panel
+      title="PRs"
+      variant="seamless"
+      focused={focused}
+      trailing={loading ? "…" : `${openCount} open`}
+    >
       {prs.length === 0 ? (
         <text fg={color.dim} attributes={DIM}>
           {loading ? "loading…" : "no branches"}
@@ -236,9 +281,9 @@ function PrsPanel({
                   <span fg={stateColor}>{(pr.state ?? "").toLowerCase()}</span>
                   {ci ? <span fg={ci.color}> {ci.glyph}</span> : null}
                   {pr.review_decision === "APPROVED" ? (
-                    <span fg={color.synced}> ✓</span>
+                    <span fg={color.synced}> {glyph.inReview}</span>
                   ) : pr.review_decision === "CHANGES_REQUESTED" ? (
-                    <span fg={color.missing}> ✗</span>
+                    <span fg={color.missing}> {glyph.changes}</span>
                   ) : null}
                 </>
               ) : (
@@ -252,49 +297,57 @@ function PrsPanel({
   );
 }
 
-function SessionPanel({
+function SessionSection({
   view,
   focused,
   lastLine,
-  height,
 }: {
   view: SliceView;
   focused: boolean;
   lastLine: string | undefined;
-  height: number;
 }): ReactNode {
   const badge = sessionBadge(view.status);
+  const trailing = (
+    <text wrapMode="none">
+      <span fg={badge.color}>
+        {badge.glyph} {sessionSummary(view.status)}
+      </span>
+    </text>
+  );
   return (
-    <Panel title="Session" index={3} focused={focused} height={height}>
-      <text wrapMode="none">
-        <span fg={badge.color} attributes={BOLD}>
-          {badge.glyph}
-        </span>
-        <span fg={color.fg}> {sessionLabel(view.status)}</span>
-      </text>
+    <Panel title="Session" variant="seamless" focused={focused} trailing={trailing}>
       {lastLine ? (
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          {lastLine}
+          {"  " + glyph.arrow + " " + lastLine}
         </text>
-      ) : null}
+      ) : (
+        <text fg={color.dim} attributes={DIM} wrapMode="none">
+          {"  " + sessionLabel(view.status)}
+        </text>
+      )}
     </Panel>
   );
 }
 
-function ProcsPanel({
+function ProcsSection({
   procs,
   focused,
-  height,
 }: {
   procs: ProcsResult | null;
   focused: boolean;
-  height: number;
 }): ReactNode {
   const slice = procs?.slices[0];
   const total = slice?.totalCPU ?? 0;
   const over = total > SLICE_CPU_WARN;
+  const trailing = (
+    <text wrapMode="none">
+      <span fg={over ? color.restack : color.dim} attributes={over ? BOLD : 0}>
+        Σ {total.toFixed(0)}%
+      </span>
+    </text>
+  );
   return (
-    <Panel title="Processes" index={4} focused={focused} height={height}>
+    <Panel title="Processes" variant="seamless" focused={focused} trailing={trailing}>
       {!procs ? (
         <text fg={color.dim} attributes={DIM}>
           sampling…
@@ -304,21 +357,13 @@ function ProcsPanel({
           no session / no processes
         </text>
       ) : (
-        <>
-          {slice.procs.slice(0, 2).map((p) => (
-            <text key={p.pid} wrapMode="none">
-              <span fg={color.live}>● </span>
-              <span fg={color.fg}>{p.cmd}</span>
-              <span fg={color.dim}> {p.cpu.toFixed(0)}%</span>
-            </text>
-          ))}
-          <text wrapMode="none">
-            <span fg={over ? color.restack : color.dim}>
-              Σ {total.toFixed(0)}%
-            </span>
-            {over ? <span fg={color.restack} attributes={BOLD}> ⚠</span> : null}
+        slice.procs.slice(0, 2).map((p) => (
+          <text key={p.pid} wrapMode="none">
+            <span fg={color.live}>{"  " + glyph.live + " "}</span>
+            <span fg={color.fg}>{p.cmd}</span>
+            <span fg={color.dim}> {p.cpu.toFixed(0)}%</span>
           </text>
-        </>
+        ))
       )}
     </Panel>
   );
@@ -632,6 +677,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffMode, setDiffMode] = useState<DiffMode>("unified");
   const [zoomed, setZoomed] = useState(false);
+  const [captureNonce, setCaptureNonce] = useState(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
   const scope = SCOPES[scopeIdx]!;
@@ -644,7 +690,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     () => flattenTree(buildProcTree(sliceProcs, procSort), collapsed),
     [sliceProcs, procSort, collapsed],
   );
-  const captureLines = useCapture(client, slice, panel === "session");
+  const captureLines = useCapture(client, slice, panel === "session", captureNonce);
   const lastLine = captureLines[captureLines.length - 1];
 
   // Load diff for the stack panel's right pane; refetch on slice/scope change.
@@ -743,6 +789,16 @@ export function Cockpit(props: CockpitProps): ReactNode {
     );
   };
 
+  // Half a right-pane page (D7 space scroll / parity with Go HalfPageDown).
+  const halfPage = Math.max(1, Math.floor((props.height - 2) / 2));
+
+  // Refresh inside the cockpit (G10): on the Session panel reload only the live
+  // capture; otherwise trigger the app-level workspace refresh.
+  const refreshCockpit = () => {
+    if (panel === "session") setCaptureNonce((n) => n + 1);
+    else props.onRefresh();
+  };
+
   useKeyboard((key) => {
     if (!enabled) return;
     // While the full diff view is open it owns the keyboard.
@@ -783,14 +839,21 @@ export function Cockpit(props: CockpitProps): ReactNode {
       setZoomed((z) => !z);
       return;
     }
+    // Panel cycle: tab forward, shift+tab/H backward (G9).
     if (name === "tab") {
-      setPanel((p) => PANEL_ORDER[(PANEL_ORDER.indexOf(p) + 1) % PANEL_ORDER.length]!);
+      setPanel((p) => cyclePanel(p, key.shift ? -1 : 1));
+      return;
+    }
+    if (name === "H") {
+      setPanel((p) => cyclePanel(p, -1));
       return;
     }
     if (name >= "1" && name <= "4") {
       setPanel(PANEL_ORDER[Number(name) - 1]!);
       return;
     }
+    // Refresh (G10) — plain r; ctrl+r stays CI-rerun on the PRs panel.
+    if (name === "r" && !key.ctrl) return refreshCockpit();
     if (panel === "procs") {
       if (name === "s") return setProcSort((s) => nextSort(s));
       if (name === "x") return requestKill(false);
@@ -832,10 +895,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (name === "g") return scrollRef.current?.scrollTo(0);
     if (name === "G")
       return scrollRef.current?.scrollTo(scrollRef.current.scrollHeight);
-    if (key.ctrl && name === "d") return scrollRef.current?.scrollBy(10);
-    if (key.ctrl && name === "u") return scrollRef.current?.scrollBy(-10);
-    if (name === "pagedown") return scrollRef.current?.scrollBy(10);
-    if (name === "pageup") return scrollRef.current?.scrollBy(-10);
+    // Half-page scroll of the right pane: space (D7), ctrl+d/u, pgup/pgdn.
+    if (name === "space") return scrollRef.current?.scrollBy(halfPage);
+    if (key.ctrl && name === "d") return scrollRef.current?.scrollBy(halfPage);
+    if (key.ctrl && name === "u") return scrollRef.current?.scrollBy(-halfPage);
+    if (name === "pagedown") return scrollRef.current?.scrollBy(halfPage);
+    if (name === "pageup") return scrollRef.current?.scrollBy(-halfPage);
   });
 
   // Clamp selections when data shrinks.
@@ -854,42 +919,50 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setKillStatus(null);
   }, [slice]);
 
-  const leftW = Math.min(38, Math.floor(props.width / 2));
-  const bodyH = props.height - 2; // header + footer
-  const sessionH = 4;
-  const procsH = 4;
-  const prsH = Math.max(4, Math.min(9, (view.slice.members.length || 1) + 3));
-  const stackH = Math.max(4, bodyH - sessionH - procsH - prsH);
+  const leftW = Math.min(46, Math.floor(props.width / 2));
+  const dividerW = Math.max(1, leftW - 2);
 
   const rightTitle = useMemo(() => {
+    const arrow = ` ${glyph.arrow} `;
     switch (panel) {
       case "stack":
-        return `${selectedRepo} · Changes`;
+        return `${selectedRepo}${arrow}Changes · ${SCOPE_SHORT[scope]}`;
       case "prs":
         return ciLog
-          ? `${ciLog.repo} · CI log`
-          : `${view.prs?.[prSel]?.repo ?? slice} · PR`;
+          ? `${ciLog.repo}${arrow}CI log`
+          : `${view.prs?.[prSel]?.repo ?? slice}${arrow}PR`;
       case "session":
-        return `Session · ${slice}`;
+        return `${slice}${arrow}Session`;
       case "procs":
-        return `Processes · ${slice}`;
+        return `${slice}${arrow}Processes`;
     }
-  }, [panel, selectedRepo, view.prs, prSel, slice, ciLog]);
+  }, [panel, selectedRepo, scope, view.prs, prSel, slice, ciLog]);
 
-  const footer = useMemo(() => {
-    if (zoomed) return "enter/esc unzoom · j/k move · ctrl+d/u scroll · a/C term · w swap";
-    const common = "w swap · e/o editor · R stack · s/S summary · y/Y yank · d clear · esc back";
-    switch (panel) {
-      case "stack":
-        return `tab panel · j/k repo · enter rich diff · b scope:${SCOPE_LABEL[scope]} · t ${showPatch ? "stat" : "patch"} · a/C term · ${common}`;
-      case "prs":
-        return `tab panel · j/k pr · enter zoom · v CI log · ^r re-run CI · F fix-ci · O open PR · a/C term · ${common}`;
-      case "session":
-        return `tab panel · enter zoom · a/C term · ${common}`;
-      case "procs":
-        return "tab panel · j/k proc · enter zoom · h/l fold · s sort · x/X kill · a/C term · w swap · e/o editor · d clear · esc back";
-    }
-  }, [panel, scope, showPatch, zoomed]);
+  const hints = useMemo(
+    () =>
+      cockpitHints(panel, {
+        scope: SCOPE_SHORT[scope],
+        showPatch,
+        zoomed,
+        killPending: !!pendingKill,
+      }),
+    [panel, scope, showPatch, zoomed, pendingKill],
+  );
+
+  const headerTrailing = (
+    <text wrapMode="none">
+      {view.slice.active ? <Badge state="live" label="LIVE · swapped in" bold /> : null}
+      {view.slice.stale ? (
+        <>
+          {view.slice.active ? <span> </span> : null}
+          <Badge state="stale" label="primary behind — refresh" />
+        </>
+      ) : null}
+      <span fg={color.dim} attributes={DIM}>
+        {"   esc back   ? help"}
+      </span>
+    </text>
+  );
 
   if (diffOpen) {
     return (
@@ -911,46 +984,37 @@ export function Cockpit(props: CockpitProps): ReactNode {
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* header */}
-      <box flexDirection="row" justifyContent="space-between">
-        <text wrapMode="none">
-          <span fg={color.title} attributes={BOLD}>
-            slis {glyph.filterMarker} {slice}
-          </span>
-          {view.slice.active ? (
-            <span fg={color.live}>
-              {"   "}
-              {glyph.live} LIVE — swapped in · [w] swap back
-            </span>
-          ) : null}
-          {view.slice.stale ? (
-            <span fg={color.wait}>  ⚠ primary behind tip — run slis refresh</span>
-          ) : null}
-        </text>
-        <text fg={color.dim} attributes={DIM} wrapMode="none">
-          [esc] back  ? help
-        </text>
-      </box>
+      <Breadcrumb
+        slice={slice}
+        section={breadcrumbSection(panel, zoomed)}
+        trailing={headerTrailing}
+      />
+      <Divider color={theme.hairline} />
       {/* body */}
       <box flexDirection="row" flexGrow={1}>
         {zoomed ? null : (
-          <box flexDirection="column" width={leftW}>
-            <StackPanel
+          <box
+            flexDirection="column"
+            width={leftW}
+            border={["right"]}
+            borderColor={theme.hairline}
+            paddingRight={1}
+          >
+            <StackSection
               view={view}
               focused={panel === "stack"}
               repoSel={repoSel}
-              height={stackH}
+              flexGrow={1}
             />
-            <PrsPanel view={view} focused={panel === "prs"} prSel={prSel} height={prsH} />
-            <SessionPanel
-              view={view}
-              focused={panel === "session"}
-              lastLine={lastLine}
-              height={sessionH}
-            />
-            <ProcsPanel procs={monitor.result} focused={panel === "procs"} height={procsH} />
+            <Divider width={dividerW} />
+            <PrsSection view={view} focused={panel === "prs"} prSel={prSel} />
+            <Divider width={dividerW} />
+            <SessionSection view={view} focused={panel === "session"} lastLine={lastLine} />
+            <Divider width={dividerW} />
+            <ProcsSection procs={monitor.result} focused={panel === "procs"} />
           </box>
         )}
-        <box flexGrow={1} flexDirection="column">
+        <box flexGrow={1} flexDirection="column" paddingLeft={zoomed ? 0 : 1}>
           <box
             border
             borderStyle="rounded"
@@ -1002,9 +1066,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
         </box>
       </box>
       {/* footer */}
-      <text wrapMode="none" fg={color.dim} attributes={DIM}>
-        {footer}
-      </text>
+      <HintBar hints={hints} width={props.width - 1} />
     </box>
   );
 }

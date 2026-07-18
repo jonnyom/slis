@@ -287,6 +287,7 @@ export function App(): ReactNode {
           onBack={() => setView("browser")}
           onOpenTerm={openTerm}
           onToggleProcs={() => setProcsOpen(true)}
+          onRefresh={refresh}
           onQuit={quit}
         />
       )}
