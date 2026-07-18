@@ -1,0 +1,96 @@
+tui-js/src/rpc/types.ts
+  s_470615ee13fe83::t_39d2f02ac22cd0 361-365
+  s_470615ee13fe83::t_7a595f1f9feaf5 268-286
+tui-js/package.json
+  s_470615ee13fe83::t_72c6d047d1df7a 13-14
+tui-js/src/theme.ts
+  s_470615ee13fe83::t_e07f6bc6c8cb21 139
+tui-js/src/rpc/mutate.ts
+  s_470615ee13fe83::t_40567a7e8ea7d4 7-8
+  s_470615ee13fe83::t_c2050d2fa83b5a 192-255
+tui-js/src/views/cockpit.tsx
+  s_470615ee13fe83::t_4cdebdd4fefd35 766-776
+  s_470615ee13fe83::t_1e3dee3ac337b4 735-741
+  s_470615ee13fe83::t_a564575d7348d5 1090
+  s_470615ee13fe83::t_17eda4eaac2bad 37
+  s_470615ee13fe83::t_4cb6ff2581f273 1445-1451
+  s_470615ee13fe83::t_abace3d3c67f15 63
+  s_470615ee13fe83::t_ce551350a0753c 968-996
+  s_470615ee13fe83::t_7a7baf91822e4c 829-847
+  s_470615ee13fe83::t_020e950b3163a9 1376,1383-1384
+  s_470615ee13fe83::t_7f2d69938248c6 41
+  s_470615ee13fe83::t_7ebaf9f8e8be60 1129
+  s_470615ee13fe83::t_a2fe784c5a78b8 1114-1117
+  s_470615ee13fe83::t_69bdc4fb6c708e 921
+  s_470615ee13fe83::t_955b4d6c9c95c5 1262
+  s_470615ee13fe83::t_a11981d58e3bc0 1152-1154,1156
+  s_470615ee13fe83::t_34104a3edf5467 1319-1326
+tui-js/src/components/help.tsx
+  s_470615ee13fe83::t_1c6ee7248ffdb9 93-98
+  s_470615ee13fe83::t_b4afb0fb21a624 125
+  s_470615ee13fe83::t_4af8d8ccb92519 135-136
+  s_470615ee13fe83::t_a14d2b0698b590 92
+tui-js/src/views/cockpit.hints.ts
+  s_470615ee13fe83::t_d0e0b6573d0c53 76-78,80
+  s_470615ee13fe83::t_af8f38bb969dd6 95
+tui-js/src/rpc/fakereviews.test.ts
+  s_470615ee13fe83::t_c89f482427907b 1-60
+tui-js/src/overlays/useOverlays.tsx
+  s_470615ee13fe83::t_5409a1b5bd5f4e 90-98
+  s_470615ee13fe83::t_e7c0f3943b27e5 120-122
+  s_470615ee13fe83::t_9b880431f15838 377-378
+  s_470615ee13fe83::t_fc8ec559f4b1b4 44-46
+  s_470615ee13fe83::t_eca581e19dd27c 550-647
+  s_470615ee13fe83::t_b48ac44a014c96 704-715
+  s_470615ee13fe83::t_98d132cbf643f9 11-19
+  s_470615ee13fe83::t_1b15cedb2bc56f 275-302
+  s_470615ee13fe83::t_1ddf63402c93bc 59,65
+tui-js/src/review/context.test.ts
+  s_470615ee13fe83::t_9a01ece24aef7f 1-105
+tui-js/src/rpc/fakereviews.ts
+  s_470615ee13fe83::t_6e848a929ad995 1-96
+tui-js/src/components/fileview.tsx
+  s_470615ee13fe83::t_ac5498b8afe112 72-73,75-85,91
+  s_470615ee13fe83::t_6a25aba854f4e5 8-9,13-14,24-25,30-33
+tui-js/src/views/cockpit.hints.test.ts
+  s_470615ee13fe83::t_9ca5ad79f36881 99-103
+tui-js/src/review/e2e.ts
+  s_470615ee13fe83::t_8e88b68d1c976e 1-141
+tui-js/src/rpc/client.ts
+  s_470615ee13fe83::t_9a1247889d5a7b 315-317
+  s_470615ee13fe83::t_7035b42e8c368b 26
+tui-js/src/overlays/overlays.tsx
+  s_470615ee13fe83::t_a278282e03b5fb 7-8
+  s_470615ee13fe83::t_a351d098aceeda 361-515
+tui-js/src/review/context.ts
+  s_470615ee13fe83::t_bbd15c0c9c2bdb 1-89
+tui-js/src/components/diffview.tsx
+  s_470615ee13fe83::t_b424abe1b55708 276-277
+  s_470615ee13fe83::t_26dd69169f1aa4 92-98,101
+  s_470615ee13fe83::t_1f6b18da733d63 60,162-171,179-180,185-187
+  s_470615ee13fe83::t_e7692a10eefb94 335
+  s_470615ee13fe83::t_b4cee6c7981308 380,383-388,395,398
+  s_470615ee13fe83::t_6dfb5c4db3883b 45,49-59
+  s_470615ee13fe83::t_29a5a38ce3b395 411-412
+  s_470615ee13fe83::t_6ebecc47c3f19f 211-212
+  s_470615ee13fe83::t_9d66107bc5fe42 13,15
+  s_470615ee13fe83::t_8c56c3f26a6bf9 232-251
+  s_470615ee13fe83::t_7ebaa9f2130ad8 135-143,146-150
+  s_470615ee13fe83::t_d0c7319b53ac22 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b8cc38e131df75c585b6d9b479ef0ecd7aabb4f1",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
