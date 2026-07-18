@@ -30,6 +30,14 @@ func NewRepo(t *testing.T) string {
 	// no global git identity configured.
 	run("config", "user.email", "t@t")
 	run("config", "user.name", "t")
+	// Detached background git processes outlive the test and race t.TempDir
+	// cleanup ("RemoveAll: directory not empty" flakes): auto-gc/maintenance,
+	// and any trace2-driven tooling (e.g. a git-ai shim writing notes via
+	// fast-import after each commit). Disable all of them for this repo.
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
+	run("config", "trace2.eventtarget", "")
+	run("config", "trace2.normaltarget", "")
 	run("commit", "-q", "--allow-empty", "-m", "init")
 	return dir
 }
