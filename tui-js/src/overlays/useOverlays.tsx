@@ -8,13 +8,18 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
-import type { Candidate, ConflictsResult } from "../rpc/types";
+import type { Candidate, ConflictsResult, RpcClient } from "../rpc/types";
+import type { EditorSpec } from "../editor/detect";
 import {
   activate,
+  activateStash,
   adoptBranch,
   copyToClipboard,
   createSlice,
   deactivate,
+  editorSet,
+  editRepo,
+  editSlice,
   groupSlices,
   ignoreCandidate,
   importCandidate,
@@ -34,6 +39,7 @@ import {
   CandidatesOverlay,
   ConflictRadarOverlay,
   CreateOverlay,
+  EditorPickerOverlay,
   GroupOverlay,
   RemoveOverlay,
   ResultOverlay,
@@ -46,12 +52,13 @@ import { Help } from "../components/help";
 
 type Overlay =
   | { kind: "help" }
-  | { kind: "swap"; slice: string; active: boolean }
+  | { kind: "swap"; slice: string; active: boolean; dirty: boolean }
   | { kind: "stack"; slices: string[]; conflictWith: string[] }
   | { kind: "remove"; slices: string[] }
   | { kind: "create"; text: string }
   | { kind: "group"; slices: string[]; text: string; onDone: () => void }
   | { kind: "candidates"; items: Candidate[]; sel: number }
+  | { kind: "editorPicker"; editors: EditorSpec[]; sel: number; slice: string; repo?: string }
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
   | { kind: "working"; text: string }
@@ -72,6 +79,7 @@ export interface OverlayApi {
   group(slices: string[], onDone: () => void): void;
   conflictRadar(): void;
   summary(slice: string, ai: boolean): void;
+  editor(slice: string, repo?: string): void;
   info(title: string, body: string): void;
   // immediate actions (still funnel through the shared runner)
   ungroup(slice: string): void;
@@ -85,6 +93,12 @@ export interface UseOverlaysArgs {
   conflicts: ConflictsResult | null;
   view: "browser" | "cockpit";
   height: number;
+  client: RpcClient;
+  // Editors found on PATH + the configured editor (workspace.yaml sessions.editor).
+  // Drive the editor open flow: skip the picker when one is configured or exactly
+  // one is available.
+  editors: EditorSpec[];
+  configuredEditor?: string;
 }
 
 async function runSequential(
@@ -103,7 +117,7 @@ async function runSequential(
 }
 
 export function useOverlays(args: UseOverlaysArgs): OverlayApi {
-  const { refresh, conflicts, view, height } = args;
+  const { refresh, conflicts, view, height, client, editors, configuredEditor } = args;
   const [overlay, setOverlay] = useState<Overlay>(null);
   const close = useCallback(() => setOverlay(null), []);
 
@@ -144,12 +158,69 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     );
   }, []);
 
+  // Open the swap confirm. For a swap-IN we asynchronously probe the working
+  // tree so the overlay can offer [s] activate --stash when it is dirty.
+  const openSwap = useCallback(
+    (slice: string, active: boolean) => {
+      setOverlay({ kind: "swap", slice, active, dirty: false });
+      if (active) return; // swap-OUT never stashes
+      client.diff({ slice, scope: "working", format: "stat" }).then(
+        (d) => {
+          const dirty = d.repos.some((r) => (r.stat?.files.length ?? 0) > 0);
+          if (dirty)
+            setOverlay((o) =>
+              o && o.kind === "swap" && o.slice === slice ? { ...o, dirty: true } : o,
+            );
+        },
+        () => {},
+      );
+    },
+    [client],
+  );
+
+  // Open a slice/repo in the editor. Mirrors editorpane.go's openInEditor: a
+  // configured editor (or a lone available one) opens immediately; several
+  // detected and none configured raises the picker (which persists the choice).
+  const runEdit = useCallback(
+    (slice: string, repo: string | undefined, persistBin?: string) => {
+      const label = repo ? `Open ${repo} in editor` : "Open editor";
+      runMutation(label, async () => {
+        if (persistBin) {
+          const set = await editorSet(persistBin);
+          if (set.code !== 0) return set;
+        }
+        return repo ? editRepo(slice, repo) : editSlice(slice);
+      });
+    },
+    [runMutation],
+  );
+
+  const openEditor = useCallback(
+    (slice: string, repo?: string) => {
+      if (configuredEditor || editors.length === 1) {
+        runEdit(slice, repo);
+        return;
+      }
+      if (editors.length === 0) {
+        setOverlay({
+          kind: "result",
+          title: "No editor found",
+          body: "install cursor / code / zed, or run `slis editor set <bin>`.",
+          ok: false,
+        });
+        return;
+      }
+      setOverlay({ kind: "editorPicker", editors, sel: 0, slice, repo });
+    },
+    [configuredEditor, editors, runEdit],
+  );
+
   const api: OverlayApi = {
     active: overlay !== null,
     view,
     node: renderOverlay(overlay, conflicts, view, height),
     help: () => setOverlay({ kind: "help" }),
-    swap: (slice, active) => setOverlay({ kind: "swap", slice, active }),
+    swap: openSwap,
     stack: (slices, conflictWith) => setOverlay({ kind: "stack", slices, conflictWith }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
     create: () => setOverlay({ kind: "create", text: "" }),
@@ -157,6 +228,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     group: (slices, onDone) => setOverlay({ kind: "group", slices, text: "", onDone }),
     conflictRadar: () => setOverlay({ kind: "conflicts", scroll: 0 }),
     summary: openSummary,
+    editor: openEditor,
     info: (title, body) => setOverlay({ kind: "result", title, body, ok: true }),
     ungroup: (slice) => runMutation("Ungroup " + slice, () => ungroupSlice(slice)),
     yankDiff: (text) => runMutation("Yank diff", () => copyToClipboard(text)),
@@ -193,6 +265,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         if (name === "y" || isEnter) runMutation(overlay.active ? "Swap out" : "Swap in", () =>
           overlay.active ? deactivate(overlay.slice) : activate(overlay.slice),
         );
+        else if (name === "s" && overlay.dirty && !overlay.active)
+          runMutation("Swap in (stash dirty)", () => activateStash(overlay.slice));
         else if (name === "n" || isCancel) close();
         return;
       case "stack": {
@@ -253,6 +327,17 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         }
         return;
       }
+      case "editorPicker": {
+        const { editors: eds, sel } = overlay;
+        if (name === "j" || name === "down")
+          setOverlay({ ...overlay, sel: Math.min(eds.length - 1, sel + 1) });
+        else if (name === "k" || name === "up")
+          setOverlay({ ...overlay, sel: Math.max(0, sel - 1) });
+        else if (isCancel || name === "q") close();
+        else if (isEnter && eds[sel])
+          runEdit(overlay.slice, overlay.repo, eds[sel]!.bin);
+        return;
+      }
       case "conflicts":
         if (name === "j" || name === "down")
           setOverlay({ ...overlay, scroll: overlay.scroll + 1 });
@@ -285,7 +370,7 @@ function renderOverlay(
     case "help":
       return <Help view={view} />;
     case "swap":
-      return <SwapOverlay slice={overlay.slice} active={overlay.active} />;
+      return <SwapOverlay slice={overlay.slice} active={overlay.active} dirty={overlay.dirty} />;
     case "stack":
       return <StackActionsOverlay slices={overlay.slices} conflictWith={overlay.conflictWith} />;
     case "remove":
@@ -296,6 +381,15 @@ function renderOverlay(
       return <GroupOverlay slices={overlay.slices} text={overlay.text} />;
     case "candidates":
       return <CandidatesOverlay items={overlay.items} sel={overlay.sel} />;
+    case "editorPicker":
+      return (
+        <EditorPickerOverlay
+          editors={overlay.editors}
+          sel={overlay.sel}
+          slice={overlay.slice}
+          repo={overlay.repo}
+        />
+      );
     case "conflicts":
       return <ConflictRadarOverlay conflicts={conflicts} scroll={overlay.scroll} height={height} />;
     case "summary":

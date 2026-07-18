@@ -24,6 +24,7 @@ import { TermManager } from "./term/manager";
 import { TerminalLayer, type TabEntry } from "./term/tabs";
 import { tmuxAvailable, type TermMember } from "./term/tmux";
 import type { TermSessionOpts } from "./term/session";
+import { availableEditors } from "./editor/detect";
 
 export function App(): ReactNode {
   const renderer = useRenderer();
@@ -101,7 +102,19 @@ export function App(): ReactNode {
     process.exit(0);
   }, [client, renderer, manager]);
 
-  const overlays = useOverlays({ refresh, conflicts, view, height });
+  // Editors found on PATH (probed once). Combined with the configured editor
+  // from `hello`, the overlay layer decides whether to open directly or prompt.
+  const editorList = useMemo(() => availableEditors((b) => !!Bun.which(b)), []);
+
+  const overlays = useOverlays({
+    refresh,
+    conflicts,
+    view,
+    height,
+    client,
+    editors: editorList,
+    configuredEditor: hello?.sessions.editor,
+  });
 
   // Build per-slice view records.
   const views: SliceView[] = useMemo(() => {
