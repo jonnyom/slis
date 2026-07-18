@@ -4,7 +4,8 @@
 // conflictpane.go, the swap / stack / remove prompts in app.go).
 
 import type { ReactNode } from "react";
-import type { Candidate, ConflictsResult } from "../rpc/types";
+import type { AgentSpec, Candidate, ConflictsResult } from "../rpc/types";
+import { agentCmdline } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
 import { glyph, theme } from "../theme";
 import { Card } from "../components/card";
@@ -85,6 +86,44 @@ export function EditorPickerOverlay({
               {e.name}
             </span>
             <span fg={theme.textFaint}>{"  (" + e.bin + ")"}</span>
+          </text>
+        );
+      })}
+    </Card>
+  );
+}
+
+export function AgentPickerOverlay({
+  agents,
+  sel,
+  slice,
+}: {
+  agents: AgentSpec[];
+  sel: number;
+  slice: string;
+}): ReactNode {
+  return (
+    <Card
+      title="Launch which agent?"
+      subtitle={slice}
+      width={58}
+      hints={[
+        { key: "1-9", label: "quick pick" },
+        { key: "↑/↓", label: "select" },
+        { key: "enter", label: "launch" },
+        { key: "esc", label: "cancel" },
+      ]}
+    >
+      {agents.map((a, i) => {
+        const focused = i === sel;
+        return (
+          <text key={a.name} wrapMode="none">
+            <span fg={theme.focus}>{focused ? glyph.focusBar + " " : "  "}</span>
+            <span fg={theme.textFaint}>{(i < 9 ? String(i + 1) : " ") + " "}</span>
+            <span fg={focused ? theme.textBright : theme.textDim} attributes={focused ? BOLD : 0}>
+              {a.name}
+            </span>
+            <span fg={theme.textFaint}>{"  (" + agentCmdline(a.cmd) + ")"}</span>
           </text>
         );
       })}

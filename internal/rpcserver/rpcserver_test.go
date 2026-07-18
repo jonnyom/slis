@@ -164,6 +164,33 @@ func TestHello(t *testing.T) {
 	if hr.Sessions.Layout != "" || hr.Sessions.Autostart {
 		t.Errorf("default sessions = %+v, want empty layout and autostart false", hr.Sessions)
 	}
+	// Unconfigured agents resolve to a single default derived from harness/agent.
+	if len(hr.Agents) != 1 {
+		t.Fatalf("agents = %+v, want 1 default agent", hr.Agents)
+	}
+	if hr.Agents[0].Name != "claude" || len(hr.Agents[0].Cmd) != 1 || hr.Agents[0].Cmd[0] != "claude" {
+		t.Errorf("default agent = %+v, want claude/[claude]", hr.Agents[0])
+	}
+}
+
+func TestHelloExposesConfiguredAgents(t *testing.T) {
+	ws := makeWorkspace(t)
+	ws.Sessions = config.Sessions{Agents: []config.AgentSpec{
+		{Name: "claude", Cmd: []string{"claude"}},
+		{Name: "codex", Cmd: []string{"codex", "--full-auto"}},
+	}}
+	h := newHarness(t, ws)
+
+	resp := h.call(1, "hello", "")
+	var hr helloResult
+	decodeResult(t, resp, &hr)
+
+	if len(hr.Agents) != 2 {
+		t.Fatalf("agents = %+v, want 2", hr.Agents)
+	}
+	if hr.Agents[1].Name != "codex" || len(hr.Agents[1].Cmd) != 2 || hr.Agents[1].Cmd[1] != "--full-auto" {
+		t.Errorf("second agent = %+v, want codex/[codex --full-auto]", hr.Agents[1])
+	}
 }
 
 func TestHelloResolvesSessionsConfig(t *testing.T) {

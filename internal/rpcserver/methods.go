@@ -16,6 +16,11 @@ import (
 // hello reports the server version, the workspace root, and the resolved session
 // config the front-end needs to launch session tabs.
 func (s *Server) hello() (interface{}, *rpcError) {
+	specs := s.ws.Sessions.AgentList()
+	agents := make([]agentResult, len(specs))
+	for i, a := range specs {
+		agents[i] = agentResult{Name: a.Name, Cmd: a.Cmd}
+	}
 	return helloResult{
 		Version:       s.version,
 		WorkspaceRoot: s.ws.Root,
@@ -26,6 +31,7 @@ func (s *Server) hello() (interface{}, *rpcError) {
 			Autostart: s.ws.Sessions.Autostart,
 			Editor:    s.ws.Sessions.Editor,
 		},
+		Agents: agents,
 	}, nil
 }
 

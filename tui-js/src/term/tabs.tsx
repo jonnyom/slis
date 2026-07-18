@@ -39,9 +39,10 @@ export function tabKey(t: TabEntry): string {
   return t.kind === "session" ? t.slice : t.id;
 }
 
-/** The label shown in the tab bar. */
+/** The label shown in the tab bar. Session tabs annotate the picked agent. */
 export function tabLabel(t: TabEntry): string {
-  return t.kind === "session" ? t.slice : t.title;
+  if (t.kind !== "session") return t.title;
+  return t.opts.agentLabel ? `${t.slice} · ${t.opts.agentLabel}` : t.slice;
 }
 
 // ── one terminal ─────────────────────────────────────────────────────────────

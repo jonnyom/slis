@@ -13,6 +13,7 @@ import {
 } from "react";
 import { createRpcClient } from "./rpc";
 import type {
+  AgentSpec,
   ConflictsResult,
   HelloResult,
   LsResult,
@@ -32,6 +33,7 @@ import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
 import { tmuxAvailable, type TermMember } from "./term/tmux";
 import type { TermSessionOpts } from "./term/session";
+import { pickableAgents, agentCmdline } from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
@@ -303,7 +305,7 @@ export function App(): ReactNode {
   // defaults. Autostart is OR'd into launchAgent so a plain attach launches the
   // agent when configured, mirroring the Go TUI's attach.
   const buildTermOpts = useCallback(
-    (slice: string, launchAgent: boolean): TermSessionOpts | null => {
+    (slice: string, launchAgent: boolean, choice?: AgentSpec): TermSessionOpts | null => {
       const v = views.find((x) => x.slice.name === slice);
       if (!v) return null;
       const wsRoot = hello?.workspaceRoot ?? "";
@@ -320,11 +322,27 @@ export function App(): ReactNode {
         wsRoot,
         sessionOpts: { root: wsRoot, layout: sessions?.layout ?? "" },
         launchAgent: launchAgent || (sessions?.autostart ?? false),
-        agent: sessions?.agent || "claude",
+        agent: choice ? agentCmdline(choice.cmd) : sessions?.agent || "claude",
         harness: sessions?.harness || "claude",
+        agentLabel: choice?.name,
       };
     },
     [views, hello],
+  );
+
+  // Open (or reuse) the slice's terminal tab, attaching a tmux client and — when
+  // launching an agent — running the picked (or default) agent in it.
+  const launchTermTab = useCallback(
+    (slice: string, launchAgent: boolean, choice?: AgentSpec) => {
+      setTabs((prev) => {
+        if (prev.some((t) => t.kind === "session" && t.slice === slice)) return prev; // reuse open tab
+        const opts = buildTermOpts(slice, launchAgent, choice);
+        return opts ? [...prev, { kind: "session", slice, opts }] : prev;
+      });
+      setActiveTab(slice);
+      setTermMode(true);
+    },
+    [buildTermOpts],
   );
 
   const openTerm = useCallback(
@@ -336,15 +354,18 @@ export function App(): ReactNode {
         );
         return;
       }
-      setTabs((prev) => {
-        if (prev.some((t) => t.kind === "session" && t.slice === slice)) return prev; // reuse open tab
-        const opts = buildTermOpts(slice, launchAgent);
-        return opts ? [...prev, { kind: "session", slice, opts }] : prev;
-      });
-      setActiveTab(slice);
-      setTermMode(true);
+      // With more than one configured agent, a launch (C / autostart) first asks
+      // which one; a single agent (or an older sidecar) keeps the direct path.
+      if (launchAgent) {
+        const choices = pickableAgents(hello?.agents);
+        if (choices.length > 1) {
+          overlays.agentPicker(slice, choices, (choice) => launchTermTab(slice, true, choice));
+          return;
+        }
+      }
+      launchTermTab(slice, launchAgent);
     },
-    [buildTermOpts, overlays],
+    [launchTermTab, overlays, hello],
   );
 
   // Remove a tab and re-point the active tab / term mode. When a *command* tab

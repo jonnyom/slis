@@ -54,7 +54,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
     label: "session",
     bindings: [
       ["a", "open session terminal tab"],
-      ["C", "launch agent + open terminal tab"],
+      ["C", "launch agent + open terminal tab (picks when >1 configured)"],
       ["P", "processes across all slices"],
     ],
   },

@@ -21,6 +21,18 @@ export interface HelloResult {
   version: string;
   workspaceRoot: string;
   sessions: SessionsConfig;
+  // Selectable coding agents (name + argv). Resolved server-side to at least one
+  // entry, but OPTIONAL here so an older sidecar that predates the field still
+  // parses — the front-end then falls back to sessions.agent (see pickableAgents).
+  agents?: AgentSpec[];
+}
+
+// One selectable coding agent from workspace.yaml sessions.agents (or the single
+// resolved default). cmd is the launch argv; the front-end offers a picker when
+// hello returns more than one.
+export interface AgentSpec {
+  name: string;
+  cmd: string[];
 }
 
 // Resolved session config from workspace.yaml (see internal/rpcserver hello):

@@ -245,10 +245,20 @@ sessions:
   harness: claude   # "claude" (default when empty) or "codex"
   agent: ""         # explicit launch command; non-empty wins verbatim
   autostart: false  # launch the harness when a session is first attached
+  agents:           # optional: selectable agents (name + argv) → launch picker
+    - { name: claude, cmd: [claude] }
+    - { name: codex,  cmd: [codex, --full-auto] }
 ```
 
 - **Precedence:** a non-empty `agent` is used verbatim (binary + args);
   otherwise `harness` selects the binary (`claude` or `codex`).
+- **`agents`** (optional): a list of selectable coding agents, each a `name`
+  plus a `cmd` argv. When more than one is configured the front-end shows a
+  picker at agent-launch time; each launches in the slice's session exactly like
+  the single default (SLIS_* env is injected for every agent; the claude
+  `--append-system-prompt` flag is added only for a claude command). An
+  empty/absent list falls back to a single default derived from `harness`/`agent`.
+  A configured entry with an empty `name` or `cmd` is a config error.
 - **Launch shape:** claude sessions get `--append-system-prompt '<slice
   context>'`; codex gets neither a positional prompt nor an append flag.
 - **`fix-ci`** runs `claude -p <prompt>` or `codex exec <prompt>` in the failing

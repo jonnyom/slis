@@ -72,6 +72,17 @@ type helloResult struct {
 	Version       string         `json:"version"`
 	WorkspaceRoot string         `json:"workspaceRoot"`
 	Sessions      sessionsResult `json:"sessions"`
+	// Agents is the resolved selectable-agent list (config helpers apply the
+	// single-default fallback), so the front-end offers a picker when there's more
+	// than one. Always at least one entry.
+	Agents []agentResult `json:"agents"`
+}
+
+// agentResult is one selectable coding agent surfaced by hello: a display name
+// and the argv the front-end launches in a slice's session.
+type agentResult struct {
+	Name string   `json:"name"`
+	Cmd  []string `json:"cmd"`
 }
 
 // sessionsResult surfaces the workspace's session config so the JS front-end can

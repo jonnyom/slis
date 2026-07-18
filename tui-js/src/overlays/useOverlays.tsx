@@ -8,7 +8,8 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
-import type { Candidate, ConflictsResult, RpcClient } from "../rpc/types";
+import type { AgentSpec, Candidate, ConflictsResult, RpcClient } from "../rpc/types";
+import { quickPickIndex } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
 import {
   activate,
@@ -43,6 +44,7 @@ import {
   CandidatesOverlay,
   CiRerunOverlay,
   ConflictRadarOverlay,
+  AgentPickerOverlay,
   CreateOverlay,
   EditorPickerOverlay,
   GroupOverlay,
@@ -69,6 +71,7 @@ type Overlay =
   | { kind: "group"; slices: string[]; text: string; onDone: () => void }
   | { kind: "candidates"; items: Candidate[]; sel: number }
   | { kind: "editorPicker"; editors: EditorSpec[]; sel: number; slice: string; repo?: string }
+  | { kind: "agentPicker"; agents: AgentSpec[]; sel: number; slice: string; onPick: (agent: AgentSpec) => void }
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
   | { kind: "working"; text: string }
@@ -93,6 +96,7 @@ export interface OverlayApi {
   conflictRadar(): void;
   summary(slice: string, ai: boolean): void;
   editor(slice: string, repo?: string): void;
+  agentPicker(slice: string, agents: AgentSpec[], onPick: (agent: AgentSpec) => void): void;
   info(title: string, body: string): void;
   error(title: string, body: string): void;
   // immediate actions (still funnel through the shared runner)
@@ -313,6 +317,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     conflictRadar: () => setOverlay({ kind: "conflicts", scroll: 0 }),
     summary: openSummary,
     editor: openEditor,
+    agentPicker: (slice, agents, onPick) =>
+      setOverlay({ kind: "agentPicker", slice, agents, sel: 0, onPick }),
     info: (title, body) => setOverlay({ kind: "result", title, body, ok: true }),
     error: (title, body) => setOverlay({ kind: "result", title, body, ok: false }),
     ungroup: (slice) => runMutation("Ungroup " + slice, () => ungroupSlice(slice)),
@@ -449,6 +455,23 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           runEdit(overlay.slice, overlay.repo, eds[sel]!.bin);
         return;
       }
+      case "agentPicker": {
+        const { agents, sel, onPick } = overlay;
+        const quick = quickPickIndex(name, agents.length);
+        if (quick !== null) {
+          close();
+          onPick(agents[quick]!);
+        } else if (name === "j" || name === "down")
+          setOverlay({ ...overlay, sel: Math.min(agents.length - 1, sel + 1) });
+        else if (name === "k" || name === "up")
+          setOverlay({ ...overlay, sel: Math.max(0, sel - 1) });
+        else if (isCancel || name === "q") close();
+        else if (isEnter && agents[sel]) {
+          close();
+          onPick(agents[sel]!);
+        }
+        return;
+      }
       case "conflicts":
         if (name === "j" || name === "down")
           setOverlay({ ...overlay, scroll: overlay.scroll + 1 });
@@ -505,6 +528,8 @@ function renderOverlay(
           repo={overlay.repo}
         />
       );
+    case "agentPicker":
+      return <AgentPickerOverlay agents={overlay.agents} sel={overlay.sel} slice={overlay.slice} />;
     case "conflicts":
       return <ConflictRadarOverlay conflicts={conflicts} scroll={overlay.scroll} height={height} />;
     case "summary":
