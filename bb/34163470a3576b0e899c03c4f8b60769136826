@@ -1,0 +1,66 @@
+tui-js/src/term/tabs.tsx
+  s_470615ee13fe83::t_91f02b7c45fb5f 42,44-45
+tui-js/src/term/session.ts
+  s_470615ee13fe83::t_b5d7f311ee7085 22-24
+internal/rpcserver/methods.go
+  s_470615ee13fe83::t_2e2ef08d936f0b 19-23,34
+tui-js/src/rpc/types.ts
+  s_470615ee13fe83::t_56ea696f9c7ad0 24-35
+internal/config/config.go
+  s_470615ee13fe83::t_ce913e0cca35b6 57-61
+  s_470615ee13fe83::t_a7aaa360c961ab 219-233
+  s_470615ee13fe83::t_35ab476af64b87 79-101
+internal/config/config_test.go
+  s_470615ee13fe83::t_a7f384d33993e5 114-231
+internal/rpcserver/types.go
+  s_470615ee13fe83::t_cdc95064cc9638 75-85
+internal/rpcserver/rpcserver_test.go
+  s_470615ee13fe83::t_ce78afa7c7e9a6 167-193
+tui-js/src/components/help.tsx
+  s_470615ee13fe83::t_2dcc3da1afa731 57
+tui-js/src/overlays/overlays.tsx
+  s_470615ee13fe83::t_8a10c7a04b28f9 96-133
+  s_470615ee13fe83::t_580de720e45c57 7-8
+tui-js/package.json
+  s_470615ee13fe83::t_4ab10925eddd5c 12-13
+tui-js/src/overlays/useOverlays.tsx
+  s_470615ee13fe83::t_16c65093aac9b1 99
+  s_470615ee13fe83::t_a659e2467a3475 74
+  s_470615ee13fe83::t_6caec91d6fa0ac 458-474
+  s_470615ee13fe83::t_1fd8f7e4489a01 11-12
+  s_470615ee13fe83::t_3e8d19eea75365 531-532
+  s_470615ee13fe83::t_436649a44dc7bb 47
+  s_470615ee13fe83::t_308ab4ace41ab6 320-321
+tui-js/src/app.tsx
+  s_470615ee13fe83::t_93450f1630f8c8 36
+  s_470615ee13fe83::t_3614d3742d7025 16
+  s_470615ee13fe83::t_c6444a644a5d54 308,325,327,333-347,357-366,368
+docs/AGENT.md
+  s_470615ee13fe83::t_1174a841688baf 248-250,255-261
+tui-js/src/term/agentpick.ts
+  s_470615ee13fe83::t_83108c1ee2c42e 1-5,7-10,12-40
+  s_470615ee13fe83::t_9696b537af0c94 6,11
+tui-js/src/term/agentpicker.e2e.ts
+  s_470615ee13fe83::t_83ff2eb91c98f5 40,48
+  s_470615ee13fe83::t_a4d386dc7598fc 1-39,41-47,49-71,74-78,80-101
+  s_470615ee13fe83::t_287dbadd758d23 72-73,79
+tui-js/src/term/agentpick.test.ts
+  s_470615ee13fe83::t_cb3125b0f932b4 1,4,7-52
+  s_470615ee13fe83::t_16ab1021a42831 2-3,5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bb34163470a3576b0e899c03c4f8b60769136826",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
