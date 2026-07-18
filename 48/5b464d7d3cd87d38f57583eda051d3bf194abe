@@ -1,0 +1,73 @@
+tui-js/src/theme.ts
+  s_197478f89af866::t_c4cb717032bbce 1-87
+tui-js/src/index.tsx
+  s_197478f89af866::t_d482f6485f80d3 1-13
+tui-js/src/components/ui.tsx
+  s_197478f89af866::t_9c921ba237a311 1-6
+tui-js/package.json
+  s_197478f89af866::t_f78fd55d97c36c 1-17,19-22
+  s_197478f89af866::t_1460b5dae9ead6 18
+tui-js/src/rpc/index.ts
+  s_197478f89af866::t_d0953b629a96ba 1-19
+tui-js/src/rpc/types.ts
+  s_197478f89af866::t_8b711d82486c3f 190,192-193
+  s_197478f89af866::t_bc445099ea9185 173
+  s_197478f89af866::t_863e7fa658ae6a 1-172,174-189,191,194-238
+tui-js/tsconfig.json
+  s_197478f89af866::t_53653e909a384a 1-11,13-22
+  s_197478f89af866::t_c5ca7d59c55d65 12
+tui-js/src/components/overlay.tsx
+  s_197478f89af866::t_77c3a152cd169f 1-50
+tui-js/src/app.tsx
+  s_197478f89af866::t_af9ff9949b80f5 1-109,113-119,121-303
+  s_197478f89af866::t_335b546bd2cf9c 110-112,120
+tui-js/src/state/derive.ts
+  s_197478f89af866::t_3ddbe28958b845 1-99
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_033aa5637448a4 1-83
+tui-js/src/rpc/client.ts
+  s_197478f89af866::t_54941d4fb0d95a 1-285
+tui-js/src/util/ansi.ts
+  s_197478f89af866::t_793dac81728dbb 1-15
+tui-js/src/rpc/mutate.ts
+  s_197478f89af866::t_3a0636330e2814 1-41
+tui-js/src/views/browser.tsx
+  s_197478f89af866::t_d2ce2a10dee1c0 29
+  s_197478f89af866::t_c9744f0df4c8fd 1-28,30-303,312-430
+  s_197478f89af866::t_ba406472f66583 304-311
+tui-js/src/components/diffpane.tsx
+  s_197478f89af866::t_f777c77b094ebc 1-155
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_01821eb1188735 81
+  s_197478f89af866::t_d01744b7430265 1-27,31-80,82-304,313-618
+  s_197478f89af866::t_199d85a28b991b 28-30
+  s_197478f89af866::t_17838edc3c3e70 305-312
+tui-js/README.md
+  s_197478f89af866::t_1e3f47d17ab0b1 1-89,91,94-97,104-119
+  s_197478f89af866::t_31488e20f44e8f 90,92-93,98-103
+tui-js/.gitignore
+  s_197478f89af866::t_ed45442f85be7e 1-2
+tui-js/src/components/panel.tsx
+  s_197478f89af866::t_a24e3b42f12594 22
+  s_197478f89af866::t_34e67e15e28756 1-21,23-43
+tui-js/src/diff/parse.ts
+  s_197478f89af866::t_b51a5a5ac5aca8 1-137
+tui-js/bun.lock
+  s_197478f89af866::t_0579911762d390 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "485b464d7d3cd87d38f57583eda051d3bf194abe",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
