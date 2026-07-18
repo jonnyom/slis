@@ -1,0 +1,81 @@
+internal/git/git.go
+  s_470615ee13fe83::t_fba485060118a3 78-93
+tui-js/src/components/help.tsx
+  s_470615ee13fe83::t_fba485060118a3 71,74,82-89
+  s_470615ee13fe83::t_bb39b788a5db2e 90-91
+tui-js/src/state/filetree.test.ts
+  s_470615ee13fe83::t_fba485060118a3 1-80
+internal/git/tree_test.go
+  s_470615ee13fe83::t_fba485060118a3 1-118
+internal/diff/diff.go
+  s_470615ee13fe83::t_fba485060118a3 216-241
+tui-js/src/state/filetree.ts
+  s_470615ee13fe83::t_fba485060118a3 1-75
+tui-js/src/rpc/index.ts
+  s_470615ee13fe83::t_fba485060118a3 6
+internal/rpcserver/stackreview_test.go
+  s_470615ee13fe83::t_fba485060118a3 1-204
+tui-js/src/components/fileview.tsx
+  s_470615ee13fe83::t_fba485060118a3 1-82
+internal/rpcserver/server.go
+  s_470615ee13fe83::t_fba485060118a3 160-165
+internal/rpcserver/types.go
+  s_470615ee13fe83::t_fba485060118a3 3-7,181-217
+  s_470615ee13fe83::t_9f70f12f9fef71 218
+tui-js/src/views/cockpit.hints.ts
+  s_470615ee13fe83::t_fba485060118a3 41-44,50-53,74-87,89-90,92
+tui-js/src/rpc/types.ts
+  s_470615ee13fe83::t_fba485060118a3 226-267,320-340
+  s_470615ee13fe83::t_cdf815a5cc028b 341
+internal/cli/stackreview.go
+  s_470615ee13fe83::t_fba485060118a3 1-191
+tui-js/src/rpc/client.ts
+  s_470615ee13fe83::t_fba485060118a3 9,17,26,29-36,289-313
+tui-js/src/views/cockpit.tsx
+  s_470615ee13fe83::t_fba485060118a3 29,33,39,41-48,60-61,85,191-192,197-198,210-218,220-228,230-233,235-238,413-442,704-707,722-732,736-755,767-768,781-818,822-833,841-845,851-927,1038-1067,1083-1084,1124-1126,1170-1172,1174-1175,1181-1185,1195-1201,1211-1224,1233-1235,1237,1255-1281,1286-1287,1291-1293,1304,1319-1320,1356-1369
+tui-js/src/views/cockpit.hints.test.ts
+  s_470615ee13fe83::t_fba485060118a3 53-61,87-102
+  s_470615ee13fe83::t_bc139132c25bb9 103
+internal/rpcserver/methods.go
+  s_470615ee13fe83::t_fba485060118a3 9,218-324
+  s_470615ee13fe83::t_0763b6941a0a59 325
+internal/git/tree.go
+  s_470615ee13fe83::t_fba485060118a3 1-65
+internal/report/diff.go
+  s_470615ee13fe83::t_fba485060118a3 99-140
+internal/report/file.go
+  s_470615ee13fe83::t_fba485060118a3 1-76
+internal/git/blob.go
+  s_470615ee13fe83::t_fba485060118a3 1-33
+tui-js/src/rpc/feature.test.ts
+  s_470615ee13fe83::t_fba485060118a3 1-24
+docs/AGENT.md
+  s_470615ee13fe83::t_fba485060118a3 213-262
+  s_470615ee13fe83::t_ea9f2eee16ab4b 299
+  s_470615ee13fe83::t_3d95ddc846252e 13-14
+  s_470615ee13fe83::t_bd23f5b5da7a40 263
+tui-js/src/state/stacknav.test.ts
+  s_470615ee13fe83::t_fba485060118a3 1-85
+tui-js/src/state/stacknav.ts
+  s_470615ee13fe83::t_fba485060118a3 1-64
+tui-js/src/components/filetree.tsx
+  s_470615ee13fe83::t_fba485060118a3 1-56
+internal/diff/diff_test.go
+  s_470615ee13fe83::t_fba485060118a3 29-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "09fca2afc77e33dcec887e849dcc42ae42b74cd4",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
