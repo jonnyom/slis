@@ -33,6 +33,7 @@ import {
 } from "../state/cluster";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
+import { normalizeKeyName } from "../util/keys";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
 import { attention, diffColor, glyph, theme } from "../theme";
@@ -63,6 +64,8 @@ export interface BrowserProps {
   onRefresh: () => void;
   onToggleProcs: () => void;
   onQuit: () => void;
+  // Ambient background-create label for the header (spec D2), or null.
+  createBusy?: string | null;
 }
 
 const PATCH_TAIL_CAP = 200;
@@ -505,7 +508,18 @@ function Preview({
   const overflow = maxScroll(lines.length, viewport);
 
   return (
-    <box flexDirection="column" flexGrow={1} paddingLeft={2} overflow="hidden">
+    <box
+      flexDirection="column"
+      flexGrow={1}
+      paddingLeft={2}
+      overflow="hidden"
+      onMouseScroll={(e) => {
+        if (!scrollEnabled) return;
+        const dir = e.scroll?.direction;
+        if (dir === "down") setScroll((s) => clampScroll(s + 1, lines.length, viewport));
+        else if (dir === "up") setScroll((s) => clampScroll(s - 1, lines.length, viewport));
+      }}
+    >
       <text wrapMode="none">
         <span fg={theme.textBright} attributes={BOLD}>
           {view.slice.name}
@@ -590,7 +604,7 @@ export function Browser(props: BrowserProps): ReactNode {
 
   useKeyboard((key: KeyEvent) => {
     if (!enabled) return;
-    const name = key.name;
+    const name = normalizeKeyName(key);
 
     if (searching) {
       if (name === "escape") {
@@ -672,7 +686,8 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
     if (name === "c") return overlays.create();
-    if (name === "i" || name === "I") return overlays.candidates(props.ls.candidates ?? []);
+    if (name === "i") return overlays.candidates(props.ls.candidates ?? []);
+    if (name === "I") return overlays.adopt();
     if (name === "m") {
       if (selected.size > 0) overlays.group([...selected], () => setSelected(new Set()));
       else overlays.info("Group", "Select slices with space, then m to group them.");
@@ -732,7 +747,12 @@ export function Browser(props: BrowserProps): ReactNode {
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      <StatStrip counts={counts} total={views.length} version={`v${props.version}`} />
+      <StatStrip
+        counts={counts}
+        total={views.length}
+        version={`v${props.version}`}
+        busy={props.createBusy}
+      />
       <box flexDirection="row" flexGrow={1}>
         <box
           flexDirection="column"
@@ -749,7 +769,18 @@ export function Browser(props: BrowserProps): ReactNode {
             search={search}
             searching={searching}
           />
-          <box marginTop={1} flexDirection="column" flexGrow={1} overflow="hidden">
+          <box
+            marginTop={1}
+            flexDirection="column"
+            flexGrow={1}
+            overflow="hidden"
+            onMouseScroll={(e) => {
+              if (!enabled) return;
+              const dir = e.scroll?.direction;
+              if (dir === "down") setFocusIndex((i) => stepSelectable(rows, i, 1));
+              else if (dir === "up") setFocusIndex((i) => stepSelectable(rows, i, -1));
+            }}
+          >
             <Eyebrow label="Slices" focused={hubFocus === "list"} trailing={String(sliceCount)} />
             {workspaceEmpty ? (
               <>

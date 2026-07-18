@@ -4,6 +4,7 @@
 
 import type { ReactNode } from "react";
 import { glyph, theme } from "../theme";
+import { Spinner } from "./spinner";
 import { BOLD } from "./ui";
 
 export interface StatCounts {
@@ -37,10 +38,14 @@ export function StatStrip({
   counts,
   total,
   version,
+  busy,
 }: {
   counts: StatCounts;
   total: number;
   version?: string;
+  // Ambient background-work label (e.g. "creating tips-v2…") rendered with a
+  // braille spinner — non-blocking, so the user keeps navigating (spec D2).
+  busy?: string | null;
 }): ReactNode {
   const segments = statSegments(counts);
   return (
@@ -63,6 +68,13 @@ export function StatStrip({
             </span>
           ))
         )}
+        {busy ? (
+          <span>
+            <span fg={theme.textFaint}>{"    "}</span>
+            <Spinner />
+            <span fg={theme.textDim}>{` ${busy}`}</span>
+          </span>
+        ) : null}
       </text>
       {version ? (
         <text wrapMode="none" fg={theme.textFaint}>

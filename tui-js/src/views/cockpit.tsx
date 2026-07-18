@@ -48,6 +48,7 @@ import { DiffPane } from "../components/diffpane";
 import { DiffView, type DiffMode } from "../components/diffview";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
+import { normalizeKeyName } from "../util/keys";
 import { useProcMonitor } from "../proc/monitor";
 import { buildProcTree, flattenTree, totalCpu, totalMem } from "../proc/tree";
 import { nextSort, SORT_LABEL, type ProcSort } from "../proc/sort";
@@ -803,7 +804,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (!enabled) return;
     // While the full diff view is open it owns the keyboard.
     if (diffOpen) return;
-    const name = key.name;
+    const name = normalizeKeyName(key);
 
     // A pending kill confirmation captures input until answered.
     if (pendingKill) {
