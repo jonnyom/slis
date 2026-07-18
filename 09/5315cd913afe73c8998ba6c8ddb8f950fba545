@@ -1,0 +1,54 @@
+internal/cli/conflicts.go
+  s_197478f89af866::t_ed44944776d4eb 15,18,20
+internal/cli/show.go
+  s_197478f89af866::t_8873d0cb07c9df 10,14-18,20
+internal/report/report.go
+  s_197478f89af866::t_bab622ec56ddf2 1-322,325,328,333-462
+  s_197478f89af866::t_11de85ca81ca67 323-324,326-327,329-332
+internal/report/diff.go
+  s_197478f89af866::t_76d9876f64f1c8 1-142
+internal/cli/prstack.go
+  s_197478f89af866::t_cf00f97ed8e952 15,18,20-23
+internal/rpcserver/server.go
+  s_197478f89af866::t_9da5838e2d109c 201,203,222-227
+  s_197478f89af866::t_5ad1e59df060ab 1-200,202,204-221,228-255
+internal/rpcserver/types.go
+  s_197478f89af866::t_956d4e7d2284aa 1-43,47-107,113-131
+  s_197478f89af866::t_07e031a5f3900e 108-112
+  s_197478f89af866::t_f170b52c4ebb1d 44-46
+internal/rpcserver/rpcserver_test.go
+  s_197478f89af866::t_f4e15a7c32d6ea 8,11
+  s_197478f89af866::t_da2213a7dfc2a3 369
+  s_197478f89af866::t_debbe1dadedf55 96,98
+  s_197478f89af866::t_0e1e82b000c8de 59-65
+  s_197478f89af866::t_b4d6edd212aa86 1-7,9-10,12-58,66-95,97,99-368,370-372
+internal/rpcserver/methods.go
+  s_197478f89af866::t_1f2169cb90f3e5 1-78,80-139,141-199,201-236
+  s_197478f89af866::t_df99aed8e7180d 79,140
+  s_197478f89af866::t_11df8e97fab21e 200
+internal/cli/summary.go
+  s_197478f89af866::t_0901020382fd52 13,24
+internal/cli/rpc.go
+  s_197478f89af866::t_21c2c8368fc452 29-33,37
+  s_197478f89af866::t_90337712dbfed9 1-28,34-36,38-44
+internal/cli/ls.go
+  s_197478f89af866::t_ad20b57f9aa34f 13,17-28,30-34
+internal/cli/status.go
+  s_197478f89af866::t_18d5b475f35622 12,16,18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "095315cd913afe73c8998ba6c8ddb8f950fba545",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
