@@ -1,0 +1,71 @@
+tui-js/src/diff/parse.ts
+  s_197478f89af866::t_c89a83ab5f3213 7-9
+  s_197478f89af866::t_edcc300d511696 91
+  s_197478f89af866::t_6deeb65767961f 114
+  s_197478f89af866::t_7aba7f1aaed38e 123-125,132-136
+  s_197478f89af866::t_fc54f2ba5c1cc8 31,37-51
+  s_197478f89af866::t_c12b29c88183de 102
+  s_197478f89af866::t_7dbdd89d6ff8a1 52-53
+tui-js/src/diff/rows.ts
+  s_197478f89af866::t_436f12d4631d5a 72
+  s_197478f89af866::t_bc1ba761afdec8 1-71,73-144
+tui-js/src/diff/words.test.ts
+  s_197478f89af866::t_b81d6f8654dc4c 1-35,37-44
+  s_197478f89af866::t_17f03254023dc6 36
+tui-js/src/diff/sidebyside.test.ts
+  s_197478f89af866::t_4ba9476f7e29ee 1-46
+tui-js/src/diff/pair.ts
+  s_197478f89af866::t_5bbeceacad419d 1-46
+tui-js/src/diff/sidebyside.ts
+  s_197478f89af866::t_d791b9590dfa8b 1-62
+tui-js/src/theme.ts
+  s_197478f89af866::t_5733efa4ded544 43-46,49-78
+  s_197478f89af866::t_12272a3c3ce429 7-8
+  s_197478f89af866::t_6cb9e9382efe36 79
+tui-js/src/diff/tokenize.ts
+  s_197478f89af866::t_722447d0bf2551 1-323
+tui-js/src/diff/render.ts
+  s_197478f89af866::t_f83092142e81ff 1-60
+tui-js/src/diff/words.ts
+  s_197478f89af866::t_f420dd540c96a2 1-93
+tui-js/src/diff/pair.test.ts
+  s_197478f89af866::t_a2b9af3c4cdddf 1-50
+tui-js/src/components/help.tsx
+  s_197478f89af866::t_d9879c77ccf8c1 86-101
+  s_197478f89af866::t_1b8b07020c7f64 26,36-43
+  s_197478f89af866::t_036001e3ee4fe3 44-45
+tui-js/src/diff/parse.test.ts
+  s_197478f89af866::t_555581f4b62ea8 1-88
+tui-js/src/components/diffview.tsx
+  s_197478f89af866::t_7009f4f21fa179 1-285,287-290,292-300,302-400
+  s_197478f89af866::t_c751d02f526542 286,291,301
+tui-js/src/views/cockpit.tsx
+  s_197478f89af866::t_a62cf5e0f82b6c 555
+  s_197478f89af866::t_d66f8bd0757165 482-483,489-495
+  s_197478f89af866::t_03e5a4d315f671 29
+  s_197478f89af866::t_5d6bff357ee790 438-439
+  s_197478f89af866::t_ee20f3667396e5 565-581
+tui-js/src/diff/tokenize.test.ts
+  s_197478f89af866::t_183756ddc4c78c 45
+  s_197478f89af866::t_bfc02199a27080 1-44,46-76
+tui-js/src/diff/render.test.ts
+  s_197478f89af866::t_ab27408a20d439 1-27
+tui-js/src/diff/rows.test.ts
+  s_197478f89af866::t_6bddeb470192d0 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f630f9e2588ca74dddcb3028c4b1b7343bf95c0a",
+  "prompts": {},
+  "sessions": {
+    "s_197478f89af866": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d94b7-efbc-429f-9054-fe593d876665",
+        "model": "unknown"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
