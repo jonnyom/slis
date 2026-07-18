@@ -12,6 +12,13 @@ func NewRepo(t *testing.T) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
+	// Process-wide for the whole test (inherited by code-under-test git
+	// spawns): silence machine-global git tooling whose detached background
+	// work races t.TempDir cleanup — trace2-driven daemons (git-ai) and any
+	// global/system config hooks.
+	t.Setenv("GIT_TRACE2_EVENT", "0")
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
 	dir := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
