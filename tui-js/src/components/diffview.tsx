@@ -21,6 +21,7 @@ import {
   type UnifiedRow,
 } from "../diff/rows";
 import { color, colorForKind, diffColor, glyph, statusColor } from "../theme";
+import { normalizeKeyName } from "../util/keys";
 import { BOLD, DIM } from "./ui";
 
 export type DiffMode = "unified" | "split";
@@ -198,7 +199,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
 
   useKeyboard((key) => {
     if (!enabled) return;
-    const name = key.name;
+    const name = normalizeKeyName(key);
     if (name === "q") return props.onQuit();
     if (name === "escape" || name === "h") return props.onClose();
     if (name === "t") return props.onToggleMode();

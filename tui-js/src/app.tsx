@@ -2,7 +2,15 @@
 // badges, view routing (browser ⇄ cockpit) and the overlay layer (useOverlays).
 
 import { useRenderer, useTerminalDimensions } from "@opentui/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createRpcClient } from "./rpc";
 import type {
   ConflictsResult,
@@ -14,12 +22,12 @@ import type {
   ShowResult,
 } from "./rpc/types";
 import type { SliceView } from "./state/derive";
-import { color } from "./theme";
+import { theme } from "./theme";
 import { Browser } from "./views/browser";
 import { Cockpit } from "./views/cockpit";
 import { AllSlicesProcOverlay } from "./components/procoverlay";
-import { useOverlays } from "./overlays/useOverlays";
-import { BOLD, DIM } from "./components/ui";
+import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
+import { DIM } from "./components/ui";
 import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
 import { tmuxAvailable, type TermMember } from "./term/tmux";
@@ -27,6 +35,14 @@ import type { TermSessionOpts } from "./term/session";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
+import { useToasts, ToastLayer } from "./components/toast";
+import { createSlice } from "./rpc/mutate";
+import {
+  createBusyLabel,
+  createReducer,
+  initialCreateState,
+} from "./state/create";
+import { tickPlan } from "./state/tick";
 
 export function App(): ReactNode {
   const renderer = useRenderer();
@@ -61,6 +77,13 @@ export function App(): ReactNode {
   const loadedRef = useRef<Set<string>>(new Set());
   const [bulkPromptCount, setBulkPromptCount] = useState<number | null>(null);
 
+  // Transient toasts (spec §3.5) + non-blocking create (spec D2).
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const [createState, dispatchCreate] = useReducer(createReducer, initialCreateState);
+
+  // The slice the browser has focused (for the lazy-mode background tick, G7).
+  const browserFocusRef = useRef<string | null>(null);
+
   const loadSlice = useCallback(
     (name: string) => {
       loadedRef.current.add(name);
@@ -76,30 +99,54 @@ export function App(): ReactNode {
     [client],
   );
 
-  const refresh = useCallback(() => {
-    // ls first so the browser paints fast; the sidecar caps subprocess work at
-    // 4 in flight, so the expensive fan-out (conflicts + per-slice PR/stack)
-    // must wait behind ls rather than starve it.
-    client.hello().then(setHello, () => {});
-    client.status().then(
-      (rows) => setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status]))),
-      () => {},
-    );
-    client.ls().then((res) => {
-      setLs(res);
+  const refresh = useCallback(
+    (onDone?: () => void) => {
+      // ls first so the browser paints fast; the sidecar caps subprocess work at
+      // 4 in flight, so the expensive fan-out (conflicts + per-slice PR/stack)
+      // must wait behind ls rather than starve it.
+      client.hello().then(setHello, () => {});
+      client.status().then(
+        (rows) => setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status]))),
+        () => {},
+      );
+      client.ls().then((res) => {
+        setLs(res);
+        onDone?.();
+        client.conflicts().then(setConflicts, () => {});
+        const plan = bulkLoadPlan(res.slices.length, bulkPhaseRef.current);
+        if (plan.prompt) {
+          setBulkPromptCount(res.slices.length);
+          return;
+        }
+        setBulkPromptCount(null);
+        if (plan.fanOut) {
+          loadedRef.current = new Set(res.slices.map((s) => s.name));
+          for (const s of res.slices) loadSlice(s.name);
+        }
+      }, () => {});
+    },
+    [client, loadSlice],
+  );
+
+  // Manual refresh (`r`) confirms with a toast once ls returns.
+  const manualRefresh = useCallback(() => {
+    refresh(() => pushToast("Refreshed workspace", "ci-pass"));
+  }, [refresh, pushToast]);
+
+  // Targeted background refresh for the 30s tick (G7): PR/stack for the planned
+  // slices + conflicts + session statuses, without re-running ls (so it never
+  // re-triggers the bulk-load prompt or resets the lazy phase).
+  const tickRefresh = useCallback(
+    (sliceNames: string[]) => {
+      client.status().then(
+        (rows) => setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status]))),
+        () => {},
+      );
       client.conflicts().then(setConflicts, () => {});
-      const plan = bulkLoadPlan(res.slices.length, bulkPhaseRef.current);
-      if (plan.prompt) {
-        setBulkPromptCount(res.slices.length);
-        return;
-      }
-      setBulkPromptCount(null);
-      if (plan.fanOut) {
-        loadedRef.current = new Set(res.slices.map((s) => s.name));
-        for (const s of res.slices) loadSlice(s.name);
-      }
-    }, () => {});
-  }, [client, loadSlice]);
+      for (const name of sliceNames) loadSlice(name);
+    },
+    [client, loadSlice],
+  );
 
   const applyBulkChoice = useCallback(
     (phase: BulkPhase) => {
@@ -112,6 +159,7 @@ export function App(): ReactNode {
 
   const onFocusSlice = useCallback(
     (name: string) => {
+      browserFocusRef.current = name;
       if (bulkPhaseRef.current === "lazy" && !loadedRef.current.has(name)) loadSlice(name);
     },
     [loadSlice],
@@ -132,6 +180,31 @@ export function App(): ReactNode {
       offConn();
     };
   }, [client, refresh]);
+
+  // 30s background refresh tick (parity gap G7). The gating context is mirrored
+  // into a ref each render so the interval is created once (not reset on every
+  // navigation / status change). `tickPlan` decides whether to run and which
+  // slices — paused while a PTY tab or bulk-load prompt is up, focused-slice
+  // only in lazy mode, everything otherwise.
+  const tickCtxRef = useRef({
+    paused: false,
+    phase: bulkPhaseRef.current,
+    focusedSlice: null as string | null,
+    slices: [] as string[],
+  });
+  tickCtxRef.current = {
+    paused: termMode || bulkPromptCount !== null,
+    phase: bulkPhaseRef.current,
+    focusedSlice: view === "cockpit" ? current : browserFocusRef.current,
+    slices: ls?.slices.map((s) => s.name) ?? [],
+  };
+  useEffect(() => {
+    const id = setInterval(() => {
+      const plan = tickPlan(tickCtxRef.current);
+      if (plan.run) tickRefresh(plan.slices);
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [tickRefresh]);
 
   const quit = useCallback(() => {
     manager.detachAll(); // drop every tmux client — sessions keep running
@@ -155,6 +228,34 @@ export function App(): ReactNode {
     setTermMode(true);
   }, []);
 
+  // Non-blocking create (spec D2): run in the background with an ambient header
+  // spinner; success → toast, failure → Result overlay (via the overlays ref,
+  // which is assigned just below to break the useOverlays ⇄ startCreate cycle).
+  const overlaysRef = useRef<OverlayApi | null>(null);
+  const startCreate = useCallback(
+    (name: string) => {
+      dispatchCreate({ type: "start", name });
+      createSlice(name).then(
+        (res) => {
+          dispatchCreate({ type: "finish" });
+          if (res.code === 0) {
+            pushToast(`Created ${name}`, "ci-pass");
+            refresh();
+          } else {
+            const body =
+              (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)";
+            overlaysRef.current?.error(`Create ${name} — failed`, body);
+          }
+        },
+        (err) => {
+          dispatchCreate({ type: "finish" });
+          overlaysRef.current?.error(`Create ${name} — failed`, String(err));
+        },
+      );
+    },
+    [pushToast, refresh],
+  );
+
   const overlays = useOverlays({
     refresh,
     conflicts,
@@ -164,7 +265,10 @@ export function App(): ReactNode {
     editors: editorList,
     configuredEditor: hello?.sessions.editor,
     runInteractive: openCommandTab,
+    toast: pushToast,
+    startCreate,
   });
+  overlaysRef.current = overlays;
 
   // Build per-slice view records.
   const views: SliceView[] = useMemo(() => {
@@ -288,7 +392,7 @@ export function App(): ReactNode {
   if (!ls) {
     return (
       <box width="100%" height="100%" alignItems="center" justifyContent="center">
-        <text fg={color.dim} attributes={DIM}>
+        <text fg={theme.textDim} attributes={DIM}>
           {connected ? "loading workspace…" : "connecting to slis rpc…"}
         </text>
       </box>
@@ -315,9 +419,10 @@ export function App(): ReactNode {
           onEnter={onEnter}
           onOpenTerm={openTerm}
           onFocusSlice={onFocusSlice}
-          onRefresh={refresh}
+          onRefresh={manualRefresh}
           onToggleProcs={() => setProcsOpen(true)}
           onQuit={quit}
+          createBusy={createBusyLabel(createState)}
         />
       ) : (
         <Cockpit
@@ -330,7 +435,7 @@ export function App(): ReactNode {
           onBack={() => setView("browser")}
           onOpenTerm={openTerm}
           onToggleProcs={() => setProcsOpen(true)}
-          onRefresh={refresh}
+          onRefresh={manualRefresh}
           onQuit={quit}
         />
       )}
@@ -349,12 +454,34 @@ export function App(): ReactNode {
       />
 
       {!connected ? (
-        <box position="absolute" top={0} left={0} width="100%">
-          <text fg={color.missing} attributes={BOLD}>
-            {"  "}⚠ sidecar disconnected — reconnecting…
-          </text>
+        <box
+          position="absolute"
+          top={0}
+          right={0}
+          paddingTop={1}
+          paddingRight={1}
+          zIndex={100}
+          flexDirection="row"
+          justifyContent="flex-end"
+        >
+          <box
+            border
+            borderStyle="rounded"
+            borderColor={theme.bad}
+            backgroundColor={theme.surface}
+            paddingLeft={1}
+            paddingRight={1}
+            flexDirection="row"
+          >
+            <text wrapMode="none">
+              <span fg={theme.bad}>⚠</span>
+              <span fg={theme.text}> sidecar disconnected — reconnecting…</span>
+            </text>
+          </box>
         </box>
       ) : null}
+
+      <ToastLayer toasts={toasts} onDismiss={dismissToast} />
 
       {overlays.node}
       {procsOpen ? (

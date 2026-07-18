@@ -10,6 +10,7 @@ import type { FlatProcRow } from "../proc/tree";
 import { useProcMonitor } from "../proc/monitor";
 import { nextSort, SORT_LABEL, sortProcs, type ProcSort } from "../proc/sort";
 import { color, glyph } from "../theme";
+import { normalizeKeyName } from "../util/keys";
 import { BOLD, DIM } from "./ui";
 import {
   applyKill,
@@ -81,7 +82,7 @@ export function AllSlicesProcOverlay({
 
   useKeyboard((key) => {
     if (!enabled) return;
-    const name = key.name;
+    const name = normalizeKeyName(key);
     if (pendingKill) {
       if (name === "y" || name === "return" || name === "enter") return confirmKill();
       if (name === "n" || name === "escape") return setPendingKill(null);

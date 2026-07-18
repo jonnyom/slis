@@ -16,7 +16,6 @@ import {
   adoptBranch,
   ciRerunSlice,
   copyToClipboard,
-  createSlice,
   deactivate,
   editorSet,
   editRepo,
@@ -54,7 +53,10 @@ import {
   SwapOverlay,
   WorkingOverlay,
 } from "./overlays";
+import { AdoptOverlay } from "./adopt";
+import { normalizeKeyName } from "../util/keys";
 import { Help } from "../components/help";
+import type { BadgeState } from "../theme";
 
 type Overlay =
   | { kind: "help" }
@@ -63,6 +65,7 @@ type Overlay =
   | { kind: "remove"; slices: string[] }
   | { kind: "ciRerun"; slice: string }
   | { kind: "create"; text: string }
+  | { kind: "adopt"; text: string }
   | { kind: "group"; slices: string[]; text: string; onDone: () => void }
   | { kind: "candidates"; items: Candidate[]; sel: number }
   | { kind: "editorPicker"; editors: EditorSpec[]; sel: number; slice: string; repo?: string }
@@ -84,12 +87,14 @@ export interface OverlayApi {
   ciRerun(slice: string): void;
   fixCi(slice: string): void;
   create(): void;
+  adopt(): void;
   candidates(items: Candidate[]): void;
   group(slices: string[], onDone: () => void): void;
   conflictRadar(): void;
   summary(slice: string, ai: boolean): void;
   editor(slice: string, repo?: string): void;
   info(title: string, body: string): void;
+  error(title: string, body: string): void;
   // immediate actions (still funnel through the shared runner)
   ungroup(slice: string): void;
   yankDiff(text: string): void;
@@ -111,6 +116,12 @@ export interface UseOverlaysArgs {
   // Open an interactive mutation in a PTY terminal tab (submit/sync/merge/adopt/
   // fix-ci). Provided by the app, which owns the terminal layer.
   runInteractive: (argv: string[], title: string) => void;
+  // Push a transient toast (spec §3.5) — quick confirmations that don't deserve
+  // a modal (yank / swap done).
+  toast: (message: string, state?: BadgeState) => void;
+  // Kick off a non-blocking slice create (spec D2). The app owns the create
+  // state machine + ambient header spinner; the overlay only collects the name.
+  startCreate: (name: string) => void;
 }
 
 async function runSequential(
@@ -129,30 +140,70 @@ async function runSequential(
 }
 
 export function useOverlays(args: UseOverlaysArgs): OverlayApi {
-  const { refresh, conflicts, view, height, client, editors, configuredEditor, runInteractive } =
-    args;
+  const {
+    refresh,
+    conflicts,
+    view,
+    height,
+    client,
+    editors,
+    configuredEditor,
+    runInteractive,
+    toast,
+    startCreate,
+  } = args;
   const [overlay, setOverlay] = useState<Overlay>(null);
   const close = useCallback(() => setOverlay(null), []);
 
+  // Working → Result → refresh. A `successToast` routes a clean run to a
+  // transient toast (and closes the modal) instead of a Result overlay; a
+  // failure always falls back to the Result overlay so the output is readable.
   const runMutation = useCallback(
-    (title: string, fn: () => Promise<MutateResult>) => {
+    (title: string, fn: () => Promise<MutateResult>, opts?: { successToast?: string }) => {
       setOverlay({ kind: "working", text: title + "…" });
       fn().then(
         (res) => {
           const ok = res.code === 0;
-          setOverlay({
-            kind: "result",
-            title: ok ? title : title + " — failed",
-            body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
-            ok,
-          });
+          if (ok && opts?.successToast) {
+            toast(opts.successToast, "ci-pass");
+            close();
+          } else {
+            setOverlay({
+              kind: "result",
+              title: ok ? title : title + " — failed",
+              body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
+              ok,
+            });
+          }
           refresh();
         },
         (err) =>
           setOverlay({ kind: "result", title: title + " — failed", body: String(err), ok: false }),
       );
     },
-    [refresh],
+    [refresh, toast, close],
+  );
+
+  // No modal at all: run in the background, confirm success with a toast, and
+  // only raise a Result overlay when it fails. For quick clipboard writes.
+  const runQuiet = useCallback(
+    (successToast: string, fn: () => Promise<MutateResult>) => {
+      close();
+      fn().then(
+        (res) => {
+          if (res.code === 0) toast(successToast, "ci-pass");
+          else
+            setOverlay({
+              kind: "result",
+              title: "Failed",
+              body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
+              ok: false,
+            });
+        },
+        (err) => setOverlay({ kind: "result", title: "Failed", body: String(err), ok: false }),
+      );
+    },
+    [toast, close],
   );
 
   // Route a mutation by its command kind: interactive commands (submit/sync/
@@ -256,31 +307,28 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     fixCi: (slice) =>
       runMutationRouted("Fix CI " + slice, "fix-ci", [slice], () => fixCiSlice(slice)),
     create: () => setOverlay({ kind: "create", text: "" }),
+    adopt: () => setOverlay({ kind: "adopt", text: "" }),
     candidates: (items) => setOverlay({ kind: "candidates", items, sel: 0 }),
     group: (slices, onDone) => setOverlay({ kind: "group", slices, text: "", onDone }),
     conflictRadar: () => setOverlay({ kind: "conflicts", scroll: 0 }),
     summary: openSummary,
     editor: openEditor,
     info: (title, body) => setOverlay({ kind: "result", title, body, ok: true }),
+    error: (title, body) => setOverlay({ kind: "result", title, body, ok: false }),
     ungroup: (slice) => runMutation("Ungroup " + slice, () => ungroupSlice(slice)),
-    yankDiff: (text) => runMutation("Yank diff", () => copyToClipboard(text)),
+    yankDiff: (text) => runQuiet("Copied diff to clipboard", () => copyToClipboard(text)),
     yankPrStack: (slice) =>
-      runMutation("Yank PR stack", async () => {
+      runQuiet("Copied PR-stack markdown", async () => {
         const md = await prStackMarkdown(slice);
         if (md.code !== 0) return md;
-        const clip = await copyToClipboard(md.stdout || "(no PRs)");
-        return {
-          code: clip.code,
-          stdout: (md.stdout || "(no PRs)") + "\n\n" + clip.stdout,
-          stderr: clip.stderr,
-        };
+        return copyToClipboard(md.stdout || "(no PRs)");
       }),
-    openPr: (url) => runMutation("Open PR", () => openUrl(url)),
+    openPr: (url) => runQuiet("Opened PR in browser", () => openUrl(url)),
   };
 
   useKeyboard((key: KeyEvent) => {
     if (!overlay) return;
-    const name = key.name;
+    const name = normalizeKeyName(key);
     const isEnter = name === "return" || name === "enter";
     const isCancel = name === "escape";
 
@@ -294,11 +342,20 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         if (isEnter || isCancel || name === "q") close();
         return;
       case "swap":
-        if (name === "y" || isEnter) runMutation(overlay.active ? "Swap out" : "Swap in", () =>
-          overlay.active ? deactivate(overlay.slice) : activate(overlay.slice),
-        );
+        if (name === "y" || isEnter)
+          runMutation(
+            overlay.active ? "Swap out" : "Swap in",
+            () => (overlay.active ? deactivate(overlay.slice) : activate(overlay.slice)),
+            {
+              successToast: overlay.active
+                ? `Swapped out ${overlay.slice}`
+                : `Swapped in ${overlay.slice}`,
+            },
+          );
         else if (name === "s" && overlay.dirty && !overlay.active)
-          runMutation("Swap in (stash dirty)", () => activateStash(overlay.slice));
+          runMutation("Swap in (stash dirty)", () => activateStash(overlay.slice), {
+            successToast: `Swapped in ${overlay.slice}`,
+          });
         else if (name === "n" || isCancel) close();
         return;
       case "stack": {
@@ -336,7 +393,18 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         if (isCancel) close();
         else if (isEnter) {
           const nm = overlay.text.trim();
-          if (nm) runMutation("Create " + nm, () => createSlice(nm));
+          close();
+          // Non-blocking: hand off to the app's background create (spec D2) so
+          // the user keeps navigating while it runs.
+          if (nm) startCreate(nm);
+        } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
+        return;
+      case "adopt":
+        if (isCancel) close();
+        else if (isEnter) {
+          const br = overlay.text.trim();
+          if (br)
+            runMutationRouted("Adopt " + br, "adopt", [br], () => adoptBranch(br));
           else close();
         } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
         return;
@@ -422,6 +490,8 @@ function renderOverlay(
       return <CiRerunOverlay slice={overlay.slice} />;
     case "create":
       return <CreateOverlay text={overlay.text} />;
+    case "adopt":
+      return <AdoptOverlay text={overlay.text} />;
     case "group":
       return <GroupOverlay slices={overlay.slices} text={overlay.text} />;
     case "candidates":
