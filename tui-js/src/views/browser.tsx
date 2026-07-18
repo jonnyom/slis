@@ -41,6 +41,7 @@ export interface BrowserProps {
   onSwap: (slice: string) => void;
   onRefresh: () => void;
   onToggleHelp: () => void;
+  onToggleProcs: () => void;
   onQuit: () => void;
 }
 
@@ -344,6 +345,7 @@ export function Browser(props: BrowserProps): ReactNode {
     const name = key.name;
     if (name === "q") return props.onQuit();
     if (name === "?") return props.onToggleHelp();
+    if (name === "P") return props.onToggleProcs();
     if (name === "r") return props.onRefresh();
     if (name === "tab") {
       setHubFocus((f) => (f === "rail" ? "list" : "rail"));
@@ -421,8 +423,8 @@ export function Browser(props: BrowserProps): ReactNode {
         />
       </box>
       <text wrapMode="none" fg={color.dim} attributes={DIM}>
-        tab rail/list · j/k move · 1-8 filter · enter open · w live · r refresh · ?
-        help · q quit
+        tab rail/list · j/k move · 1-8 filter · enter open · w live · P procs · r
+        refresh · ? help · q quit
       </text>
     </box>
   );

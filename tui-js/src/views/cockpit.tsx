@@ -28,6 +28,20 @@ import { Panel } from "../components/panel";
 import { DiffPane } from "../components/diffpane";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
+import { useProcMonitor } from "../proc/monitor";
+import { buildProcTree, flattenTree, totalCpu, totalMem } from "../proc/tree";
+import { nextSort, SORT_LABEL, type ProcSort } from "../proc/sort";
+import {
+  applyKill,
+  KillConfirm,
+  KillStatusLine,
+  ProcTableHeader,
+  ProcTotalsRow,
+  ProcTreeRow,
+  SLICE_CPU_WARN,
+  type KillStatus,
+  type KillTarget,
+} from "../components/procview";
 
 type PanelId = "stack" | "prs" | "session" | "procs";
 const PANEL_ORDER: PanelId[] = ["stack", "prs", "session", "procs"];
@@ -47,24 +61,8 @@ export interface CockpitProps {
   onBack: () => void;
   onSwap: (slice: string) => void;
   onToggleHelp: () => void;
+  onToggleProcs: () => void;
   onQuit: () => void;
-}
-
-function useProcs(client: RpcClient, slice: string, active: boolean): ProcsResult | null {
-  const [procs, setProcs] = useState<ProcsResult | null>(null);
-  useEffect(() => {
-    if (!active) return;
-    let live = true;
-    const load = () =>
-      client.procs(slice).then((r) => live && setProcs(r), () => {});
-    load();
-    const id = setInterval(load, 2000);
-    return () => {
-      live = false;
-      clearInterval(id);
-    };
-  }, [client, slice, active]);
-  return procs;
 }
 
 function useCapture(
@@ -250,6 +248,8 @@ function ProcsPanel({
   height: number;
 }): ReactNode {
   const slice = procs?.slices[0];
+  const total = slice?.totalCPU ?? 0;
+  const over = total > SLICE_CPU_WARN;
   return (
     <Panel title="Processes" index={4} focused={focused} height={height}>
       {!procs ? (
@@ -270,9 +270,10 @@ function ProcsPanel({
             </text>
           ))}
           <text wrapMode="none">
-            <span fg={slice.totalCPU > 80 ? color.restack : color.dim}>
-              Σ {slice.totalCPU.toFixed(0)}%
+            <span fg={over ? color.restack : color.dim}>
+              Σ {total.toFixed(0)}%
             </span>
+            {over ? <span fg={color.restack} attributes={BOLD}> ⚠</span> : null}
           </text>
         </>
       )}
@@ -379,14 +380,23 @@ function SessionRight({ lines }: { lines: string[] }): ReactNode {
 }
 
 function ProcsRight({
-  procs,
+  monitor,
+  rows,
   procSel,
+  sort,
+  pendingKill,
+  killStatus,
 }: {
-  procs: ProcsResult | null;
+  monitor: ReturnType<typeof useProcMonitor>;
+  rows: ReturnType<typeof flattenTree>;
   procSel: number;
+  sort: ProcSort;
+  pendingKill: KillTarget | null;
+  killStatus: KillStatus | null;
 }): ReactNode {
-  const slice = procs?.slices[0];
-  if (!procs) return <text fg={color.dim} attributes={DIM}>sampling…</text>;
+  const { result, history } = monitor;
+  const slice = result?.slices[0];
+  if (!result) return <text fg={color.dim} attributes={DIM}>sampling…</text>;
   if (!slice || slice.procs.length === 0)
     return (
       <text fg={color.dim} attributes={DIM}>
@@ -396,27 +406,36 @@ function ProcsRight({
   return (
     <>
       <text wrapMode="none">
-        <span fg={color.dim}>{"  PID".padEnd(9)}</span>
-        <span fg={color.dim}>{"CPU%".padStart(6)}</span>
-        <span fg={color.dim}>{"MEM MB".padStart(9)}</span>
-        <span fg={color.dim}>  CMD</span>
+        <span fg={color.dim} attributes={DIM}>
+          {`sort: ${SORT_LABEL[sort]}  ·  s cycle · l/→ expand · h/← collapse · x kill · X kill tree`}
+        </span>
       </text>
-      {slice.procs.map((p, i) => {
-        const selected = i === procSel;
-        return (
-          <text key={p.pid} wrapMode="none" attributes={selected ? BOLD : 0}>
-            <span fg={color.cursorBar}>{selected ? glyph.focusBar + " " : "  "}</span>
-            <span fg={selected ? color.white : color.fg}>
-              {String(p.pid).padEnd(7)}
-            </span>
-            <span fg={p.cpu > 50 ? color.restack : color.fg}>
-              {p.cpu.toFixed(1).padStart(6)}
-            </span>
-            <span fg={color.fg}>{p.mem.toFixed(1).padStart(9)}</span>
-            <span fg={color.fg}>  {p.cmd}</span>
-          </text>
-        );
-      })}
+      <ProcTableHeader spark />
+      {rows.map((row, i) => (
+        <ProcTreeRow
+          key={row.proc.pid}
+          row={row}
+          selected={i === procSel}
+          history={history}
+          spark
+        />
+      ))}
+      <ProcTotalsRow
+        cpu={totalCpu(slice.procs)}
+        mem={totalMem(slice.procs)}
+        count={slice.procs.length}
+      />
+      {pendingKill ? (
+        <>
+          <text> </text>
+          <KillConfirm target={pendingKill} />
+        </>
+      ) : killStatus ? (
+        <>
+          <text> </text>
+          <KillStatusLine status={killStatus} />
+        </>
+      ) : null}
     </>
   );
 }
@@ -431,6 +450,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [repoSel, setRepoSel] = useState(0);
   const [prSel, setPrSel] = useState(0);
   const [procSel, setProcSel] = useState(0);
+  const [procSort, setProcSort] = useState<ProcSort>("cpu");
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  const [pendingKill, setPendingKill] = useState<KillTarget | null>(null);
+  const [killStatus, setKillStatus] = useState<KillStatus | null>(null);
   const [scopeIdx, setScopeIdx] = useState(0);
   const [showPatch, setShowPatch] = useState(false);
   const [diff, setDiff] = useState<DiffResult | null>(null);
@@ -439,7 +462,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const scope = SCOPES[scopeIdx]!;
   const selectedRepo = view.slice.members[repoSel]?.repo ?? "";
 
-  const procs = useProcs(client, slice, panel === "procs");
+  const monitor = useProcMonitor(client, slice, panel === "procs");
+  const sliceProcs = monitor.result?.slices[0]?.procs ?? [];
+  const procRows = useMemo(
+    () => flattenTree(buildProcTree(sliceProcs, procSort), collapsed),
+    [sliceProcs, procSort, collapsed],
+  );
   const captureLines = useCapture(client, slice, panel === "session");
   const lastLine = captureLines[captureLines.length - 1];
 
@@ -469,16 +497,50 @@ export function Cockpit(props: CockpitProps): ReactNode {
     else if (panel === "prs")
       setPrSel((i) => Math.max(0, Math.min((view.prs?.length ?? 1) - 1, i + delta)));
     else if (panel === "procs")
-      setProcSel((i) =>
-        Math.max(0, Math.min((procs?.slices[0]?.procs.length ?? 1) - 1, i + delta)),
-      );
+      setProcSel((i) => Math.max(0, Math.min(procRows.length - 1, i + delta)));
+  };
+
+  const toggleCollapse = (expand: boolean) => {
+    const pid = procRows[procSel]?.proc.pid;
+    if (pid === undefined) return;
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (expand) next.delete(pid);
+      else next.add(pid);
+      return next;
+    });
+  };
+
+  const requestKill = (subtree: boolean) => {
+    const row = procRows[procSel];
+    if (!row) return;
+    setKillStatus(null);
+    setPendingKill({ pid: row.proc.pid, subtree, cmd: row.proc.cmd });
+  };
+
+  const confirmKill = () => {
+    if (!pendingKill) return;
+    setKillStatus(applyKill(sliceProcs, pendingKill));
+    setPendingKill(null);
   };
 
   useKeyboard((key) => {
     if (!enabled) return;
     const name = key.name;
+
+    // A pending kill confirmation captures input until answered.
+    if (pendingKill) {
+      if (name === "y" || name === "return" || name === "enter") return confirmKill();
+      if (name === "n" || name === "escape") return setPendingKill(null);
+      return;
+    }
+
     if (name === "q") return props.onQuit();
     if (name === "?") return props.onToggleHelp();
+    if (name === "P") return props.onToggleProcs();
+    // On the Processes tree, h/← collapse and l/→ expand (esc still goes back).
+    if (panel === "procs" && (name === "h" || name === "left")) return toggleCollapse(false);
+    if (panel === "procs" && (name === "l" || name === "right")) return toggleCollapse(true);
     if (name === "escape" || name === "h") return props.onBack();
     if (name === "w") return props.onSwap(slice);
     if (name === "tab") {
@@ -488,6 +550,11 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (name >= "1" && name <= "4") {
       setPanel(PANEL_ORDER[Number(name) - 1]!);
       return;
+    }
+    if (panel === "procs") {
+      if (name === "s") return setProcSort((s) => nextSort(s));
+      if (name === "x") return requestKill(false);
+      if (name === "X") return requestKill(true);
     }
     if (name === "j" || name === "down") return moveSel(1);
     if (name === "k" || name === "up") return moveSel(-1);
@@ -512,10 +579,17 @@ export function Cockpit(props: CockpitProps): ReactNode {
   useEffect(() => {
     setPrSel((i) => Math.max(0, Math.min(i, (view.prs?.length ?? 1) - 1)));
   }, [view.prs?.length]);
-  const procCount = procs?.slices[0]?.procs.length ?? 0;
   useEffect(() => {
-    setProcSel((i) => Math.max(0, Math.min(i, Math.max(0, procCount - 1))));
-  }, [procCount]);
+    setProcSel((i) => Math.max(0, Math.min(i, Math.max(0, procRows.length - 1))));
+  }, [procRows.length]);
+
+  // A fresh slice starts with a clean process view (selection, kill state).
+  useEffect(() => {
+    setProcSel(0);
+    setCollapsed(new Set());
+    setPendingKill(null);
+    setKillStatus(null);
+  }, [slice]);
 
   const leftW = Math.min(38, Math.floor(props.width / 2));
   const bodyH = props.height - 2; // header + footer
@@ -546,7 +620,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       case "session":
         return "tab panel · w swap · esc back";
       case "procs":
-        return "tab panel · j/k proc · w swap · esc back";
+        return "tab panel · j/k proc · h/l fold · s sort · x/X kill · esc back";
     }
   }, [panel, scope, showPatch]);
 
@@ -588,7 +662,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
             lastLine={lastLine}
             height={sessionH}
           />
-          <ProcsPanel procs={procs} focused={panel === "procs"} height={procsH} />
+          <ProcsPanel procs={monitor.result} focused={panel === "procs"} height={procsH} />
         </box>
         <box flexGrow={1} flexDirection="column">
           <box
@@ -619,7 +693,14 @@ export function Cockpit(props: CockpitProps): ReactNode {
               ) : panel === "session" ? (
                 <SessionRight lines={captureLines} />
               ) : (
-                <ProcsRight procs={procs} procSel={procSel} />
+                <ProcsRight
+                  monitor={monitor}
+                  rows={procRows}
+                  procSel={procSel}
+                  sort={procSort}
+                  pendingKill={pendingKill}
+                  killStatus={killStatus}
+                />
               )}
             </scrollbox>
           </box>

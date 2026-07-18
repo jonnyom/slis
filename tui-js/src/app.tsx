@@ -20,6 +20,7 @@ import { Browser } from "./views/browser";
 import { Cockpit } from "./views/cockpit";
 import { Help } from "./components/help";
 import { Overlay } from "./components/overlay";
+import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { BOLD, DIM } from "./components/ui";
 
 type Overlay =
@@ -27,6 +28,7 @@ type Overlay =
   | { kind: "swap"; slice: string; active: boolean }
   | { kind: "working"; text: string }
   | { kind: "result"; title: string; body: string; ok: boolean }
+  | { kind: "procs" }
   | null;
 
 function SwapOverlay({ slice, active }: { slice: string; active: boolean }): ReactNode {
@@ -199,7 +201,8 @@ export function App(): ReactNode {
         setOverlay(null);
       return;
     }
-    // "working" overlays ignore input until they resolve.
+    // "procs" overlays own their keyboard (AllSlicesProcOverlay); "working"
+    // overlays ignore input until they resolve.
   });
 
   // Build per-slice view records.
@@ -260,6 +263,7 @@ export function App(): ReactNode {
           onSwap={onSwap}
           onRefresh={refresh}
           onToggleHelp={() => setOverlay({ kind: "help" })}
+          onToggleProcs={() => setOverlay({ kind: "procs" })}
           onQuit={quit}
         />
       ) : (
@@ -272,6 +276,7 @@ export function App(): ReactNode {
           onBack={() => setView("browser")}
           onSwap={onSwap}
           onToggleHelp={() => setOverlay({ kind: "help" })}
+          onToggleProcs={() => setOverlay({ kind: "procs" })}
           onQuit={quit}
         />
       )}
@@ -297,6 +302,13 @@ export function App(): ReactNode {
       ) : null}
       {overlay?.kind === "result" ? (
         <ResultOverlay title={overlay.title} body={overlay.body} ok={overlay.ok} />
+      ) : null}
+      {overlay?.kind === "procs" ? (
+        <AllSlicesProcOverlay
+          client={client}
+          enabled={overlay.kind === "procs"}
+          onClose={() => setOverlay(null)}
+        />
       ) : null}
     </box>
   );

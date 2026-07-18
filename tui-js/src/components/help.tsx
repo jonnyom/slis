@@ -14,6 +14,7 @@ const BROWSER_BINDINGS: Binding[] = [
   ["g / G", "first / last slice"],
   ["enter / l", "open slice cockpit"],
   ["w", "swap slice in / out (live)"],
+  ["P", "processes across all slices"],
   ["r", "refresh workspace"],
   ["? ", "toggle this help"],
   ["q", "quit"],
@@ -25,10 +26,14 @@ const COCKPIT_BINDINGS: Binding[] = [
   ["j / k", "move selection in panel"],
   ["b", "cycle diff scope working → parent → trunk"],
   ["t", "toggle stat / patch"],
+  ["h / l", "collapse / expand process subtree"],
+  ["s", "cycle process sort cpu → mem → pid"],
+  ["x / X", "kill process / kill subtree (SIGTERM)"],
+  ["P", "processes across all slices"],
   ["ctrl+d / ctrl+u", "scroll right pane"],
   ["g / G", "top / bottom of right pane"],
   ["w", "swap slice in / out (live)"],
-  ["esc / h", "back to browser"],
+  ["esc", "back to browser"],
   ["q", "quit"],
 ];
 
