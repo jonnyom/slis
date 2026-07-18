@@ -1,0 +1,51 @@
+tui-js/src/term/tabs.tsx
+  s_470615ee13fe83::t_91b5c643f8861a 30-44
+  s_470615ee13fe83::t_06caa26cbaf992 176-179
+  s_470615ee13fe83::t_8c619834106d73 212-213,224-225
+  s_470615ee13fe83::t_888a7dc8817d04 246-247
+  s_470615ee13fe83::t_5f9fbe0ddbaf74 269-284
+  s_470615ee13fe83::t_c17ebade2f818d 56-57,65-68,75,77-79,83-90,94-112,115,123-124
+  s_470615ee13fe83::t_824eada5f4dec4 171-175,181,183-184,188
+tui-js/src/app.tsx
+  s_470615ee13fe83::t_a71bf85431c923 56
+  s_470615ee13fe83::t_70cf941db2f9bd 110-120,129
+  s_470615ee13fe83::t_7cc40e06f18514 195,197,205-219,221-232,235-245
+  s_470615ee13fe83::t_522d40ba662320 24
+  s_470615ee13fe83::t_7207cdda985b87 302-304
+  s_470615ee13fe83::t_c3ba346e4e4384 246
+tui-js/src/overlays/useOverlays.tsx
+  s_470615ee13fe83::t_a34ab71c1f1750 310-315
+  s_470615ee13fe83::t_7d5387e65467b4 256-257
+  s_470615ee13fe83::t_2f94dc82233b93 28,30-31
+  s_470615ee13fe83::t_7ad09cf9d486cd 132-133
+  s_470615ee13fe83::t_0f999acaf6bf5a 111-113
+  s_470615ee13fe83::t_ce9160caa4627e 365-368
+  s_470615ee13fe83::t_3d1175d5d2331b 158-173
+tui-js/src/term/command.ts
+  s_470615ee13fe83::t_bd0f8d426fb3ec 1-106
+tui-js/src/term/manager.ts
+  s_470615ee13fe83::t_1161e02b967f08 5-8,11,15,17,27-41,46-58,61,64,66
+tui-js/src/rpc/mutate.test.ts
+  s_470615ee13fe83::t_77c995f43e935f 2-87
+tui-js/src/rpc/mutate.ts
+  s_470615ee13fe83::t_ebfaeb649fb9f9 267
+  s_470615ee13fe83::t_98f1011f3c2a4d 152
+  s_470615ee13fe83::t_8e09f2f44f2d87 9-37,42-53,58-76,81,84,87-88,90-91,94-103,109-122,126,130
+  s_470615ee13fe83::t_c5085dc038a719 79-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3451b1c84b57ea8ed7a2792adf81e1f2f12dd6c2",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
