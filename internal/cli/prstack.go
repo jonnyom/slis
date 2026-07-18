@@ -6,74 +6,21 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/forge"
-	"github.com/jonnyom/slis/internal/gt"
-	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/report"
 )
 
-// PRStackRowDTO is a JSON-friendly representation of one repo's PR in a slice's
-// stack. Number/URL/State/Title are empty when the branch has no PR. StackOrder
-// is the branch's trunk-relative Graphite depth (1 = directly off trunk),
-// omitted when the repo has no stack data; rows are ordered trunk-first by it.
-type PRStackRowDTO struct {
-	Repo           string `json:"repo"`
-	Branch         string `json:"branch"`
-	Number         int    `json:"number,omitempty"`
-	URL            string `json:"url,omitempty"`
-	State          string `json:"state,omitempty"`
-	Title          string `json:"title,omitempty"`
-	ReviewDecision string `json:"review_decision,omitempty"`
-	StackOrder     int    `json:"stack_order,omitempty"`
-}
+type PRStackRowDTO = report.PRStackRowDTO
 
-// stackDepths returns each member repo's trunk-relative Graphite depth for the
-// member branch, and whether ANY repo yielded stack data. Depth 0 means the
-// branch was not found in that repo's stack (no data); real stacked branches sit
-// at depth ≥ 1 (trunk = 0).
-func stackDepths(sl model.Slice) (depths map[string]int, anyStack bool) {
-	depths = make(map[string]int, len(sl.Members))
-	for _, repo := range sl.Repos() {
-		m := sl.Members[repo]
-		if m.WorktreePath == "" {
-			continue
-		}
-		st, err := gt.ReadStack(m.WorktreePath)
-		if err != nil || len(st) == 0 {
-			continue
-		}
-		for _, ob := range st.Ordered() {
-			if ob.Name == m.Branch {
-				depths[repo] = ob.Depth
-				anyStack = true
-				break
-			}
-		}
-	}
-	return depths, anyStack
-}
-
-// orderReposByStack returns the slice's repos ordered trunk-first by Graphite
-// depth (ties broken by name) when stack data is available, else the plain
-// alphabetical order sl.Repos() already provides.
-func orderReposByStack(sl model.Slice, depths map[string]int, anyStack bool) []string {
-	repos := sl.Repos() // alphabetical
-	if !anyStack {
-		return repos
-	}
-	sort.SliceStable(repos, func(a, b int) bool {
-		if depths[repos[a]] != depths[repos[b]] {
-			return depths[repos[a]] < depths[repos[b]]
-		}
-		return repos[a] < repos[b]
-	})
-	return repos
-}
+var (
+	stackDepths       = report.StackDepths
+	orderReposByStack = report.OrderReposByStack
+)
 
 // clipboardArgv returns the clipboard tool name and args for the current OS.
 // Returns (name, args, ok). On darwin: pbcopy. On linux: xclip or wl-copy.
@@ -137,12 +84,8 @@ var prStackCmd = &cobra.Command{
 			m := sl.Members[repo]
 			pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
 			row := PRStackRowDTO{Repo: repo, Branch: m.Branch, StackOrder: depths[repo]}
+			row.SetPR(pr)
 			if pr != nil {
-				row.Number = pr.Number
-				row.URL = pr.URL
-				row.State = pr.State
-				row.Title = pr.Title
-				row.ReviewDecision = pr.ReviewDecision
 				// Prefix branch with repo name so each markdown line is clearly scoped.
 				labeled := *pr
 				labeled.Branch = repo + ": " + pr.Branch

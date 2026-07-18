@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
@@ -126,6 +127,53 @@ func trunkStartPoint(primary, trunk string, fetch bool) string {
 	return ""
 }
 
+// createFreshWorktree creates branch at start and checks it out at path. A
+// local branch with the requested name may be left behind by an older, already
+// merged slice. Reusing that ref verbatim would resurrect the old slice (and
+// any historical PR attached to its branch name), so recycle it to the fresh
+// trunk start only when Git proves its current tip is contained there. A
+// divergent branch is preserved and rejected; `slis adopt` is the explicit
+// operation for existing work.
+func createFreshWorktree(primary, path, branch, start, mergedPRHead string) error {
+	effectiveStart := start
+	if effectiveStart == "" {
+		effectiveStart = "HEAD"
+	}
+
+	if !git.RefExists(primary, "refs/heads/"+branch) {
+		_, err := git.Run(primary, "worktree", "add", "-b", branch, "--", path, effectiveStart)
+		return err
+	}
+
+	localTip, _ := git.RevParse(primary, "refs/heads/"+branch)
+	mergedHistorically := mergedPRHead != "" && localTip == mergedPRHead
+	if !git.IsMergedInto(primary, branch, effectiveStart) && !mergedHistorically {
+		return fmt.Errorf("branch %q already exists with work not merged into %s; use `slis adopt %s` to keep that work, or choose a different slice name", branch, effectiveStart, branch)
+	}
+
+	// The old ref is fully contained in trunk, so moving it cannot orphan any
+	// commits. This also fails safely when the branch is checked out elsewhere.
+	if _, err := git.Run(primary, "branch", "-f", "--", branch, effectiveStart); err != nil {
+		return fmt.Errorf("recycle merged branch %q at %s: %w", branch, effectiveStart, err)
+	}
+	if _, err := git.Run(primary, "worktree", "add", "--", path, branch); err != nil {
+		return fmt.Errorf("check out recycled branch %q: %w", branch, err)
+	}
+	return nil
+}
+
+// mergedPRHead returns the immutable head commit recorded for a merged PR with
+// this branch name. Callers compare it with the current local tip before
+// recycling: a historical PR with the same name is not enough on its own,
+// because the branch may already have been reused for newer work.
+func mergedPRHead(primary, branch string) string {
+	pr, _ := forge.PRForBranch(primary, branch)
+	if pr == nil || !strings.EqualFold(pr.State, "MERGED") {
+		return ""
+	}
+	return pr.HeadSHA
+}
+
 var createCmd = &cobra.Command{
 	Use:   "create <slice>",
 	Short: "Create worktrees for all repos in a new slice",
@@ -151,6 +199,7 @@ var createCmd = &cobra.Command{
 		branch := branchForSlice(ws.Grouping.StripPrefix, rawName)
 
 		plans := worktreePlan(ws, sliceName, branch)
+		createdPlans := make([]struct{ Repo, Primary, Branch, Path, StartPoint string }, 0, len(plans))
 
 		for _, p := range plans {
 			// Resolve the freshest trunk to fork from (fetches origin trunk unless
@@ -167,45 +216,47 @@ var createCmd = &cobra.Command{
 				continue
 			}
 
-			// Try creating a new branch + worktree, forking from trunk (start). The
-			// "--" separates options from the positional path/commit so neither is
-			// ever parsed as a git flag.
-			addArgs := []string{"worktree", "add", "-b", p.Branch, "--", p.Path}
-			if start != "" {
-				addArgs = append(addArgs, start)
+			historicalHead := ""
+			if git.RefExists(p.Primary, "refs/heads/"+p.Branch) && !git.IsMergedInto(p.Primary, p.Branch, start) {
+				historicalHead = mergedPRHead(p.Primary, p.Branch)
 			}
-			_, err := git.Run(p.Primary, addArgs...)
-			if err != nil {
-				// Branch may already exist; try attaching to the existing branch.
-				errStr := err.Error()
-				if strings.Contains(errStr, "already exists") || strings.Contains(errStr, "already checked out") {
-					_, err2 := git.Run(p.Primary, "worktree", "add", "--", p.Path, p.Branch)
-					if err2 != nil {
-						fmt.Printf("slis: skipping %s — worktree already exists or branch in use: %v\n", p.Repo, err2)
-						continue
-					}
-				} else {
-					fmt.Printf("slis: skipping %s — %v\n", p.Repo, err)
-					continue
-				}
+			if err := createFreshWorktree(p.Primary, p.Path, p.Branch, start, historicalHead); err != nil {
+				fmt.Printf("slis: skipping %s — %v\n", p.Repo, err)
+				continue
 			}
 
 			fmt.Printf("created worktree for %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
+			createdPlans = append(createdPlans, p)
 
-			// A fresh -b branch (err == nil) is slis-born; track it off trunk so a
-			// gt-native repo keeps it in the stack. Best-effort: never blocks.
-			if err == nil {
-				trackInGraphite(p.Path, p.Branch, p.StartPoint)
+			// Both a brand-new branch and a safely recycled merged branch are
+			// slis-born from trunk. Track either one best-effort in gt-native repos.
+			trackInGraphite(p.Path, p.Branch, p.StartPoint)
+		}
+
+		// Persist exactly the worktrees that were actually created. This keeps a
+		// partial create honest and gives future cleanup a durable path identity.
+		if !noWorktrees && len(createdPlans) > 0 {
+			regPath := config.StatePaths().Registry
+			reg, _, loadErr := config.LoadRegistry(regPath)
+			if loadErr != nil {
+				fmt.Printf("note: could not read slice registry: %v\n", loadErr)
+			} else {
+				for _, p := range createdPlans {
+					reg.RegisterCreated(sliceName, p.Repo, p.Branch, p.Path)
+				}
+				if saveErr := config.SaveRegistry(regPath, reg); saveErr != nil {
+					fmt.Printf("note: could not save slice registry: %v\n", saveErr)
+				}
 			}
 		}
 
 		// Start a tmux session for the new slice (best-effort; skip if tmux is absent).
-		if !noWorktrees {
+		if !noWorktrees && len(createdPlans) > 0 {
 			if !tmuxctl.Available() {
 				fmt.Println("note: tmux not found — skipping session creation")
 			} else {
-				members := make([]model.SliceMember, 0, len(plans))
-				for _, p := range plans {
+				members := make([]model.SliceMember, 0, len(createdPlans))
+				for _, p := range createdPlans {
 					members = append(members, model.SliceMember{
 						Repo:         p.Repo,
 						WorktreePath: p.Path,

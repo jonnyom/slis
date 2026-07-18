@@ -34,14 +34,13 @@ func contains(ss []string, want string) bool {
 	return false
 }
 
-// TestLineageScopesToStack verifies Lineage returns the trunk, the branch's
-// ancestors, and its descendants — but not unrelated sibling stacks.
+// TestLineageScopesToDownstack verifies Lineage returns the trunk and branch,
+// but never sibling or upstack branches that are not checked out here.
 func TestLineageScopesToStack(t *testing.T) {
 	s := buildState()
 
 	got := names(s.Lineage("a"))
-	// Expect main (trunk ancestor), a (self), b (descendant); never "other".
-	for _, want := range []string{"main", "a", "b"} {
+	for _, want := range []string{"main", "a"} {
 		if !contains(got, want) {
 			t.Errorf("Lineage(a) = %v, missing %q", got, want)
 		}
@@ -49,8 +48,11 @@ func TestLineageScopesToStack(t *testing.T) {
 	if contains(got, "other") {
 		t.Errorf("Lineage(a) = %v, should not contain unrelated stack 'other'", got)
 	}
-	if len(got) != 3 {
-		t.Errorf("Lineage(a) = %v, want exactly 3 branches", got)
+	if contains(got, "b") {
+		t.Errorf("Lineage(a) = %v, should not contain upstack branch 'b'", got)
+	}
+	if len(got) != 2 {
+		t.Errorf("Lineage(a) = %v, want exactly trunk + current branch", got)
 	}
 
 	// Trunk-first ordering.

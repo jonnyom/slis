@@ -1,0 +1,28 @@
+{
+  "name": "slis-tui-js",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "type": "module",
+  "description": "OpenTUI front-end for slis, driven by the `slis rpc` Go sidecar.",
+  "scripts": {
+    "start": "bun run src/index.tsx",
+    "start:fake": "SLIS_FAKE=1 bun run src/index.tsx",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "term:e2e": "bun run src/term/e2e.ts",
+    "term:picker:e2e": "bun run src/term/agentpicker.e2e.ts",
+    "review:e2e": "bun run src/review/e2e.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "0.4.5",
+    "@opentui/react": "0.4.5",
+    "ghostty-opentui": "1.5.0",
+    "react": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.4",
+    "@types/react": "19.2.17",
+    "typescript": "5.9.3"
+  }
+}

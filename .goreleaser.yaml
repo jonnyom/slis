@@ -1,5 +1,14 @@
 version: 2
 
+# Cross-compile the JS TUI (`slis-ui`) for every target before GoReleaser builds
+# the Go binary, so each archive can bundle its matching `slis-ui` alongside
+# `slis`. The script installs the tui-js deps for all platforms and runs
+# `bun build --compile` per target into tui-js/dist/<goos>-<goarch>/slis-ui.
+# Needs `bun` on PATH (the release workflow installs it via oven-sh/setup-bun).
+before:
+  hooks:
+    - ./scripts/build-slis-ui.sh
+
 builds:
   - main: ./cmd/slis
     binary: slis
@@ -18,6 +27,16 @@ archives:
   - formats:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Ship the platform-matched `slis-ui` next to `slis` at the archive root, so
+    # a `slis` install finds its sibling JS TUI (internal/cli.resolveUILaunch
+    # prefers a compiled slis-ui beside the running slis). One slis-ui per
+    # (Os, Arch) — the same four targets GoReleaser builds `slis` for — so the
+    # templated src resolves to exactly one file per archive.
+    files:
+      - src: "tui-js/dist/{{ .Os }}-{{ .Arch }}/slis-ui"
+        strip_parent: true
+        info:
+          mode: 0755
 
 checksum:
   name_template: "checksums.txt"
@@ -30,7 +49,9 @@ checksum:
 # env var (set from a repo secret of the same name in release.yml).
 homebrew_casks:
   - name: slis
-    binaries: [slis]
+    # Install both the Go CLI/TUI and its compiled JS front-end so bare `slis`
+    # (which prefers a sibling `slis-ui`) launches the JS TUI after `brew install`.
+    binaries: [slis, slis-ui]
     directory: Casks
     repository:
       owner: jonnyom
@@ -46,13 +67,15 @@ homebrew_casks:
     commit_author:
       name: goreleaser-bot
       email: goreleaser@users.noreply.github.com
-    # The binary is unsigned, so strip the macOS quarantine flag on install to
-    # avoid Gatekeeper blocking it as "damaged".
+    # Both binaries are unsigned, so strip the macOS quarantine flag on install
+    # to avoid Gatekeeper blocking them as "damaged". slis-ui is a bun-compiled
+    # standalone binary, equally unsigned, so it needs the same treatment.
     hooks:
       post:
         install: |
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/slis"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/slis-ui"]
           end
 
 release:

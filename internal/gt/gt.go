@@ -181,12 +181,11 @@ func (s State) Ordered() []OrderedBranch {
 	return result
 }
 
-// Lineage returns only the stack connected to branch: the chain of ancestors
-// from branch up to and including the trunk, plus branch's descendants. Branches
-// belonging to other, unrelated stacks in the same repo's Graphite metadata are
-// excluded — so a slice's Stack view shows the branches specific to that change,
-// not every branch in the repo. Depth is assigned relative to the trunk
-// (trunk = 0), matching Ordered.
+// Lineage returns the downstack path for branch: the branch itself and its chain
+// of ancestors up to and including trunk. Upstack descendants and sibling
+// branches are deliberately excluded: they may be in the same Graphite stack,
+// but they are not checked out in this slice's worktree and must not appear as
+// slice members. Depth is assigned relative to trunk (trunk = 0).
 //
 // If branch is absent from the state, Lineage returns nil; the caller should
 // then fall back to showing the branch name on its own.
@@ -210,25 +209,6 @@ func (s State) Lineage(branch string) []OrderedBranch {
 		}
 		inLineage[parent] = true
 		cur = parent
-	}
-
-	// Descendants: BFS down from branch (any branch whose parent list names a
-	// branch already in the lineage).
-	for queue := []string{branch}; len(queue) > 0; {
-		name := queue[0]
-		queue = queue[1:]
-		for child, cs := range s {
-			if inLineage[child] {
-				continue
-			}
-			for _, p := range cs.Parents {
-				if p.Ref == name {
-					inLineage[child] = true
-					queue = append(queue, child)
-					break
-				}
-			}
-		}
 	}
 
 	// Emit in trunk-first, depth order by filtering the full ordering.

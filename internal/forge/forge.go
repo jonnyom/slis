@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	gitutil "github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/safeterm"
 )
 
@@ -75,6 +76,7 @@ type Comment struct {
 // PR holds the parsed representation of a GitHub pull request.
 type PR struct {
 	Branch         string
+	HeadSHA        string
 	Number         int
 	URL            string
 	State          string // OPEN / MERGED / CLOSED
@@ -148,6 +150,7 @@ type ghPR struct {
 	State             string         `json:"state"`
 	Title             string         `json:"title"`
 	HeadRefName       string         `json:"headRefName"`
+	HeadRefOID        string         `json:"headRefOid"`
 	ReviewDecision    string         `json:"reviewDecision"`
 	StatusCheckRollup []ghCheckEntry `json:"statusCheckRollup"`
 	Comments          []ghComment    `json:"comments"`
@@ -283,6 +286,7 @@ func ParsePR(branch string, data []byte) (*PR, error) {
 	// the TUI / shareable markdown; sanitise terminal escapes at this boundary.
 	return &PR{
 		Branch:         branch,
+		HeadSHA:        safeterm.Strip(raw.HeadRefOID),
 		Number:         raw.Number,
 		URL:            safeterm.Strip(raw.URL),
 		State:          safeterm.Strip(raw.State),
@@ -294,7 +298,7 @@ func ParsePR(branch string, data []byte) (*PR, error) {
 }
 
 // jsonFields is the fixed set of fields we request from gh.
-const jsonFields = "number,url,state,title,headRefName,statusCheckRollup,reviewDecision,comments,reviews"
+const jsonFields = "number,url,state,title,headRefName,headRefOid,statusCheckRollup,reviewDecision,comments,reviews"
 
 // PRForBranch runs `gh pr view <branch> --json ...` in repoDir and returns the
 // parsed PR.
@@ -332,6 +336,9 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 	if err != nil || pr == nil {
 		return pr, err
 	}
+	if historicalPRIsStale(repoDir, branch, pr) {
+		return nil, nil
+	}
 
 	// Inline review comments (e.g. Cubic) are not exposed by `gh pr view`; fetch
 	// them via the REST API and merge. A failure here is non-fatal — the PR still
@@ -344,6 +351,25 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 		return pr, fmt.Errorf("forge: inline comments: %w", ierr)
 	}
 	return pr, nil
+}
+
+// historicalPRIsStale prevents a merged/closed PR from being attached to a new
+// incarnation of the same branch name. An open PR remains authoritative by
+// branch name. A historical PR is current only while the local branch is still
+// at its recorded GitHub head and the checkout has no new staged, unstaged, or
+// untracked work.
+func historicalPRIsStale(repoDir, branch string, pr *PR) bool {
+	if pr == nil || strings.EqualFold(pr.State, "OPEN") {
+		return false
+	}
+	if dirty, err := gitutil.IsDirty(repoDir); err == nil && dirty {
+		return true
+	}
+	if pr.HeadSHA == "" {
+		return false
+	}
+	tip, err := gitutil.RevParse(repoDir, branch)
+	return err == nil && tip != pr.HeadSHA
 }
 
 // prURLRe extracts owner/repo from a PR URL, e.g.
@@ -531,6 +557,19 @@ func FailedLog(repoDir string, pr *PR) (string, error) {
 func Available() bool {
 	_, err := exec.LookPath("gh")
 	return err == nil
+}
+
+// CIStateName returns the lowercase rollup word for a CheckState:
+// Pass → "pass", Fail → "fail", Pending → "pending".
+func CIStateName(s CheckState) string {
+	switch s {
+	case CheckPass:
+		return "pass"
+	case CheckFail:
+		return "fail"
+	default:
+		return "pending"
+	}
 }
 
 // CIEmoji returns the display emoji for a given CheckState.

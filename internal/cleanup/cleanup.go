@@ -7,6 +7,8 @@ package cleanup
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
@@ -102,6 +104,9 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 		}
 		rep.Repos = append(rep.Repos, res)
 	}
+	if allRemoved {
+		removeEmptyManagedParents(ws.Root, sl.Name)
+	}
 
 	// Kill the tmux session only when every worktree was removed — a failed or
 	// partial clear must not destroy a session the user may still be working in.
@@ -112,4 +117,23 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 	}
 
 	return rep, nil
+}
+
+// removeEmptyManagedParents removes only empty directories left above worktrees
+// that Git already removed. os.Remove refuses non-empty directories, so source
+// files or another slice can never be deleted by this housekeeping step.
+func removeEmptyManagedParents(root, slice string) {
+	if root == "" || slice == "" {
+		return
+	}
+	base := filepath.Clean(filepath.Join(root, ".slis", "worktrees"))
+	for dir := filepath.Clean(filepath.Join(base, slice)); dir != base; dir = filepath.Dir(dir) {
+		rel, err := filepath.Rel(base, dir)
+		if err != nil || rel == "." || rel == ".." || filepath.IsAbs(rel) {
+			return
+		}
+		if err := os.Remove(dir); err != nil {
+			return // non-empty or otherwise protected: leave it untouched
+		}
+	}
 }

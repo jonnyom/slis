@@ -12,6 +12,13 @@ func NewRepo(t *testing.T) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
+	// Process-wide for the whole test (inherited by code-under-test git
+	// spawns): silence machine-global git tooling whose detached background
+	// work races t.TempDir cleanup — trace2-driven daemons (git-ai) and any
+	// global/system config hooks.
+	t.Setenv("GIT_TRACE2_EVENT", "0")
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
 	dir := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
@@ -30,6 +37,14 @@ func NewRepo(t *testing.T) string {
 	// no global git identity configured.
 	run("config", "user.email", "t@t")
 	run("config", "user.name", "t")
+	// Detached background git processes outlive the test and race t.TempDir
+	// cleanup ("RemoveAll: directory not empty" flakes): auto-gc/maintenance,
+	// and any trace2-driven tooling (e.g. a git-ai shim writing notes via
+	// fast-import after each commit). Disable all of them for this repo.
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
+	run("config", "trace2.eventtarget", "")
+	run("config", "trace2.normaltarget", "")
 	run("commit", "-q", "--allow-empty", "-m", "init")
 	return dir
 }

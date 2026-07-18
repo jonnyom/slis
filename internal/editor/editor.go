@@ -213,3 +213,29 @@ func OpenDir(ed Editor, dir string) error {
 	}
 	return nil
 }
+
+// FileArgs returns the editor-specific arguments for opening a file, optionally
+// at a one-based line. VS Code-family editors use --goto; Zed accepts the same
+// path:line form directly. Unknown configured editors receive the plain path so
+// file opening remains portable even when precise line addressing is unknown.
+func FileArgs(ed Editor, path string, line int) []string {
+	target := path
+	if line > 0 && (ed.Mode == ModeWorkspace || filepath.Base(ed.Bin) == "zed") {
+		target = fmt.Sprintf("%s:%d", path, line)
+	}
+	if ed.Mode == ModeWorkspace {
+		return []string{"--goto", target}
+	}
+	return []string{target}
+}
+
+// OpenFile opens a single file in the editor, optionally at a one-based line.
+func OpenFile(ed Editor, path string, line int) error {
+	if path == "" {
+		return fmt.Errorf("editor: empty file path")
+	}
+	if err := run(ed.Bin, FileArgs(ed, path, line)...); err != nil {
+		return fmt.Errorf("editor: launch %s: %w", ed.Bin, err)
+	}
+	return nil
+}

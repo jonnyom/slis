@@ -62,6 +62,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
 | `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
+| `slis review list [slice]` | read | **yes** | List pending inline-review comments awaiting delivery to a slice's agent |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
 | `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs, swap-journal health (stale journal, deleted prior branch, orphaned `slis/live` branch/detach tagged auto-fixable vs needs-manual-attention, partial swap where the journal covers only some member repos, and a repo swapped-in but un-journaled), and a Graphite section (gt installed? repos initialised? branches tracked?). `--fix` auto-repairs the safe ones (incl. deleting a stale journal only when every primary is on a branch, and clearing a contained orphaned `slis/live` branch); never prunes worktrees |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
@@ -83,6 +84,10 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |
 | `slis focus <slice>` | mutate | no | Switch the active tmux client to the slice's session (creates it if missing); prints `tmux attach -t …` when no client is attached. This is what a clicked desktop notification runs |
+| `slis review add <slice>` | mutate | no | Add a pending review comment on a line or range (`--repo --file --line [--end-line] --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
+| `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
+| `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
+| `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active pane, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
 
 `*` `edit` opens an editor / prints a path; it does not change repo state.
 `slis hook <event>` exists but is hidden and machine-invoked by Claude Code — never call it by hand.

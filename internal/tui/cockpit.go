@@ -266,8 +266,8 @@ func rightPaneTitle(m Model, sl model.Slice) string {
 
 // ── Left-panel content ──────────────────────────────────────────────────────
 
-// stackPanelContent renders, per repo, the slice's branch lineage only (its
-// ancestors up to trunk plus its descendants) — not every branch in the repo.
+// stackPanelContent renders, per repo, only the branch checked out in the slice
+// and its downstack ancestors to trunk — never sibling or upstack branches.
 func stackPanelContent(m Model, sl model.Slice) string {
 	repos := sl.Repos()
 	if len(repos) == 0 {

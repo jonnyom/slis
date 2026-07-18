@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/testutil"
 )
 
@@ -18,6 +21,83 @@ func gitCreate(t *testing.T, dir string, args ...string) {
 		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestCreateFreshWorktreeRecyclesMergedBranchAtTrunk(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	gitCreate(t, repo, "branch", "test")
+	gitCreate(t, repo, "commit", "-q", "--allow-empty", "-m", "advance trunk")
+	want, err := git.RevParse(repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt := filepath.Join(t.TempDir(), "test-worktree")
+	if err := createFreshWorktree(repo, wt, "test", "main", ""); err != nil {
+		t.Fatalf("createFreshWorktree: %v", err)
+	}
+	got, err := git.RevParse(wt, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("recycled branch HEAD = %s, want fresh trunk %s", got, want)
+	}
+}
+
+func TestCreateFreshWorktreePreservesDivergentExistingBranch(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	gitCreate(t, repo, "switch", "-q", "-c", "test")
+	gitCreate(t, repo, "commit", "-q", "--allow-empty", "-m", "unmerged work")
+	want, err := git.RevParse(repo, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitCreate(t, repo, "switch", "-q", "main")
+
+	wt := filepath.Join(t.TempDir(), "test-worktree")
+	err = createFreshWorktree(repo, wt, "test", "main", "")
+	if err == nil || !strings.Contains(err.Error(), "not merged") {
+		t.Fatalf("error = %v, want unmerged-branch refusal", err)
+	}
+	if _, statErr := os.Stat(wt); !os.IsNotExist(statErr) {
+		t.Fatalf("refused create made worktree %q (stat err %v)", wt, statErr)
+	}
+	got, revErr := git.RevParse(repo, "test")
+	if revErr != nil {
+		t.Fatal(revErr)
+	}
+	if got != want {
+		t.Fatalf("divergent branch moved from %s to %s", want, got)
+	}
+}
+
+func TestCreateFreshWorktreeRecyclesExactMergedPRHeadAfterSquash(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	gitCreate(t, repo, "switch", "-q", "-c", "test")
+	gitCreate(t, repo, "commit", "-q", "--allow-empty", "-m", "old PR head")
+	oldHead, err := git.RevParse(repo, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitCreate(t, repo, "switch", "-q", "main")
+	gitCreate(t, repo, "commit", "-q", "--allow-empty", "-m", "squash merge")
+	want, err := git.RevParse(repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt := filepath.Join(t.TempDir(), "test-worktree")
+	if err := createFreshWorktree(repo, wt, "test", "main", oldHead); err != nil {
+		t.Fatalf("createFreshWorktree: %v", err)
+	}
+	got, err := git.RevParse(wt, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("recycled merged PR branch HEAD = %s, want fresh trunk %s", got, want)
 	}
 }
 

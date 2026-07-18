@@ -112,6 +112,7 @@ func TestScopeFromPrefs(t *testing.T) {
 	}{
 		{"absent → dirty", config.Prefs{}, scopeDirty},
 		{"explicit dirty", config.Prefs{DiffScope: "dirty"}, scopeDirty},
+		{"OpenTUI working alias", config.Prefs{DiffScope: "working"}, scopeDirty},
 		{"explicit parent", config.Prefs{DiffScope: "parent"}, scopeParent},
 		{"explicit trunk", config.Prefs{DiffScope: "trunk"}, scopeTrunk},
 		{"legacy true → trunk", config.Prefs{DiffVsTrunk: boolPtr(true)}, scopeTrunk},

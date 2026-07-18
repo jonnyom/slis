@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +17,41 @@ func buildFixture() []byte {
 	main := "worktree /tmp/repo\x00HEAD aabbccddeeff00112233445566778899aabbccdd\x00branch refs/heads/main\x00\x00"
 	detached := "worktree /tmp/repo-wt\x00HEAD 1122334455667788990011223344556677889900\x00detached\x00\x00"
 	return []byte(main + detached)
+}
+
+func TestRemoveWorktreePrunesAlreadyDeletedCheckout(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "gone")
+	testutil.AddWorktree(t, repo, "gone", wt)
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := git.RemoveWorktree(repo, wt, false); err != nil {
+		t.Fatalf("RemoveWorktree should repair stale metadata: %v", err)
+	}
+	for _, listed := range mustListWorktrees(t, repo) {
+		if listed.Path == wt {
+			t.Fatalf("stale worktree still listed: %+v", listed)
+		}
+	}
+}
+
+func TestRemoveWorktreeRefusesUntrackedDirectory(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	dir := t.TempDir()
+	if err := git.RemoveWorktree(repo, dir, true); err == nil {
+		t.Fatal("expected refusal for an existing directory Git does not own")
+	}
+}
+
+func mustListWorktrees(t *testing.T, repo string) []git.Worktree {
+	t.Helper()
+	wts, err := git.ListWorktrees(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wts
 }
 
 func TestParseWorktreeList(t *testing.T) {

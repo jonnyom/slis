@@ -111,6 +111,124 @@ func TestSessionsAgentCommand(t *testing.T) {
 	}
 }
 
+func TestSessionsAgentListDefault(t *testing.T) {
+	cases := []struct {
+		name     string
+		s        Sessions
+		wantName string
+		wantCmd  []string
+	}{
+		{"empty → claude", Sessions{}, "claude", []string{"claude"}},
+		{"codex harness", Sessions{Harness: "codex"}, "codex", []string{"codex"}},
+		{"explicit agent with args", Sessions{Agent: "claude --resume"}, "claude", []string{"claude", "--resume"}},
+	}
+	for _, c := range cases {
+		got := c.s.AgentList()
+		if len(got) != 1 {
+			t.Fatalf("%s: want 1 default agent, got %d", c.name, len(got))
+		}
+		if got[0].Name != c.wantName {
+			t.Errorf("%s: name = %q, want %q", c.name, got[0].Name, c.wantName)
+		}
+		if len(got[0].Cmd) != len(c.wantCmd) {
+			t.Fatalf("%s: cmd = %v, want %v", c.name, got[0].Cmd, c.wantCmd)
+		}
+		for i := range c.wantCmd {
+			if got[0].Cmd[i] != c.wantCmd[i] {
+				t.Errorf("%s: cmd[%d] = %q, want %q", c.name, i, got[0].Cmd[i], c.wantCmd[i])
+			}
+		}
+	}
+}
+
+func TestSessionsAgentListConfigured(t *testing.T) {
+	s := Sessions{Agents: []AgentSpec{
+		{Name: "claude", Cmd: []string{"claude"}},
+		{Name: "codex", Cmd: []string{"codex", "--full-auto"}},
+	}}
+	got := s.AgentList()
+	if len(got) != 2 {
+		t.Fatalf("want 2 agents, got %d", len(got))
+	}
+	if got[1].Name != "codex" || got[1].Cmd[1] != "--full-auto" {
+		t.Errorf("second agent = %+v", got[1])
+	}
+}
+
+func TestLoadWorkspaceParsesAgents(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "workspace.yaml")
+	if err := os.WriteFile(p, []byte(`
+root: ~/code
+repos:
+  web: { primary: ~/code/web, default_branch: main }
+sessions:
+  agents:
+    - name: claude
+      cmd: [claude]
+    - name: codex
+      cmd: [codex, --full-auto]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws, err := LoadWorkspace(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents := ws.Sessions.AgentList()
+	if len(agents) != 2 {
+		t.Fatalf("want 2 agents, got %d", len(agents))
+	}
+	if agents[0].Name != "claude" || agents[1].Name != "codex" {
+		t.Errorf("agent names = %q, %q", agents[0].Name, agents[1].Name)
+	}
+	if len(agents[1].Cmd) != 2 || agents[1].Cmd[1] != "--full-auto" {
+		t.Errorf("codex cmd = %v", agents[1].Cmd)
+	}
+}
+
+func TestLoadWorkspaceRejectsInvalidAgents(t *testing.T) {
+	cases := map[string]string{
+		"empty name": `
+root: ~/code
+repos:
+  web: { primary: ~/code/web }
+sessions:
+  agents:
+    - name: ""
+      cmd: [claude]
+`,
+		"empty cmd": `
+root: ~/code
+repos:
+  web: { primary: ~/code/web }
+sessions:
+  agents:
+    - name: claude
+      cmd: []
+`,
+		"blank cmd arg": `
+root: ~/code
+repos:
+  web: { primary: ~/code/web }
+sessions:
+  agents:
+    - name: claude
+      cmd: ["claude", ""]
+`,
+	}
+	for name, yaml := range cases {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "workspace.yaml")
+		if err := os.WriteFile(p, []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadWorkspace(p); err == nil {
+			t.Errorf("%s: expected error, got nil", name)
+		}
+	}
+}
+
 func TestAutostartLegacyAlias(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "workspace.yaml")

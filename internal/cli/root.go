@@ -6,6 +6,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -25,14 +26,36 @@ var rootCmd = &cobra.Command{
 	// runtime failure.
 	SilenceErrors: true,
 	SilenceUsage:  true,
-	// When invoked with no subcommand, launch the TUI.
+	// When invoked with no subcommand, launch the JS (OpenTUI) front-end by
+	// default, falling back to the Go TUI when the JS front-end can't be
+	// resolved (or when SLIS_TUI=go forces it).
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ws, err := config.LoadWorkspace(config.WorkspacePath())
+		binPath, err := os.Executable()
 		if err != nil {
-			return fmt.Errorf("no workspace — run `slis init` first: %w", err)
+			return fmt.Errorf("cannot locate the slis binary: %w", err)
 		}
-		return tui.Run(ws)
+		migrateExistingHooksBestEffort(binPath)
+
+		launch, resolveErr := resolveUILaunch(binPath, os.Getenv("SLIS_TUI_DIR"), regularFileExists)
+		launchJS, notice := chooseDefaultUI(os.Getenv("SLIS_TUI"), resolveErr)
+		if launchJS {
+			execErr := execJSUI(binPath, launch)
+			fmt.Fprintf(os.Stderr, "slis: JS UI failed to launch (%v); falling back to the Go TUI (set SLIS_TUI=go to skip)\n", execErr)
+			return runGoTUI()
+		}
+		if notice != "" {
+			fmt.Fprintln(os.Stderr, notice)
+		}
+		return runGoTUI()
 	},
+}
+
+func runGoTUI() error {
+	ws, err := config.LoadWorkspace(config.WorkspacePath())
+	if err != nil {
+		return fmt.Errorf("no workspace — run `slis init` first: %w", err)
+	}
+	return tui.Run(ws)
 }
 
 // Execute runs the root cobra command. It is called from main.

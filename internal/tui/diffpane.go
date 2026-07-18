@@ -77,7 +77,7 @@ func (s diffScope) emptyMessage() string {
 // old boolean DiffVsTrunk: true → trunk, false → parent, absent → dirty.
 func scopeFromPrefs(p config.Prefs) diffScope {
 	switch p.DiffScope {
-	case "dirty":
+	case "dirty", "working":
 		return scopeDirty
 	case "parent":
 		return scopeParent

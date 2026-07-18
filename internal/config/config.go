@@ -54,6 +54,11 @@ type Sessions struct {
 	// Non-empty wins verbatim over Harness; empty → the Harness binary. May
 	// include args, e.g. "claude --resume".
 	Agent string `yaml:"agent"`
+	// Agents is the optional list of selectable coding agents (name + argv). When
+	// it holds more than one entry the front-end offers a picker before launch;
+	// empty falls back to the single default agent derived from Harness/Agent
+	// (see AgentList). Each entry needs a non-empty name and cmd.
+	Agents []AgentSpec `yaml:"agents,omitempty"`
 	// Autostart launches the harness in a slice's session automatically when the
 	// session is first attached (same as pressing `C`).
 	Autostart bool `yaml:"autostart"`
@@ -67,8 +72,31 @@ type Sessions struct {
 	//   "root"  — a single window at the workspace root (run Claude across the stack)
 	//   "repos" — one window per repo worktree
 	//   "both"  — a root window first, then one per repo
-	// Empty defaults to "root" when a workspace root is set, else "repos".
+	// Empty defaults to "repos" for multi-repo slices, or "root" for one member.
 	Layout string `yaml:"layout"`
+}
+
+// AgentSpec is one selectable coding agent: a display name and the argv launched
+// in a slice's session (e.g. {Name: "claude", Cmd: ["claude", "--resume"]}).
+type AgentSpec struct {
+	Name string   `yaml:"name"`
+	Cmd  []string `yaml:"cmd"`
+}
+
+// AgentList returns the selectable agents. Explicitly configured agents win;
+// otherwise a single default is derived from the resolved AgentCommand (harness
+// / agent), so callers always get at least one entry. The default's name is the
+// command's first token so "claude --resume" reads as "claude" in a picker.
+func (s Sessions) AgentList() []AgentSpec {
+	if len(s.Agents) > 0 {
+		return s.Agents
+	}
+	fields := strings.Fields(s.AgentCommand())
+	name := "claude"
+	if len(fields) > 0 {
+		name = fields[0]
+	}
+	return []AgentSpec{{Name: name, Cmd: fields}}
 }
 
 // HarnessName returns the configured harness, defaulting to "claude".
@@ -186,6 +214,21 @@ func LoadWorkspace(path string) (Workspace, error) {
 	// working after the field was generalised across harnesses.
 	if ws.Sessions.AutostartClaude {
 		ws.Sessions.Autostart = true
+	}
+
+	// Validate any configured agents: each needs a non-empty name and cmd.
+	for i, a := range ws.Sessions.Agents {
+		if strings.TrimSpace(a.Name) == "" {
+			return Workspace{}, fmt.Errorf("sessions.agents[%d]: name is empty", i)
+		}
+		if len(a.Cmd) == 0 {
+			return Workspace{}, fmt.Errorf("sessions.agents[%d] (%s): cmd is empty", i, a.Name)
+		}
+		for j, arg := range a.Cmd {
+			if strings.TrimSpace(arg) == "" {
+				return Workspace{}, fmt.Errorf("sessions.agents[%d] (%s): cmd[%d] is empty", i, a.Name, j)
+			}
+		}
 	}
 
 	// Apply defaults.

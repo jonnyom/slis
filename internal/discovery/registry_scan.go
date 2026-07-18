@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,8 +38,10 @@ func ignoreGlobs(ws config.Workspace) []string {
 //   - candidate: anything else → NOT a slice; surfaced in Candidates so the user
 //     can `slis import` (or `slis ignore`) it.
 //
-// Registered members whose worktree has disappeared (or moved off the recorded
-// branch) are surfaced in Missing so a known slice never silently vanishes.
+// Registered members whose worktree has disappeared are surfaced in Missing so
+// a known slice never silently vanishes. Switching branches inside the same
+// registered worktree is healthy: stacked-branch workflows do this routinely,
+// and the worktree remains owned by its registered slice.
 //
 // Grandfathering: when no registry file exists yet (first run on upgrade), EVERY
 // discovered worktree is grandfathered — pre-ignore, i.e. exactly the group-all
@@ -50,9 +53,29 @@ func ignoreGlobs(ws config.Workspace) []string {
 // when its path matches an ignore glob. Ignore never hides registered work — it
 // filters new/unknown worktrees only.
 func Report(ws config.Workspace, registryPath string) Result {
+	// Repair only stale Slis-owned administrative records whose checkout is
+	// already gone. Targeting each path avoids touching missing external
+	// worktrees, which may simply live on a temporarily unavailable volume.
+	pruneStaleManagedWorktreeMetadata(ws)
+	removeEmptyManagedDirectories(ws.Root)
 	recs, skipped, repoErrors := collect(ws)
 
-	reg, exists, _ := config.LoadRegistry(registryPath)
+	reg, exists, loadErr := config.LoadRegistry(registryPath)
+	if loadErr != nil {
+		// Older versions wrote the registry directly. If one was interrupted,
+		// preserve the damaged file for diagnosis and rebuild from the healthy
+		// worktrees below instead of letting the whole cockpit appear empty.
+		if quarantineBrokenRegistry(registryPath) == nil {
+			reg = config.Registry{Slices: map[string]config.RegistrySlice{}}
+			exists = false
+		}
+	}
+	if exists {
+		if repaired, changed := reconcileRegistry(ws.Root, reg, recs); changed {
+			reg = repaired
+			_ = config.SaveRegistry(registryPath, reg)
+		}
+	}
 	globs := ignoreGlobs(ws)
 	registered := registeredIndex(reg)
 
@@ -81,10 +104,20 @@ func Report(ws config.Workspace, registryPath string) Result {
 	}
 
 	slices, collisions := group(managed, ws.Grouping.StripPrefix)
+	// Branch names describe stack position, not durable slice membership. Keep a
+	// registered worktree in its recorded slice when the user switches/creates a
+	// stacked branch inside it.
+	slices = Apply(slices, membershipOverrides(ws.Root, reg, managed))
 	skipped = append(skipped, collisions...)
 
 	if !exists {
-		_ = config.SaveRegistry(registryPath, grandfatheredRegistry(slices))
+		reg = grandfatheredRegistry(slices)
+		_ = config.SaveRegistry(registryPath, reg)
+	} else if registerManagedSlices(&reg, slices, ws.Root) {
+		// Older releases created worktrees under the managed tree without adding
+		// them to an already-existing registry. Backfill those durable identities
+		// so branch switches and later removal remain reliable.
+		_ = config.SaveRegistry(registryPath, reg)
 	}
 
 	result := Result{
@@ -92,10 +125,214 @@ func Report(ws config.Workspace, registryPath string) Result {
 		Skipped:    skipped,
 		RepoErrors: repoErrors,
 		Candidates: candidates,
-		Missing:    missingMembers(reg),
+		Missing:    missingMembers(reg, recs),
 	}
 	sortReport(&result)
 	return result
+}
+
+func pruneStaleManagedWorktreeMetadata(ws config.Workspace) {
+	for _, repo := range ws.Repos {
+		worktrees, err := git.ListWorktrees(repo.Primary)
+		if err != nil {
+			continue
+		}
+		for _, worktree := range worktrees {
+			if worktree.Prunable && underManagedTree(worktree.Path, ws.Root) {
+				_ = git.ForgetMissingWorktree(repo.Primary, worktree.Path)
+			}
+		}
+	}
+}
+
+func quarantineBrokenRegistry(path string) error {
+	stamp := time.Now().UTC().Format("20060102T150405.000000000Z")
+	return os.Rename(path, path+".broken-"+stamp)
+}
+
+// removeEmptyManagedDirectories cleans up directory litter left by historical
+// worktree removal bugs. os.Remove deliberately refuses non-empty directories,
+// and WalkDir does not follow symlinks, so user files are never removed here.
+func removeEmptyManagedDirectories(root string) {
+	if root == "" {
+		return
+	}
+	base := filepath.Join(root, ".slis", "worktrees")
+	type candidate struct {
+		path    string
+		modTime time.Time
+	}
+	var dirs []candidate
+	_ = filepath.WalkDir(base, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.IsDir() && path != base {
+			if info, infoErr := entry.Info(); infoErr == nil {
+				dirs = append(dirs, candidate{path: path, modTime: info.ModTime()})
+			}
+		}
+		return nil
+	})
+	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i].path) > len(dirs[j].path) })
+	cutoff := time.Now().Add(-5 * time.Minute)
+	for _, dir := range dirs {
+		// A short grace period avoids racing another slis process between mkdir
+		// and `git worktree add`; Monday's legacy litter is far older than this.
+		if dir.modTime.Before(cutoff) {
+			_ = os.Remove(dir.path)
+		}
+	}
+}
+
+// reconcileRegistry migrates durable identities from older releases. Healthy
+// entries are refreshed to the worktree's current branch/path. A missing entry
+// is removed automatically only when its recorded path is in Slis's managed
+// tree (and therefore Slis-owned); missing imported/external worktrees remain
+// visible for human recovery. Branch refs are never deleted here.
+func reconcileRegistry(root string, reg config.Registry, recs []worktreeRec) (config.Registry, bool) {
+	changed := false
+	for sliceName, slice := range reg.Slices {
+		for repo, member := range slice.Members {
+			var matched *worktreeRec
+			for i := range recs {
+				if recs[i].repo == repo && member.WorktreePath != "" &&
+					resolvePath(recs[i].path) == resolvePath(member.WorktreePath) {
+					matched = &recs[i]
+					break
+				}
+			}
+			if matched == nil {
+				for i := range recs {
+					if recs[i].repo == repo && member.Branch != "" && recs[i].branch == member.Branch {
+						matched = &recs[i]
+						break
+					}
+				}
+			}
+			if matched != nil {
+				if member.Branch != matched.branch || resolvePath(member.WorktreePath) != resolvePath(matched.path) {
+					slice.Members[repo] = config.RegistryMember{Branch: matched.branch, WorktreePath: matched.path}
+					changed = true
+				}
+				continue
+			}
+
+			if !underManagedTree(member.WorktreePath, root) || !missingOrEmpty(member.WorktreePath) {
+				continue
+			}
+			// An empty directory at the exact registered worktree path is old
+			// litter, not a checkout. Remove only that empty leaf; non-empty paths
+			// are preserved for manual inspection.
+			_ = os.Remove(member.WorktreePath)
+			delete(slice.Members, repo)
+			changed = true
+		}
+		if len(slice.Members) == 0 {
+			delete(reg.Slices, sliceName)
+			changed = true
+			continue
+		}
+		reg.Slices[sliceName] = slice
+	}
+	return reg, changed
+}
+
+func missingOrEmpty(path string) bool {
+	entries, err := os.ReadDir(path)
+	if os.IsNotExist(err) {
+		return true
+	}
+	if err != nil || len(entries) != 0 {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.ModTime().Before(time.Now().Add(-5*time.Minute))
+}
+
+// registerManagedSlices backfills healthy Slis-owned worktrees that predate
+// create-time registry writes. External/grandfathered worktrees are excluded:
+// only paths beneath <root>/.slis/worktrees are unambiguously Slis-managed.
+func registerManagedSlices(reg *config.Registry, slices []model.Slice, root string) bool {
+	changed := false
+	for _, slice := range slices {
+		for repo, member := range slice.Members {
+			if !underManagedTree(member.WorktreePath, root) {
+				continue
+			}
+			existingSlice, ok := reg.Slices[slice.Name]
+			if ok {
+				if existing, memberExists := existingSlice.Members[repo]; memberExists &&
+					existing.Branch == member.Branch &&
+					resolvePath(existing.WorktreePath) == resolvePath(member.WorktreePath) {
+					continue
+				}
+			}
+			reg.RegisterCreated(slice.Name, repo, member.Branch, member.WorktreePath)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// membershipOverrides maps each healthy managed worktree's CURRENT branch back
+// to its durable slice. A path under .slis/worktrees/<slice>/<repo> owns that
+// slice even when no registry entry exists; an explicit registry match wins.
+func membershipOverrides(root string, reg config.Registry, recs []worktreeRec) Overrides {
+	overrides := Overrides{}
+	for _, rec := range recs {
+		if sliceName, ok := managedTreeSlice(rec.path, root); ok {
+			if overrides[sliceName] == nil {
+				overrides[sliceName] = map[string]string{}
+			}
+			overrides[sliceName][rec.repo] = rec.branch
+		}
+	}
+
+	// Match the recorded path first (branch switches are expected), then the
+	// recorded branch (worktree moves are also supported by registeredIndex).
+	for sliceName, slice := range reg.Slices {
+		for repo, member := range slice.Members {
+			var matched *worktreeRec
+			for i := range recs {
+				if recs[i].repo == repo && member.WorktreePath != "" &&
+					resolvePath(recs[i].path) == resolvePath(member.WorktreePath) {
+					matched = &recs[i]
+					break
+				}
+			}
+			if matched == nil {
+				for i := range recs {
+					if recs[i].repo == repo && recs[i].branch == member.Branch {
+						matched = &recs[i]
+						break
+					}
+				}
+			}
+			if matched == nil {
+				continue
+			}
+			if overrides[sliceName] == nil {
+				overrides[sliceName] = map[string]string{}
+			}
+			overrides[sliceName][repo] = matched.branch
+		}
+	}
+	return overrides
+}
+
+func managedTreeSlice(path, root string) (string, bool) {
+	if root == "" {
+		return "", false
+	}
+	base := resolvePath(filepath.Join(root, ".slis", "worktrees"))
+	rel, err := filepath.Rel(base, resolvePath(path))
+	if err != nil || rel == "." || filepath.IsAbs(rel) || rel == ".." ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 2 || parts[0] == "" || parts[0] == "." {
+		return "", false
+	}
+	return strings.Join(parts[:len(parts)-1], "/"), true
 }
 
 // registeredMembers indexes the registry for fast "is this worktree managed?"
@@ -161,17 +398,14 @@ func grandfatheredRegistry(slices []model.Slice) config.Registry {
 	return reg
 }
 
-// missingMembers returns registry members whose worktree directory is gone, or
-// which no longer sit on the recorded branch — so a known slice that lost its
-// worktree surfaces instead of silently vanishing.
-func missingMembers(reg config.Registry) []MissingMember {
+// missingMembers returns registry members that no longer resolve to a healthy
+// worktree by either recorded path or recorded branch. A current branch change
+// at the recorded path is healthy and stays in the registered slice.
+func missingMembers(reg config.Registry, recs []worktreeRec) []MissingMember {
 	var missing []MissingMember
 	for name, s := range reg.Slices {
 		for repo, m := range s.Members {
-			if m.WorktreePath == "" {
-				continue
-			}
-			if worktreeResolvesToBranch(m.WorktreePath, m.Branch) {
+			if registeredMemberResolves(repo, m, recs) {
 				continue
 			}
 			missing = append(missing, MissingMember{
@@ -185,18 +419,19 @@ func missingMembers(reg config.Registry) []MissingMember {
 	return missing
 }
 
-// worktreeResolvesToBranch reports whether the worktree at path still exists and
-// currently has branch checked out. A gone directory or a moved-off branch both
-// count as "not resolving" (→ missing).
-func worktreeResolvesToBranch(path, branch string) bool {
-	if _, err := os.Stat(path); err != nil {
-		return false
+func registeredMemberResolves(repo string, member config.RegistryMember, recs []worktreeRec) bool {
+	for _, rec := range recs {
+		if rec.repo != repo {
+			continue
+		}
+		if member.WorktreePath != "" && resolvePath(rec.path) == resolvePath(member.WorktreePath) {
+			return true
+		}
+		if member.Branch != "" && rec.branch == member.Branch {
+			return true
+		}
 	}
-	cur, err := git.CurrentBranch(path)
-	if err != nil {
-		return false
-	}
-	return cur == branch
+	return false
 }
 
 // matchesAnyGlob reports whether path matches any of the ignore patterns.

@@ -47,6 +47,17 @@ type Registry struct {
 // entry if needed (source imported, timestamped) and adds/updates the member for
 // the given repo. It never touches git — only this in-memory registry.
 func (r *Registry) Import(sliceName, repo, branch, worktreePath string) {
+	r.register(sliceName, repo, branch, worktreePath, SourceImported)
+}
+
+// RegisterCreated records a worktree created by slis. Recording creation
+// immediately (rather than waiting for discovery) makes cleanup and branch
+// switches reliable even when an older registry already exists.
+func (r *Registry) RegisterCreated(sliceName, repo, branch, worktreePath string) {
+	r.register(sliceName, repo, branch, worktreePath, SourceCreated)
+}
+
+func (r *Registry) register(sliceName, repo, branch, worktreePath string, source RegistrySource) {
 	if r.Slices == nil {
 		r.Slices = map[string]RegistrySlice{}
 	}
@@ -55,7 +66,7 @@ func (r *Registry) Import(sliceName, repo, branch, worktreePath string) {
 		rs = RegistrySlice{
 			Name:    sliceName,
 			Members: map[string]RegistryMember{},
-			Source:  SourceImported,
+			Source:  source,
 			At:      time.Now().UTC(),
 		}
 	}
@@ -87,6 +98,8 @@ func LoadRegistry(path string) (reg Registry, exists bool, err error) {
 }
 
 // SaveRegistry writes reg to path as YAML, creating parent directories as needed.
+// The replacement is atomic so an interrupted process cannot leave a truncated
+// registry that hides otherwise healthy worktrees on the next launch.
 func SaveRegistry(path string, reg Registry) error {
 	if reg.Slices == nil {
 		reg.Slices = map[string]RegistrySlice{}
@@ -98,5 +111,28 @@ func SaveRegistry(path string, reg Registry) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".slis-registry-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
 }

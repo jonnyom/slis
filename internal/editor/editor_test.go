@@ -122,3 +122,20 @@ func TestSliceArgs(t *testing.T) {
 		t.Errorf("singledir (no common parent) SliceArgs = %v, want [/a/x]", args)
 	}
 }
+
+func TestFileArgs(t *testing.T) {
+	path := "/p/s/app/main.ts"
+
+	if got := FileArgs(Editor{Bin: "code", Mode: ModeWorkspace}, path, 42); len(got) != 2 || got[0] != "--goto" || got[1] != path+":42" {
+		t.Errorf("VS Code FileArgs = %v, want [--goto %s:42]", got, path)
+	}
+	if got := FileArgs(Editor{Bin: "zed", Mode: ModeMultiDir}, path, 7); len(got) != 1 || got[0] != path+":7" {
+		t.Errorf("Zed FileArgs = %v, want [%s:7]", got, path)
+	}
+	if got := FileArgs(Editor{Bin: "vim", Mode: ModeSingleDir}, path, 7); len(got) != 1 || got[0] != path {
+		t.Errorf("unknown editor FileArgs = %v, want [%s]", got, path)
+	}
+	if got := FileArgs(Editor{Bin: "cursor", Mode: ModeWorkspace}, path, 0); len(got) != 2 || got[1] != path {
+		t.Errorf("line-free FileArgs = %v, want plain path target", got)
+	}
+}

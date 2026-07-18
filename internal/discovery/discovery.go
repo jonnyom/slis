@@ -99,7 +99,24 @@ func resolvePath(p string) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		return r
 	}
-	return filepath.Clean(p)
+	// The leaf may no longer exist (the exact case stale-state repair handles).
+	// Resolve the nearest existing parent, then re-attach the missing suffix so
+	// macOS /var and /private/var paths still compare as the same location.
+	clean := filepath.Clean(p)
+	cur := clean
+	var suffix []string
+	for {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			parts := append([]string{r}, suffix...)
+			return filepath.Join(parts...)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return clean
+		}
+		suffix = append([]string{filepath.Base(cur)}, suffix...)
+		cur = parent
+	}
 }
 
 // collect walks every repo's linked worktrees and returns the healthy ones plus

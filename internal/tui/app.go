@@ -1253,11 +1253,7 @@ func (m *Model) launchAgentCmd() tea.Cmd {
 
 // isShellCmd reports whether cmd is an interactive shell (safe to type into).
 func isShellCmd(cmd string) bool {
-	switch cmd {
-	case "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh":
-		return true
-	}
-	return false
+	return tmuxctl.IsShellCommand(cmd)
 }
 
 // createFinishedMsg is delivered when a background `slis create` run completes.
@@ -1298,10 +1294,12 @@ func (m Model) spinnerGlyph() string {
 
 // savePrefs persists the remembered UI toggles (best-effort).
 func (m Model) savePrefs() {
-	_ = config.SavePrefs(config.StatePaths().Prefs, config.Prefs{
-		SplitDiff: m.splitDiff,
-		DiffScope: m.diffScope.pref(),
-	})
+	path := config.StatePaths().Prefs
+	prefs := config.LoadPrefs(path)
+	prefs.SplitDiff = m.splitDiff
+	prefs.DiffScope = m.diffScope.pref()
+	prefs.DiffVsTrunk = nil
+	_ = config.SavePrefs(path, prefs)
 }
 
 // slisAdoptCmd hands the terminal to the interactive `slis adopt` picker (which

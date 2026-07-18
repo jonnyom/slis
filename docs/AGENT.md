@@ -10,15 +10,19 @@ mutate-vs-read classification, and how errors surface. The
 - **Branch on the JSON data, not the exit code.** Today every failure exits `1`
   (see [Errors](#errors--exit-codes)); the data is the contract.
 - **Every read command emits `--json`:** `ls show status pr pr-stack summary
-  conflicts comments doctor candidates`. Prefer it over parsing tables.
+  conflicts comments doctor candidates review list branch-diff tree cat`.
+  Prefer it over parsing tables.
 - **Worktree ingestion is opt-in.** A worktree becomes a slice only when it is
   *managed*: under `<root>/.slis/worktrees/**` or recorded in the registry
   (`$XDG_STATE_HOME/slis/registry.yaml`). Other worktrees are **candidates** —
   surfaced, never auto-ingested. Register one with `slis import` (or `--all`);
   hide one with `slis ignore <path-or-glob>`; un-manage one with `slis forget`.
-  A registered slice whose worktree vanished surfaces as **missing** (it never
-  silently disappears). On first run after upgrade, all currently-discovered
-  slices are grandfathered into the registry, so existing setups are unchanged.
+  A missing external/imported worktree surfaces as **missing** for manual
+  recovery. A missing Slis-owned managed worktree is safely removed from the
+  registry after its stale Git administration is pruned. On first run after
+  upgrade, all currently-discovered slices are grandfathered into the registry,
+  so existing setups are unchanged; older managed worktrees are also backfilled
+  into registries that already exist.
 - **Check the [mutation table](#mutation-classification) before running a
   command.** Reads are always safe; some mutators force-push or overwrite trunk.
 
@@ -62,13 +66,15 @@ prunable | invalid-branch-name | rev-parse-failed | grouping-collision |
 ignored`. `repo_errors` lists repos whose worktree listing failed entirely (the
 rest still discover). `candidates` are discovered-but-unmanaged worktrees (opt-in
 — `slis import`/`slis ignore`); `slice` is the suggested name. `missing` are
-registered slices whose worktree is gone or moved off its branch (`slis forget`
-to drop, or recreate the worktree). The standalone `slis candidates --json` emits
+registered external slices whose worktree is gone (`slis forget` to drop, or
+recreate the worktree). A branch switch at the same registered worktree path is
+healthy and keeps the durable slice identity. The standalone `slis candidates --json` emits
 just the candidate array. The human `slis ls` appends a hidden-worktree warning
 and a `N new worktree(s) found` hint on stderr; run `slis doctor` for detail.
 
 ### `slis show <slice> --json` → object
-`ls`'s member shape plus a per-repo Graphite stack:
+`ls`'s member shape plus each member branch's downstack Graphite ancestry. It
+never includes siblings or upstack descendants checked out by other worktrees:
 ```jsonc
 { "name": "checkout", "base": "", "active": false,
   "members": [{ "repo": "web", "branch": "jonny/checkout",
@@ -108,13 +114,17 @@ per-check counts. `number` is omitted when the branch has no PR.
 ```jsonc
 [{ "repo": "web", "branch": "jonny/checkout", "number": 8107,
    "url": "https://github.com/...", "state": "OPEN", "title": "Checkout revamp",
-   "review_decision": "APPROVED", "stack_order": 1 }]
+   "review_decision": "APPROVED", "stack_order": 1,
+   "ci": "fail", "ci_pass": 5, "ci_fail": 2, "ci_pending": 0 }]
 ```
 `review_decision` ∈ `APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | ""`. All
 PR fields are omitted for a branch with no PR (only `repo`/`branch` remain).
 `stack_order` is the branch's trunk-relative Graphite depth (1 = directly off
 trunk), omitted when the repo has no stack data. Rows are ordered trunk-first by
-depth when any repo has Graphite data, otherwise alphabetically by repo.
+depth when any repo has Graphite data, otherwise alphabetically by repo. `ci` is
+the lowercase rollup `pass | fail | pending`; `ci_pass`/`ci_fail`/`ci_pending`
+are the per-check counts (each omitted when 0) — so a front-end can badge CI per
+row without a second fetch.
 
 ### `slis conflicts --json` → object
 ```jsonc
@@ -166,7 +176,11 @@ the journal. And a **Graphite** section (report-only): whether `gt` is installed
 is Graphite-initialised, and whether each slice member's branch is tracked in gt
 metadata (an untracked branch drops out of stack views — remedy: `gt track
 --parent <trunk> <branch>`). These are report-only except the provably-safe
-stale-journal deletion under `--fix`; doctor never prunes or deletes worktrees.
+stale-journal deletion under `--fix`. Before the report is built, normal
+discovery removes only exact stale Slis-owned Git administrative records whose
+checkout directory is already gone, removes empty directories inside the Slis-managed tree, and
+drops matching missing managed registry entries. It never deletes a live or
+non-empty worktree, an external/imported missing entry, a branch ref, or a commit.
 
 ### `slis comments [slice] --json` → object
 Cached PR comments, keyed `slice → repo`. Persists after `slis rm` so feedback
@@ -178,6 +192,88 @@ isn't lost.
 ```
 `kind`: `0` issue · `1` review · `2` inline. `context`: review state, or
 `path:line` for inline comments.
+
+### `slis review list [slice] --json` → array
+Pending inline-review comments (GitHub-review-style feedback awaiting delivery to
+a slice's agent). With a slice arg → that slice's pending comments; without → all
+slices'. Empty is `[]`. Deterministic order (slice, repo, file, line, id).
+```jsonc
+[{ "id": "1ebcd07cf3c4", "slice": "checkout", "repo": "web",
+   "branch": "jonny/checkout", "file": "pay.go", "line": 42, "end_line": 44,
+   "hunk": "func Pay() {}", "body": "rename this variable",
+   "created_at": "2026-07-18T13:42:38Z" }]
+```
+`line` is a 1-based line in the new (post-change) file; optional `end_line`
+makes it a multi-line range. `branch` is the slice member's branch (filled at
+add time); `hunk` is an optional diff excerpt for context (absent when empty).
+Add/remove/deliver with the mutating twins:
+`slis review add <slice> --repo R --file F --line N [--end-line N] --body B [--hunk H]`,
+`slis review rm <slice> <id>`, `slis review clear <slice>`, and
+`slis review send <slice> [--keep]`. **Send flow:** `send` composes every pending
+comment for the slice into one structured prompt (`Code review feedback on slice
+<name> — address each item:` then a numbered item per comment with repo,
+file:line or file:start-end, fenced selection, and the instruction) and injects
+it into the slice's
+configured agent's **active tmux pane** via bracketed paste + Enter, then clears
+the pending batch (keep it with `--keep`). If no agent is running, `send` creates
+or reuses the slice session, launches the configured agent with the same SLIS_*
+worktree context as the TUI agent action, waits for it to own the active pane,
+then delivers. A busy non-agent pane gets a dedicated `agent` window. Startup or
+readiness failure leaves every comment pending; prompts are never pasted into a
+shell or unrelated process. The read-only RPC
+sidecar exposes the same array as the `reviews` method (`{ "slice"?: string }`);
+adding and sending stay CLI-only so the sidecar never mutates.
+
+### `slis branch-diff <slice> <repo> <branch> --json` → object
+The committed diff of one branch against its Graphite stack **parent** (falling
+back to the repo trunk when the branch has no parent), using merge-base
+(three-dot) semantics — so it shows only that branch's own commits, not the whole
+downstack. Read against the repo's **primary** checkout (never a worktree).
+```jsonc
+{ "repo": "web", "branch": "jonny/checkout", "parent": "jonny/checkout-base",
+  "stat": { "files": [{ "path": "src/app.ts", "added": 12, "deleted": 3 }],
+            "added": 12, "deleted": 3 },
+  "patch": "diff --git a/src/app.ts b/src/app.ts\n…" }
+```
+`parent` is the ref diffed against. `stat`/`patch` mirror the per-repo entries of
+the RPC `diff` method. `added`/`deleted` are `-1` for binary files. `err` (with
+`stat`/`patch` omitted) is set when the branch's diff failed.
+
+### `slis tree <slice> <repo> <branch> [path] --json` → object
+One directory level of a branch's tree at `path` (empty = the tree root), for
+lazy expansion — one level per call. `name` is the leaf name (basename) within
+the listed directory. Read against the repo's primary checkout.
+```jsonc
+{ "repo": "web", "branch": "jonny/checkout", "path": "src",
+  "entries": [{ "name": "util", "type": "tree", "size": -1 },
+              { "name": "app.ts", "type": "blob", "size": 512 }] }
+```
+`type` ∈ `blob | tree | commit` (commit = submodule). `size` is the blob byte
+size; `-1` for trees and submodules. Entries are sorted trees-first, then by name.
+
+### `slis cat <slice> <repo> <branch> <path>` → raw bytes | `--json` object
+Prints a file's exact content at a branch's revision (`git show <branch>:<path>`)
+to stdout, verbatim — no cap, no stripping. `--json` instead wraps the metadata
+and control-stripped text content (binary flagged, content omitted), sharing the
+RPC `file` method's cap/binary handling:
+```jsonc
+{ "repo": "web", "branch": "jonny/checkout", "path": "src/app.ts",
+  "size": 512, "binary": false, "content": "export const x = 1\n…" }
+```
+`--json` caps content at 256 KB by default (error kind `file-too-large` over cap);
+`binary: true` omits `content`. A directory path errors (`not-a-file`); a missing
+path errors (`path-not-found`).
+
+#### RPC methods `branchDiff` / `tree` / `file`
+The `slis rpc` sidecar (JS TUI) exposes the same three reads with camelCase names
+and object params, returning the shapes above:
+- `branchDiff` `{ slice, repo, branch, format? }` → the branch-diff object
+  (`format` ∈ `stat | patch | both`, default `both`).
+- `tree` `{ slice, repo, branch, path? }` → the tree object.
+- `file` `{ slice, repo, branch, path, maxBytes? }` → the `--json` file object.
+
+Errors carry `data.kind`: `slice-not-found`, `branch-not-found`, `path-not-found`,
+`file-too-large`, `repo-not-configured` (non-member repo → invalid-params).
 
 ## Session status
 
@@ -214,9 +310,9 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 
 | Class | Commands | Notes for agents |
 |---|---|---|
-| **read-only** | `ls show status pr pr-stack summary conflicts comments doctor candidates edit` | Safe anytime. `doctor --fix` is the exception (it mutates). |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). |
-| **remote / destructive** | `submit merge sync fix-ci` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits. Require explicit intent. |
+| **read / safe repair** | `ls show status pr pr-stack summary conflicts comments doctor candidates branch-diff tree cat edit review list` | Safe anytime. Discovery-backed reads may atomically refresh/backfill the registry, quarantine a malformed registry, remove the exact stale Git administration for an already-gone Slis-owned checkout, and remove empty Slis-managed directories; they never alter external worktrees or delete live worktrees, refs, or commits. `doctor --fix` additionally applies its documented repairs. |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup init init-hooks init-skill editor focus review add/rm/send/clear` | Touches local worktrees/branches/config/uncommitted work. `import`/`forget` edit only the slis registry (never git); `ignore` edits `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store (a JSON file, never git); `review send` starts the configured agent in the slice's tmux session when needed, injects only after verifying that agent owns the active pane, and clears the pending batch on success. |
+| **remote / destructive** | `submit merge sync fix-ci ci-rerun` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits; `ci-rerun <slice>` re-triggers each repo's failed CI runs (`gh run rerun --failed`) — the one CI write. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before
 running anything in the last two rows.
@@ -241,10 +337,20 @@ sessions:
   harness: claude   # "claude" (default when empty) or "codex"
   agent: ""         # explicit launch command; non-empty wins verbatim
   autostart: false  # launch the harness when a session is first attached
+  agents:           # optional: selectable agents (name + argv) → launch picker
+    - { name: claude, cmd: [claude] }
+    - { name: codex,  cmd: [codex, --full-auto] }
 ```
 
 - **Precedence:** a non-empty `agent` is used verbatim (binary + args);
   otherwise `harness` selects the binary (`claude` or `codex`).
+- **`agents`** (optional): a list of selectable coding agents, each a `name`
+  plus a `cmd` argv. When more than one is configured the front-end shows a
+  picker at agent-launch time; each launches in the slice's session exactly like
+  the single default (SLIS_* env is injected for every agent; the claude
+  `--append-system-prompt` flag is added only for a claude command). An
+  empty/absent list falls back to a single default derived from `harness`/`agent`.
+  A configured entry with an empty `name` or `cmd` is a config error.
 - **Launch shape:** claude sessions get `--append-system-prompt '<slice
   context>'`; codex gets neither a positional prompt nor an append flag.
 - **`fix-ci`** runs `claude -p <prompt>` or `codex exec <prompt>` in the failing

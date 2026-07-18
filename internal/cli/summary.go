@@ -10,10 +10,8 @@ import (
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/diff"
-	"github.com/jonnyom/slis/internal/discovery"
-	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/report"
 	"github.com/jonnyom/slis/internal/summary"
-	"github.com/jonnyom/slis/internal/swap"
 )
 
 // RepoCommitsDTO is a JSON-friendly per-repo commit summary for a slice.
@@ -23,30 +21,7 @@ type RepoCommitsDTO struct {
 	Commits []string `json:"commits"`
 }
 
-// findSlice returns the model.Slice with the given name from the workspace, or
-// an error if it cannot be found.
-func findSlice(ws config.Workspace, name string) (model.Slice, error) {
-	sp := config.StatePaths()
-
-	slices := discovery.Report(ws, sp.Registry).Slices
-
-	ov, _ := discovery.LoadOverrides(sp.Overrides)
-	slices = discovery.Apply(slices, ov)
-
-	j, _ := swap.Load(sp.ActiveJournal)
-	for i, s := range slices {
-		if j != nil && j.Slice == s.Name {
-			slices[i].Active = true
-		}
-	}
-
-	for _, s := range slices {
-		if s.Name == name {
-			return s, nil
-		}
-	}
-	return model.Slice{}, fmt.Errorf("slice %q not found", name)
-}
+var findSlice = report.FindSlice
 
 var summaryCmd = &cobra.Command{
 	Use:   "summary <slice>",

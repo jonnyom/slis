@@ -24,6 +24,19 @@ jobs:
           go-version: "1.26.x"
           cache: true
 
+      # GoReleaser's `before` hook cross-compiles `slis-ui` (the JS TUI) for
+      # every platform via `bun build --compile`, so bun must be on PATH first.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # Validate the lockfile early (host platform); the GoReleaser hook then
+      # adds every platform's optional deps (--cpu '*' --os '*') and compiles.
+      - name: Install tui-js dependencies
+        working-directory: tui-js
+        run: bun install --frozen-lockfile
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

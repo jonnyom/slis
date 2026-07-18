@@ -26,6 +26,70 @@ func commitInDir(t *testing.T, dir, msg string) {
 	}
 }
 
+// TestBranchAgainstParent builds a 2-branch stack over trunk (main → base →
+// feature) in a single primary checkout and asserts merge-base (three-dot)
+// scoping: feature-vs-base shows only feature's own commit, while feature-vs-
+// trunk shows the whole downstack.
+func TestBranchAgainstParent(t *testing.T) {
+	repo := testutil.NewRepo(t)
+
+	// base branch off main: adds base.txt.
+	if _, err := git.Run(repo, "switch", "-c", "base"); err != nil {
+		t.Fatalf("switch base: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "base.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(repo, "add", "base.txt"); err != nil {
+		t.Fatal(err)
+	}
+	commitInDir(t, repo, "add base.txt")
+
+	// feature branch off base: adds feat.txt.
+	if _, err := git.Run(repo, "switch", "-c", "feature"); err != nil {
+		t.Fatalf("switch feature: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "feat.txt"), []byte("f\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(repo, "add", "feat.txt"); err != nil {
+		t.Fatal(err)
+	}
+	commitInDir(t, repo, "add feat.txt")
+	if _, err := git.Run(repo, "switch", "main"); err != nil {
+		t.Fatalf("switch main: %v", err)
+	}
+
+	vsParent, err := diff.BranchAgainstParent(repo, "base", "feature", true)
+	if err != nil {
+		t.Fatalf("BranchAgainstParent(base): %v", err)
+	}
+	if vsParent.Err != "" {
+		t.Fatalf("unexpected err: %s", vsParent.Err)
+	}
+	if len(vsParent.Files) != 1 || vsParent.Files[0].Path != "feat.txt" {
+		t.Errorf("feature-vs-base files = %+v, want only feat.txt", vsParent.Files)
+	}
+	if !strings.Contains(vsParent.Patch, "feat.txt") || strings.Contains(vsParent.Patch, "base.txt") {
+		t.Errorf("feature-vs-base patch should carry feat.txt only:\n%s", vsParent.Patch)
+	}
+
+	vsTrunk, err := diff.BranchAgainstParent(repo, "main", "feature", false)
+	if err != nil {
+		t.Fatalf("BranchAgainstParent(main): %v", err)
+	}
+	paths := map[string]bool{}
+	for _, f := range vsTrunk.Files {
+		paths[f.Path] = true
+	}
+	if !paths["base.txt"] || !paths["feat.txt"] {
+		t.Errorf("feature-vs-trunk files = %v, want base.txt+feat.txt", paths)
+	}
+	if vsTrunk.Patch != "" {
+		t.Errorf("withPatch=false should carry no patch, got %q", vsTrunk.Patch)
+	}
+}
+
 func TestSliceDiffCountsChanges(t *testing.T) {
 	// Create base repo on main with one file.
 	repo := testutil.NewRepo(t)
