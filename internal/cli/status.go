@@ -5,40 +5,17 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"text/tabwriter"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/notify"
+	"github.com/jonnyom/slis/internal/report"
 	"github.com/spf13/cobra"
 )
 
-// StatusDTO is a JSON-friendly representation of a slice's Claude session status.
-type StatusDTO struct {
-	Slice  string `json:"slice"`
-	Status string `json:"status"`
-}
+type StatusDTO = report.StatusDTO
 
-// sliceStatuses returns the session status for every slice in the workspace,
-// sorted by name. A slice with no recorded event reports "none". The slice set
-// is the same canonical set ls shows (discovery + overrides), so the output is
-// stable regardless of which slices happen to have event files.
-func sliceStatuses(ws config.Workspace, sp config.Paths) ([]StatusDTO, error) {
-	dtos, err := listSlices(ws, sp.Overrides, sp.ActiveJournal)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]StatusDTO, 0, len(dtos))
-	for _, s := range dtos {
-		out = append(out, StatusDTO{
-			Slice:  s.Name,
-			Status: notify.ReadStatus(sp.EventsDir, s.Name).String(),
-		})
-	}
-	sort.Slice(out, func(i, k int) bool { return out[i].Slice < out[k].Slice })
-	return out, nil
-}
+var sliceStatuses = report.SliceStatuses
 
 // renderStatusTable writes an aligned SLICE/STATUS table to w.
 func renderStatusTable(w io.Writer, dtos []StatusDTO) {

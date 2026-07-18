@@ -11,26 +11,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jonnyom/slis/internal/config"
-	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/radar"
+	"github.com/jonnyom/slis/internal/report"
 )
 
-// ConflictsDTO is the JSON shape for `slis conflicts --json`.
-type ConflictsDTO struct {
-	Overlaps   []radar.Overlap `json:"overlaps"`
-	Incomplete []string        `json:"incomplete"`
-}
+type ConflictsDTO = report.ConflictsDTO
 
-// computeConflicts discovers slices, applies overrides, and builds the radar
-// index over their changed-file sets. Stats are computed fresh (no TUI card
-// cache outside the running program), concurrently per slice.
-func computeConflicts(ws config.Workspace, overridesPath string) (*radar.Index, error) {
-	slices := discovery.Report(ws, registryPathFor(overridesPath)).Slices
-	ov, _ := discovery.LoadOverrides(overridesPath)
-	slices = discovery.Apply(slices, ov)
-
-	return radar.Build(radar.CollectStats(slices)), nil
-}
+var computeConflicts = report.ComputeConflicts
 
 // renderConflicts writes a human-readable conflict report to w.
 func renderConflicts(w io.Writer, idx *radar.Index) {

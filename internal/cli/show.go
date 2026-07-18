@@ -7,31 +7,17 @@ import (
 	"strings"
 
 	"github.com/jonnyom/slis/internal/config"
-	"github.com/jonnyom/slis/internal/gt"
+	"github.com/jonnyom/slis/internal/report"
 	"github.com/spf13/cobra"
 )
 
-// OrderedBranchDTO is a JSON-friendly copy of gt.OrderedBranch.
-type OrderedBranchDTO struct {
-	Name         string `json:"name"`
-	Depth        int    `json:"depth"`
-	Trunk        bool   `json:"trunk"`
-	NeedsRestack bool   `json:"needs_restack"`
-}
+type (
+	OrderedBranchDTO = report.OrderedBranchDTO
+	MemberDetailDTO  = report.MemberDetailDTO
+	SliceDetailDTO   = report.SliceDetailDTO
+)
 
-// MemberDetailDTO extends MemberDTO with a gt stack.
-type MemberDetailDTO struct {
-	MemberDTO
-	Stack []OrderedBranchDTO `json:"stack,omitempty"`
-}
-
-// SliceDetailDTO extends SliceDTO with per-member stacks.
-type SliceDetailDTO struct {
-	Name    string            `json:"name"`
-	Base    string            `json:"base"`
-	Active  bool              `json:"active"`
-	Members []MemberDetailDTO `json:"members"`
-}
+var buildDetail = report.BuildDetail
 
 var showCmd = &cobra.Command{
 	Use:   "show <slice>",
@@ -74,36 +60,6 @@ var showCmd = &cobra.Command{
 		printDetail(detail)
 		return nil
 	},
-}
-
-func buildDetail(dto SliceDTO) SliceDetailDTO {
-	members := make([]MemberDetailDTO, 0, len(dto.Members))
-	for _, m := range dto.Members {
-		mdet := MemberDetailDTO{MemberDTO: m}
-		if m.WorktreePath != "" {
-			st, err := gt.ReadStack(m.WorktreePath)
-			if err == nil {
-				ordered := st.Ordered()
-				stack := make([]OrderedBranchDTO, 0, len(ordered))
-				for _, ob := range ordered {
-					stack = append(stack, OrderedBranchDTO{
-						Name:         ob.Name,
-						Depth:        ob.Depth,
-						Trunk:        ob.Trunk,
-						NeedsRestack: ob.NeedsRestack,
-					})
-				}
-				mdet.Stack = stack
-			}
-		}
-		members = append(members, mdet)
-	}
-	return SliceDetailDTO{
-		Name:    dto.Name,
-		Base:    dto.Base,
-		Active:  dto.Active,
-		Members: members,
-	}
 }
 
 func printDetail(detail SliceDetailDTO) {
