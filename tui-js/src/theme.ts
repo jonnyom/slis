@@ -4,6 +4,8 @@
 // Go side renders (sliceGlyph / sessionBadge).
 
 import type { SessionStatus } from "./rpc/types";
+import type { FileStatus } from "./diff/parse";
+import type { TokenKind } from "./diff/tokenize";
 
 export const color = {
   // Accents
@@ -38,7 +40,42 @@ export const diffColor = {
   del: "#ff5f5f", // red -
   hunk: "#5fafff", // blue @@
   header: "#808080", // dim file header
+  // Word-level intra-line highlight backgrounds (subtle, readable on dark).
+  addChangeBg: "#154023", // muted green wash behind changed words on + lines
+  delChangeBg: "#4a1518", // muted red wash behind changed words on - lines
+  gutter: "#585858", // line-number gutter
 } as const;
+
+// Syntax-token foregrounds for the rich differ's own tokenizer.
+export const syntaxColor: Record<TokenKind, string> = {
+  keyword: "#ff87d7", // magenta/pink
+  string: "#87d787", // green
+  comment: "#6c6c6c", // dim grey
+  number: "#ffaf5f", // orange
+  type: "#5fd7ff", // cyan
+  function: "#87afff", // blue
+  punct: "#a8a8a8", // light grey
+  plain: "#c0c0c0", // default fg
+};
+
+export function colorForKind(kind: TokenKind): string {
+  return syntaxColor[kind];
+}
+
+// File-tree status glyph colors (A/M/D/R).
+export function statusColor(status: FileStatus): string {
+  switch (status) {
+    case "added":
+      return color.synced;
+    case "deleted":
+      return color.missing;
+    case "renamed":
+      return color.candidate;
+    case "modified":
+    default:
+      return color.wait;
+  }
+}
 
 // Slice-row glyph per combined session/work state (sliceGlyph).
 export const glyph = {

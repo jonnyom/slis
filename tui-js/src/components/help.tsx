@@ -24,6 +24,7 @@ const COCKPIT_BINDINGS: Binding[] = [
   ["tab", "next panel"],
   ["1–4", "Repos&Stack / PRs / Session / Processes"],
   ["j / k", "move selection in panel"],
+  ["enter / l", "open rich diff (Stack panel)"],
   ["b", "cycle diff scope working → parent → trunk"],
   ["t", "toggle stat / patch"],
   ["h / l", "collapse / expand process subtree"],
@@ -35,6 +36,16 @@ const COCKPIT_BINDINGS: Binding[] = [
   ["w", "swap slice in / out (live)"],
   ["esc", "back to browser"],
   ["q", "quit"],
+];
+
+const DIFF_BINDINGS: Binding[] = [
+  ["j / k", "next / prev file"],
+  ["[ / ]  ·  p / n", "prev / next hunk"],
+  ["t", "toggle unified / side-by-side"],
+  ["b", "cycle diff scope"],
+  ["ctrl+d / ctrl+u", "scroll diff"],
+  ["g / G", "top / bottom"],
+  ["esc / h", "back to cockpit"],
 ];
 
 function Legend(): ReactNode {
@@ -77,6 +88,22 @@ export function Help({ view }: { view: "browser" | "cockpit" }): ReactNode {
           <span fg={color.fg}>{help}</span>
         </text>
       ))}
+      {view === "cockpit" ? (
+        <>
+          <text> </text>
+          <text fg={color.dim} attributes={DIM} wrapMode="none">
+            Rich diff (enter):
+          </text>
+          {DIFF_BINDINGS.map(([keys, help], i) => (
+            <text key={`d${i}`} wrapMode="none">
+              <span fg={color.candidate} attributes={BOLD}>
+                {keys.padEnd(18)}
+              </span>
+              <span fg={color.fg}>{help}</span>
+            </text>
+          ))}
+        </>
+      ) : null}
       <text> </text>
       <Legend />
       <text> </text>
