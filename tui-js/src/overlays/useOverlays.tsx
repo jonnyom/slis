@@ -20,12 +20,9 @@ import { clampReviewSel } from "../review/context";
 import { quickPickIndex } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
 import {
-  activate,
-  activateStash,
   adoptBranch,
   ciRerunSlice,
   copyToClipboard,
-  deactivate,
   editorSet,
   editPath,
   editRepo,
@@ -48,6 +45,7 @@ import {
   submitSlice,
   summarySlice,
   syncSlice,
+  swapSlice,
   ungroupSlice,
   type MutateResult,
 } from "../rpc/mutate";
@@ -76,7 +74,7 @@ import type { BadgeState, ResultStatus } from "../theme";
 
 type Overlay =
   | { kind: "help" }
-  | { kind: "swap"; slice: string; active: boolean; dirty: boolean }
+  | { kind: "swap"; slice: string; active: boolean }
   | { kind: "stack"; slices: string[]; conflictWith: string[] }
   | { kind: "remove"; slices: string[] }
   | { kind: "ciRerun"; slice: string }
@@ -327,24 +325,15 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     [reloadReview],
   );
 
-  // Open the swap confirm. For a swap-IN we asynchronously probe the working
-  // tree so the overlay can offer [s] activate --stash when it is dirty.
+  // The TUI always uses activate --stash for swap-in. The engine only creates a
+  // stash when a primary is actually dirty, pins it in the journal, and restores
+  // it on swap-out. This avoids a racy/incorrect probe of the slice worktree
+  // (the dirtiness that matters lives in the primary checkout).
   const openSwap = useCallback(
     (slice: string, active: boolean) => {
-      setOverlay({ kind: "swap", slice, active, dirty: false });
-      if (active) return; // swap-OUT never stashes
-      client.diff({ slice, scope: "working", format: "stat" }).then(
-        (d) => {
-          const dirty = d.repos.some((r) => (r.stat?.files.length ?? 0) > 0);
-          if (dirty)
-            setOverlay((o) =>
-              o && o.kind === "swap" && o.slice === slice ? { ...o, dirty: true } : o,
-            );
-        },
-        () => {},
-      );
+      setOverlay({ kind: "swap", slice, active });
     },
-    [client],
+    [],
   );
 
   // Open a path/repo/slice in the editor. Successful GUI launches are quiet:
@@ -467,17 +456,13 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         if (name === "y" || isEnter)
           runMutation(
             overlay.active ? "Swap out" : "Swap in",
-            () => (overlay.active ? deactivate(overlay.slice) : activate(overlay.slice)),
+            () => swapSlice(overlay.slice, overlay.active),
             {
               successToast: overlay.active
                 ? `Swapped out ${overlay.slice}`
                 : `Swapped in ${overlay.slice}`,
             },
           );
-        else if (name === "s" && overlay.dirty && !overlay.active)
-          runMutation("Swap in (stash dirty)", () => activateStash(overlay.slice), {
-            successToast: `Swapped in ${overlay.slice}`,
-          });
         else if (name === "n" || isCancel) close();
         return;
       case "stack": {
@@ -729,7 +714,7 @@ function renderOverlay(
     case "help":
       return <Help view={view} />;
     case "swap":
-      return <SwapOverlay slice={overlay.slice} active={overlay.active} dirty={overlay.dirty} />;
+      return <SwapOverlay slice={overlay.slice} active={overlay.active} />;
     case "stack":
       return <StackActionsOverlay slices={overlay.slices} conflictWith={overlay.conflictWith} />;
     case "remove":

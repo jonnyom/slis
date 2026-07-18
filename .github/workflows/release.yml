@@ -48,3 +48,23 @@ jobs:
           # secret named HOMEBREW_TAP_GITHUB_TOKEN. Without it, the brew formula
           # push step will be skipped or fail.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # GoReleaser publishes the preferred cask above. Keep a formula carrying
+      # the same two binaries as an upgrade bridge for pre-0.7 installations:
+      # Homebrew does not automatically migrate an installed formula to a cask.
+      - name: Check out Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: jonnyom/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Publish compatibility Homebrew formula
+        run: |
+          ./scripts/render-homebrew-formula.sh "${GITHUB_REF_NAME}" dist/checksums.txt homebrew-tap/Formula/slis.rb
+          cd homebrew-tap
+          git config user.name goreleaser-bot
+          git config user.email goreleaser@users.noreply.github.com
+          git add Formula/slis.rb
+          git commit -m "Brew formula update for slis ${GITHUB_REF_NAME}"
+          git push

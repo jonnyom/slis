@@ -18,22 +18,21 @@ import { visibleTextLines } from "./textinput";
 export function SwapOverlay({
   slice,
   active,
-  dirty,
 }: {
   slice: string;
   active: boolean;
-  dirty: boolean;
 }): ReactNode {
   const detail = active
     ? "Restores each primary to its previous branch."
-    : "Puts each primary on slis/live/" + slice + " at the slice tip.";
+    : "Puts each primary on slis/live/" +
+      slice +
+      " at the slice tip; dirty work is stashed and restored on swap-out.";
   return (
     <Card
       title={`Swap · ${slice}`}
       width={58}
       hints={[
         { key: "y", label: "confirm" },
-        ...(dirty && !active ? [{ key: "s", label: "stash + swap" }] : []),
         { key: "esc", label: "cancel" },
       ]}
     >
@@ -47,11 +46,6 @@ export function SwapOverlay({
       <text fg={theme.textDim} wrapMode="none">
         {detail}
       </text>
-      {dirty && !active ? (
-        <text fg={theme.attn} wrapMode="none">
-          {glyph.dirty} a primary has uncommitted work — [s] stashes it, popped back on swap-out.
-        </text>
-      ) : null}
     </Card>
   );
 }

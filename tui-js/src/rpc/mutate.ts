@@ -144,8 +144,18 @@ export function activateStash(slice: string): Promise<MutateResult> {
   return run(["activate", slice, "--stash"]);
 }
 
-export function deactivate(slice: string): Promise<MutateResult> {
-  return run(["deactivate", slice]);
+export function deactivate(): Promise<MutateResult> {
+  return run(["deactivate"]);
+}
+
+// The interactive TUI chooses the recoverable --stash path for activation.
+// Deactivation restores the pinned stash recorded by the Go swap engine.
+export function swapArgs(slice: string, active: boolean): string[] {
+  return active ? ["deactivate"] : ["activate", slice, "--stash"];
+}
+
+export function swapSlice(slice: string, active: boolean): Promise<MutateResult> {
+  return run(swapArgs(slice, active));
 }
 
 // ── slice lifecycle ──────────────────────────────────────────────────────────

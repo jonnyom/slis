@@ -4,6 +4,7 @@ import {
   mutationArgv,
   mutationRoute,
   spawnCapture,
+  swapArgs,
 } from "./mutate";
 
 describe("mutationRoute", () => {
@@ -31,6 +32,16 @@ describe("mutationRoute", () => {
     ]) {
       expect(mutationRoute(c)).toBe("captured");
     }
+  });
+});
+
+describe("swapArgs", () => {
+  test("swap-in safely stashes dirty primaries", () => {
+    expect(swapArgs("feature", false)).toEqual(["activate", "feature", "--stash"]);
+  });
+
+  test("swap-out deactivates the current journal", () => {
+    expect(swapArgs("feature", true)).toEqual(["deactivate"]);
   });
 });
 
