@@ -140,3 +140,29 @@ parse error → -32700.
 - Full keybinding + overlay inventory and the CLI-twin gap analysis live in
   the session that produced this doc; the four gap reads are now RPC methods
   (`diff`, `capture`, `procs`, plus aggregates via `ls`/`show`).
+
+## Benchmark results (2026-07-18, M-series laptop, real ~/nory workspace)
+
+Method: app spawned in a headless PTY (ghostty VT), 200x50; timestamps from
+spawn to (a) first non-empty painted frame, (b) a real slice name visible
+("data ready"). 3 runs each, median reported. Script: session scratchpad
+`cold.ts`.
+
+| metric | Go TUI (Bubble Tea) | JS TUI (OpenTUI/Bun) |
+|---|---|---|
+| first paint | 5083 ms (5075–5086) | **173 ms** (140–182) |
+| data ready | 15365 ms (15304–15404) | **11389 ms** (10543–11389) |
+
+Honest reading:
+- The 29× first-paint win is an architecture artifact, not raw runtime speed:
+  the Go TUI blocks its first frame on the startup discovery fan-out, while
+  the JS app paints a loading state immediately and streams data in. The Bun
+  runtime itself contributes ~100-150 ms of that 173 ms.
+- Data-ready is dominated in both by the git/gh subprocess fan-out; the JS
+  path is ~4 s faster because the sidecar answers `ls` first and the app
+  paints slices before PR/stack enrichment lands.
+- Not yet measured: keypress→repaint latency and idle CPU (subjectively
+  indistinguishable; measure before replacing the Go TUI for real).
+
+Verdict: the "must not be slower" bar is met — cold start and time-to-usable
+both favor the JS TUI on a real workspace.
