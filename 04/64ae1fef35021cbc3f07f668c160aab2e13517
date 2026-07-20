@@ -1,0 +1,47 @@
+internal/rpcserver/methods.go
+  s_63ced3de54af85::t_43b207919d2623 161-176,180-182
+internal/report/diff.go
+  s_63ced3de54af85::t_43b207919d2623 4-5,7-9,18-28,30-32,42-44,46,50-59,62,66-79,81-112
+  s_63ced3de54af85::t_03a9b31c12c023 29,33-41,45,47-49,61,63-65,80
+  s_63ced3de54af85::t_780e2654b88a5d 6
+  s_63ced3de54af85::t_91d20f585a9575 60
+  s_4ec358e1f81aec::t_431716ef68fa97 113
+internal/rpcserver/server.go
+  s_63ced3de54af85::t_43b207919d2623 26,50-64,75-76
+  s_63ced3de54af85::t_b5e9628a8c3b77 71-74
+internal/rpcserver/rpcserver_test.go
+  s_63ced3de54af85::t_94d988d5de6c95 29,58,341-368
+  s_2402f7814ab8b8::t_b98e134fe49da2 369-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0464ae1fef35021cbc3f07f668c160aab2e13517",
+  "prompts": {},
+  "sessions": {
+    "s_2402f7814ab8b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8042-1c68-75b0-aaca-c76449214233",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_4ec358e1f81aec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf7141b5-f508-4f8f-b5f6-01a2d91d3eab",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_63ced3de54af85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ea0-b36d-7e91-b392-d9b4f2175869",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
