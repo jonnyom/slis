@@ -177,14 +177,16 @@ function TermTab({
 
 // ── tab bar ──────────────────────────────────────────────────────────────────
 
-function TabBar({
+export function TabBar({
   tabs,
   active,
   statuses,
+  onBack,
 }: {
   tabs: TabEntry[];
   active: string | null;
   statuses: Record<string, SessionStatus>;
+  onBack: () => void;
 }): ReactNode {
   return (
     <box flexDirection="row" width="100%" height={1} zIndex={102}>
@@ -217,9 +219,19 @@ function TabBar({
             </span>
           );
         })}
-        <span fg={color.dim} attributes={DIM}>
-          {"   ctrl+q back"}
-        </span>
+      </text>
+      <text
+        id="term-back"
+        fg={color.dim}
+        attributes={DIM}
+        wrapMode="none"
+        onMouseDown={(event) => {
+          onBack();
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        {"   ctrl+q back "}
       </text>
     </box>
   );
@@ -293,7 +305,7 @@ export function TerminalLayer({
       visible={focused}
       zIndex={100}
     >
-      <TabBar tabs={tabs} active={active} statuses={statuses} />
+      <TabBar tabs={tabs} active={active} statuses={statuses} onBack={onBack} />
       {tabs.map((t) => {
         const key = tabKey(t);
         return (
