@@ -1,0 +1,21 @@
+tui-js/src/term/tabs.mouse.test.tsx
+  s_63ced3de54af85::t_30075b78ba60f7 1-31
+tui-js/src/term/tabs.tsx
+  s_63ced3de54af85::t_9bc6083927265d 180,184,189,222-234,308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "11ac0c5928433b4bd1ac5428257203ac8fc55e40",
+  "prompts": {},
+  "sessions": {
+    "s_63ced3de54af85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ea0-b36d-7e91-b392-d9b4f2175869",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
