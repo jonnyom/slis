@@ -1,0 +1,21 @@
+internal/discovery/stacks.go
+  s_699369887707dc::t_fa89f1211768dc 26-28,35-44
+internal/discovery/stacks_test.go
+  s_699369887707dc::t_731142f000e3cf 97-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a5b9e2a1701a0bd257e998e405230b1f34e1f686",
+  "prompts": {},
+  "sessions": {
+    "s_699369887707dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f6b1505-bbd3-4b7c-bd92-44ea0a2cc56c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
