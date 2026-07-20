@@ -26,6 +26,7 @@ import (
 type harness struct {
 	t      *testing.T
 	sp     config.Paths
+	srv    *Server
 	toSrv  *io.PipeWriter
 	dec    *bufio.Reader
 	cancel context.CancelFunc
@@ -54,7 +55,7 @@ func newHarness(t *testing.T, ws config.Workspace) *harness {
 		close(done)
 	}()
 
-	h := &harness{t: t, sp: sp, toSrv: inW, dec: bufio.NewReader(outR), cancel: cancel, done: done}
+	h := &harness{t: t, sp: sp, srv: srv, toSrv: inW, dec: bufio.NewReader(outR), cancel: cancel, done: done}
 	t.Cleanup(func() {
 		cancel()
 		_ = inW.Close()
@@ -334,6 +335,36 @@ func TestDiffInvalidScope(t *testing.T) {
 	resp := h.call(1, "diff", `{"slice":"checkout","scope":"bogus"}`)
 	if resp.Error == nil || resp.Error.Code != codeInvalidParams {
 		t.Fatalf("expected invalid-params error, got %+v", resp.Error)
+	}
+}
+
+func TestDiffCachesUntilRepositoryContentChanges(t *testing.T) {
+	ws := makeWorkspace(t)
+	h := newHarness(t, ws)
+	builds := 0
+	h.srv.diffBuild = func(sl model.Slice, scope, format string) (report.DiffResult, error) {
+		builds++
+		return report.SliceDiffScoped(sl, scope, format)
+	}
+
+	params := `{"slice":"checkout","scope":"working","format":"both"}`
+	h.call(1, "diff", params)
+	h.call(2, "diff", params)
+	if builds != 1 {
+		t.Fatalf("unchanged diff builds = %d, want 1", builds)
+	}
+
+	path := filepath.Join(ws.Root, "web-checkout", "cache-change.txt")
+	writeFile(t, path, "first\n")
+	h.call(3, "diff", params)
+	if builds != 2 {
+		t.Fatalf("builds after new file = %d, want 2", builds)
+	}
+
+	writeFile(t, path, "second\n")
+	h.call(4, "diff", params)
+	if builds != 3 {
+		t.Fatalf("builds after same-status content edit = %d, want 3", builds)
 	}
 }
 

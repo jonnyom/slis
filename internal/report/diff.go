@@ -1,6 +1,12 @@
 package report
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jonnyom/slis/internal/diff"
@@ -8,6 +14,102 @@ import (
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 )
+
+func DiffFingerprint(sl model.Slice, scope string) (string, error) {
+	bases := scopeBases(sl, scope)
+	fingerprint := sha256.New()
+	writePart := func(value []byte) {
+		_, _ = fmt.Fprintf(fingerprint, "%d:", len(value))
+		_, _ = fingerprint.Write(value)
+	}
+
+	for _, repo := range sl.Repos() {
+		member := sl.Members[repo]
+		base := bases[repo]
+		baseSHA, err := git.RevParse(member.WorktreePath, base)
+		if err != nil {
+			return "", err
+		}
+		trackedPaths, err := git.RunRaw(
+			member.WorktreePath,
+			"diff",
+			"--name-only",
+			"-z",
+			"--merge-base",
+			"--end-of-options",
+			base,
+		)
+		if err != nil {
+			return "", err
+		}
+		untrackedPaths, err := git.RunRaw(
+			member.WorktreePath,
+			"ls-files",
+			"--others",
+			"--exclude-standard",
+			"-z",
+		)
+		if err != nil {
+			return "", err
+		}
+
+		writePart([]byte(repo))
+		writePart([]byte(member.Branch))
+		writePart([]byte(base))
+		writePart([]byte(baseSHA))
+		writePart(trackedPaths)
+		writePart(untrackedPaths)
+
+		paths := append(append([]byte(nil), trackedPaths...), untrackedPaths...)
+		for _, relativePath := range bytes.Split(paths, []byte{0}) {
+			if len(relativePath) == 0 {
+				continue
+			}
+			if err := writeDiffPathState(fingerprint, member.WorktreePath, string(relativePath)); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	return fmt.Sprintf("%x", fingerprint.Sum(nil)), nil
+}
+
+func writeDiffPathState(destination io.Writer, worktree, relativePath string) error {
+	path := filepath.Join(worktree, relativePath)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		_, err = io.WriteString(destination, "missing\x00")
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(destination, "%s\x00", info.Mode()); err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(destination, target)
+		return err
+	}
+	if info.IsDir() {
+		sha, err := git.RevParse(path, "HEAD")
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(destination, sha)
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	_, err = destination.Write(data)
+	return err
+}
 
 // DiffFileStat is a JSON-friendly per-file line-change summary. Added/Deleted
 // are -1 for binary files (git reports no line counts for them).

@@ -23,6 +23,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
+	"github.com/jonnyom/slis/internal/report"
 )
 
 // gateConcurrency caps how many subprocess-heavy methods (git / gt / gh / tmux /
@@ -46,16 +47,33 @@ type Server struct {
 	mu  sync.Mutex // serialises writes to out (one line per message)
 
 	gate chan struct{}
+
+	diffCacheMu sync.Mutex
+	diffCache   map[diffCacheKey]diffCacheEntry
+	diffBuild   func(model.Slice, string, string) (report.DiffResult, error)
+}
+
+type diffCacheKey struct {
+	slice  string
+	scope  string
+	format string
+}
+
+type diffCacheEntry struct {
+	fingerprint string
+	result      report.DiffResult
 }
 
 // New returns a Server for the given workspace and state paths. version is
 // reported verbatim by the hello method.
 func New(ws config.Workspace, sp config.Paths, version string) *Server {
 	return &Server{
-		ws:      ws,
-		sp:      sp,
-		version: version,
-		gate:    make(chan struct{}, gateConcurrency),
+		ws:        ws,
+		sp:        sp,
+		version:   version,
+		gate:      make(chan struct{}, gateConcurrency),
+		diffCache: make(map[diffCacheKey]diffCacheEntry),
+		diffBuild: report.SliceDiffScoped,
 	}
 }
 

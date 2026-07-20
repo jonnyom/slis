@@ -158,10 +158,28 @@ func (s *Server) diff(raw json.RawMessage) (interface{}, *rpcError) {
 	if err != nil {
 		return nil, serverErr(err.Error(), "slice-not-found")
 	}
-	res, err := report.SliceDiffScoped(sl, scope, format)
+	fingerprintScope := scope
+	if fingerprintScope == "working" {
+		fingerprintScope = "parent"
+	}
+	fingerprint, err := report.DiffFingerprint(sl, fingerprintScope)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
+	key := diffCacheKey{slice: p.Slice, scope: scope, format: format}
+	s.diffCacheMu.Lock()
+	cached, found := s.diffCache[key]
+	s.diffCacheMu.Unlock()
+	if found && cached.fingerprint == fingerprint {
+		return cached.result, nil
+	}
+	res, err := s.diffBuild(sl, scope, format)
+	if err != nil {
+		return nil, serverErr(err.Error(), "")
+	}
+	s.diffCacheMu.Lock()
+	s.diffCache[key] = diffCacheEntry{fingerprint: fingerprint, result: res}
+	s.diffCacheMu.Unlock()
 	return res, nil
 }
 
