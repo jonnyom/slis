@@ -44,8 +44,9 @@ import type { SliceView } from "../state/derive";
 import {
   buildStackRows,
   clampSel,
-  compactStackGroups,
+  fitStackGroups,
   stepStackBranch,
+  withScopedMemberStats,
   type StackRow,
 } from "../state/stacknav";
 import {
@@ -60,10 +61,14 @@ import { parseUnifiedDiff } from "../diff/parse";
 import type { OverlayApi } from "../overlays/useOverlays";
 import { commentBlocks } from "../pr/comments";
 import {
-  sessionExists,
+  killTmuxSession,
+  isShellCmd,
+  listTmuxSessions,
+  preferredRunningAgentSession,
   sessionHasPaneOutsideMembers,
   sessionName,
-  sessionPanePaths,
+  tmuxSessionRelatedToMembers,
+  type TmuxSessionInfo,
 } from "../term/tmux";
 import { color, glyph, sessionBadge, sessionLabel, theme } from "../theme";
 import type { OpenTermMode } from "../term/session";
@@ -153,9 +158,11 @@ export interface CockpitProps {
   onDiffScopeChange?: (scope: DiffScope) => void;
   onBack: () => void;
   onOpenTerm: (slice: string, mode: OpenTermMode) => void;
+  onOpenExistingSession: (slice: string, session: string) => void;
   onConfigureAgents: () => void;
   onToggleProcs: () => void;
   onRefresh: () => void;
+  onRefreshSlice: (slice: string) => Promise<void>;
   onQuit: () => void;
 }
 
@@ -216,15 +223,17 @@ function StackSection({
   rows,
   sel,
   flexGrow,
+  availableRows,
 }: {
   view: SliceView;
   focused: boolean;
   rows: ReturnType<typeof buildStackRows>;
   sel: number;
   flexGrow?: number;
+  availableRows: number;
 }): ReactNode {
   const n = view.slice.members.length;
-  const groups = compactStackGroups(rows, sel);
+  const groups = fitStackGroups(rows, sel, availableRows);
 
   const branchLine = (row: StackRow, index: number, showRepo: boolean): ReactNode => {
     const selected = index === sel && focused;
@@ -367,6 +376,7 @@ function SessionSection({
   exists,
   shellExists,
   outsideRepos,
+  totalSessions,
 }: {
   view: SliceView;
   focused: boolean;
@@ -374,10 +384,11 @@ function SessionSection({
   exists: boolean;
   shellExists: boolean;
   outsideRepos: boolean;
+  totalSessions: number;
 }): ReactNode {
   const badge = sessionBadge(view.status);
   const presentWithoutHookStatus = exists && view.status === "none";
-  const count = Number(exists) + Number(shellExists);
+  const count = totalSessions;
   const trailing = (
     <text wrapMode="none">
       <span fg={outsideRepos ? theme.attn : badge.color}>
@@ -707,35 +718,63 @@ function CiLogRight({ state }: { state: CiLogState }): ReactNode {
 function SessionRight({
   view,
   lines,
-  agentExists,
-  shellExists,
-  outsideRepos,
+  sessions,
+  selected,
+  pendingKill,
+  killStatus,
 }: {
   view: SliceView;
   lines: string[];
-  agentExists: boolean;
-  shellExists: boolean;
-  outsideRepos: boolean;
+  sessions: TmuxSessionInfo[];
+  selected: number;
+  pendingKill: string | null;
+  killStatus: string | null;
 }): ReactNode {
   const members = view.slice.members;
   return (
     <>
-      <text wrapMode="none">
-        <span fg={agentExists ? theme.good : color.dim}>{agentExists ? glyph.live : "·"}</span>
-        <span fg={color.dim}> agent  </span>
-        <span fg={color.fg}>{sessionName(view.slice.name, "agent")}</span>
-        <span fg={color.dim}>  · a open</span>
+      <text fg={color.dim} attributes={DIM} wrapMode="none">
+        {sessions.length === 0
+          ? "no running Slis tmux sessions"
+          : `${sessions.length} running sessions  ·  enter attach  ·  x close`}
       </text>
-      <text wrapMode="none">
-        <span fg={shellExists ? theme.good : color.dim}>{shellExists ? glyph.live : "·"}</span>
-        <span fg={color.dim}> shell  </span>
-        <span fg={color.fg}>{sessionName(view.slice.name, "shell")}</span>
-        <span fg={color.dim}>  · t open</span>
-      </text>
-      <text fg={color.dim} wrapMode="none">{members.length} repos</text>
+      {sessions.map((session, index) => {
+        const related = tmuxSessionRelatedToMembers(session, members.map((member) => ({
+          repo: member.repo,
+          branch: member.branch,
+          worktreePath: member.worktree_path,
+        })));
+        const running = session.panes.some((pane) => !isShellCmd(pane.command));
+        return (
+          <box key={session.name} flexDirection="column">
+            <text wrapMode="none">
+              <span fg={index === selected ? color.cursorBar : color.dim}>
+                {index === selected ? glyph.focusBar : " "}
+              </span>
+              <span fg={running ? theme.good : color.dim}>{running ? glyph.live : "·"}</span>
+              <span fg={session.kind === "agent" ? color.fg : color.dim}> {session.name}</span>
+              {related ? <span fg={theme.focus}>  ‹this slice›</span> : null}
+            </text>
+            {session.panes.map((pane, paneIndex) => (
+              <text key={`${pane.path}-${paneIndex}`} fg={color.dim} attributes={DIM} wrapMode="none">
+                {`    ${pane.command}  ${pane.path}`}
+              </text>
+            ))}
+          </box>
+        );
+      })}
+      {pendingKill ? (
+        <text fg={theme.bad} attributes={BOLD} wrapMode="none">
+          {`Close ${pendingKill}? y confirm · n cancel`}
+        </text>
+      ) : killStatus ? (
+        <text fg={killStatus.startsWith("Closed") ? theme.good : theme.bad} wrapMode="none">
+          {killStatus}
+        </text>
+      ) : null}
       <text> </text>
       <text fg={color.dim} attributes={DIM} wrapMode="none">
-        repos:
+        current slice worktrees:
       </text>
       {members.map((m) => (
         <text key={m.repo} wrapMode="none">
@@ -744,21 +783,9 @@ function SessionRight({
         </text>
       ))}
       <text> </text>
-      {outsideRepos ? (
-        <>
-          <text fg={theme.attn} attributes={BOLD}>
-            {glyph.dirty + " This session has a pane outside the configured repo worktrees."}
-          </text>
-          <text fg={color.dim}>
-            Git or Graphite commands there affect an enclosing repository, not this Slis slice.
-            Finish or detach the running agent, then recreate the session to use per-repo windows.
-          </text>
-          <text> </text>
-        </>
-      ) : null}
       {lines.length === 0 ? (
         <text fg={color.dim} attributes={DIM}>
-          (no agent output — a attaches; t opens a separate shell)
+          (no canonical agent output)
         </text>
       ) : (
         <>
@@ -861,8 +888,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [hasSession, setHasSession] = useState(false);
   const [hasShellSession, setHasShellSession] = useState(false);
   const [sessionOutsideRepos, setSessionOutsideRepos] = useState(false);
+  const [tmuxSessions, setTmuxSessions] = useState<TmuxSessionInfo[]>([]);
+  const [sessionSel, setSessionSel] = useState(0);
+  const [pendingSessionKill, setPendingSessionKill] = useState<string | null>(null);
+  const [sessionKillStatus, setSessionKillStatus] = useState<string | null>(null);
   const [ciLog, setCiLog] = useState<CiLogState | null>(null);
-  const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [diff, setDiff] = useState<{ scope: DiffScope; result: DiffResult } | null>(null);
   const [richDiff, setRichDiff] = useState<DiffResult | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffLoading, setDiffLoading] = useState(false);
@@ -893,7 +924,11 @@ export function Cockpit(props: CockpitProps): ReactNode {
 
   const scope = SCOPES[scopeIdx]!;
 
-  const stackRows = useMemo(() => buildStackRows(view), [view]);
+  const scopedDiff = diff?.scope === scope ? diff.result : null;
+  const stackRows = useMemo(
+    () => withScopedMemberStats(buildStackRows(view), scopedDiff?.repos),
+    [view, scopedDiff],
+  );
   const defaultStackSel = useMemo(() => {
     const m = stackRows.findIndex((r) => r.isMember);
     return m >= 0 ? m : 0;
@@ -920,7 +955,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     [view.prs, selectedRepo, selectedBranch],
   );
   const selectedChange = onMemberBranch
-    ? diff?.repos.find((repo) => repo.repo === selectedRepo)
+    ? scopedDiff?.repos.find((repo) => repo.repo === selectedRepo)
     : branchDiff;
 
   const treeRows = useMemo(
@@ -970,23 +1005,40 @@ export function Cockpit(props: CockpitProps): ReactNode {
       })),
     [view.slice.members],
   );
+  const relatedAgentSessions = useMemo(
+    () =>
+      tmuxSessions.filter(
+        (session) =>
+          session.kind === "agent" && tmuxSessionRelatedToMembers(session, sessionMembers),
+      ),
+    [tmuxSessions, sessionMembers],
+  );
+  const runningAgentSession = useMemo(
+    () => preferredRunningAgentSession(tmuxSessions, sessionMembers),
+    [tmuxSessions, sessionMembers],
+  );
+  const selectedTmuxSession = tmuxSessions[sessionSel];
+
+  useEffect(() => {
+    if (panel === "prs") void props.onRefreshSlice(slice);
+  }, [panel, slice, props.onRefreshSlice]);
 
   useEffect(() => {
     let live = true;
-    const probe = async () => {
-      try {
-        const [exists, shellExists] = await Promise.all([
-          sessionExists(slice, "agent"),
-          sessionExists(slice, "shell"),
-        ]);
-        const paths = exists ? await sessionPanePaths(slice) : [];
+    const probe = () => {
+      listTmuxSessions().then((sessions) => {
         if (!live) return;
-        setHasSession(exists);
-        setHasShellSession(shellExists);
-        setSessionOutsideRepos(exists && sessionHasPaneOutsideMembers(paths, sessionMembers));
-      } catch {
-        // Preserve the last known state across a transient tmux probe failure.
-      }
+        const agentName = sessionName(slice, "agent");
+        const shellName = sessionName(slice, "shell");
+        const agent = sessions.find((session) => session.name === agentName);
+        setTmuxSessions(sessions);
+        setSessionSel((selected) => clampSel(selected, sessions.length));
+        setHasSession(!!agent);
+        setHasShellSession(sessions.some((session) => session.name === shellName));
+        setSessionOutsideRepos(
+          !!agent && sessionHasPaneOutsideMembers(agent.panes.map((pane) => pane.path), sessionMembers),
+        );
+      });
     };
     probe();
     const id = setInterval(probe, 5_000);
@@ -1004,7 +1056,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setDiff(null);
     client
       .diff({ slice, scope, format: "stat" })
-      .then((r) => live && setDiff(r), () => {});
+      .then((result) => live && setDiff({ scope, result }), () => {});
     return () => {
       live = false;
     };
@@ -1101,6 +1153,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
       setPrSel((i) => Math.max(0, Math.min((view.prs?.length ?? 1) - 1, i + delta)));
     else if (panel === "procs")
       setProcSel((i) => Math.max(0, Math.min(procRows.length - 1, i + delta)));
+    else if (panel === "session")
+      setSessionSel((i) => clampSel(i + delta, tmuxSessions.length));
   };
 
   // ── F3 file-tree browser ────────────────────────────────────────────────────
@@ -1246,6 +1300,46 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setPendingKill(null);
   };
 
+  const openAgent = (mode: "agent" | "agent-launch") => {
+    if (panel === "session" && selectedTmuxSession?.kind === "agent") {
+      props.onOpenExistingSession(slice, selectedTmuxSession.name);
+      return;
+    }
+    const existing = runningAgentSession ?? relatedAgentSessions[0];
+    if (existing && (mode === "agent" || runningAgentSession)) {
+      props.onOpenExistingSession(slice, existing.name);
+      return;
+    }
+    props.onOpenTerm(slice, mode);
+  };
+
+  const openShell = () => {
+    if (panel === "session" && selectedTmuxSession?.kind === "shell") {
+      props.onOpenExistingSession(slice, selectedTmuxSession.name);
+      return;
+    }
+    props.onOpenTerm(slice, "shell");
+  };
+
+  const requestSessionKill = () => {
+    if (!selectedTmuxSession) return;
+    setSessionKillStatus(null);
+    setPendingSessionKill(selectedTmuxSession.name);
+  };
+
+  const confirmSessionKill = () => {
+    const target = pendingSessionKill;
+    if (!target) return;
+    killTmuxSession(target).then((closed) => {
+      setPendingSessionKill(null);
+      setSessionKillStatus(closed ? `Closed ${target}` : `Could not close ${target}`);
+      if (closed) {
+        setTmuxSessions((sessions) => sessions.filter((session) => session.name !== target));
+        setSessionSel((selected) => clampSel(selected, tmuxSessions.length - 1));
+      }
+    });
+  };
+
   const focusedPr = () =>
     panel === "prs"
       ? (view.prs ?? [])[prSel]
@@ -1386,6 +1480,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
     const name = normalizeKeyName(key);
     const cockpitShortcut = shortcutAction("cockpit", name);
 
+    if (pendingSessionKill) {
+      if (name === "y" || name === "return" || name === "enter") return confirmSessionKill();
+      if (name === "n" || name === "escape") return setPendingSessionKill(null);
+      return;
+    }
+
     // A pending kill confirmation captures input until answered.
     if (pendingKill) {
       if (name === "y" || name === "return" || name === "enter") return confirmKill();
@@ -1402,9 +1502,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
       const shortcut = shortcutAction("cockpit.file", name);
       if (isQuitKey(key, name)) return props.onQuit();
       if (name === "?") return overlays.help();
-      if (shortcut === "attach-agent") return props.onOpenTerm(slice, "agent");
-      if (shortcut === "launch-agent") return props.onOpenTerm(slice, "agent-launch");
-      if (shortcut === "open-shell") return props.onOpenTerm(slice, "shell");
+      if (shortcut === "attach-agent") return openAgent("agent");
+      if (shortcut === "launch-agent") return openAgent("agent-launch");
+      if (shortcut === "open-shell") return openShell();
       if (name === "escape" || name === "h") return setReviewMode("tree");
       if (name === "e" && openFile) return editPreviewPath(openFile.path, fileCursor + 1);
       if (name === "o") return overlays.editor(slice, selectedRepo);
@@ -1425,9 +1525,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
       const shortcut = shortcutAction("cockpit.tree", name);
       if (isQuitKey(key, name)) return props.onQuit();
       if (name === "?") return overlays.help();
-      if (shortcut === "attach-agent") return props.onOpenTerm(slice, "agent");
-      if (shortcut === "launch-agent") return props.onOpenTerm(slice, "agent-launch");
-      if (shortcut === "open-shell") return props.onOpenTerm(slice, "shell");
+      if (shortcut === "attach-agent") return openAgent("agent");
+      if (shortcut === "launch-agent") return openAgent("agent-launch");
+      if (shortcut === "open-shell") return openShell();
       if (shortcut === "pending-review") return openReviewOverlay();
       if (name === "escape") return setReviewMode("diff");
       if (name === "e") {
@@ -1460,9 +1560,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (name === "w") return overlays.swap(slice, view.slice.active);
     // Agent and ad-hoc shell terminals are separate persistent tmux sessions.
     // C consistently launches an agent everywhere; V owns the review list.
-    if (cockpitShortcut === "attach-agent") return props.onOpenTerm(slice, "agent");
-    if (cockpitShortcut === "launch-agent") return props.onOpenTerm(slice, "agent-launch");
-    if (cockpitShortcut === "open-shell") return props.onOpenTerm(slice, "shell");
+    if (cockpitShortcut === "attach-agent") return openAgent("agent");
+    if (cockpitShortcut === "launch-agent") return openAgent("agent-launch");
+    if (cockpitShortcut === "open-shell") return openShell();
     if (cockpitShortcut === "pending-review") return openReviewOverlay();
     if (name === "e") return overlays.editor(slice);
     if (name === "E") return overlays.editor(slice);
@@ -1474,6 +1574,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
       (name === "return" || name === "enter" || name === "l" || name === "right")
     ) {
       openRichDiff();
+      return;
+    }
+    if (panel === "session" && (name === "return" || name === "enter")) {
+      if (selectedTmuxSession) props.onOpenExistingSession(slice, selectedTmuxSession.name);
       return;
     }
     // Enter on any other panel zooms the right pane full-width (enter/esc restores).
@@ -1496,6 +1600,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     }
     // Refresh (G10) — plain r; ctrl+r stays CI-rerun on the PRs panel.
     if (name === "r" && !key.ctrl) return refreshCockpit();
+    if (panel === "session" && name === "x") return requestSessionKill();
     if (panel === "procs") {
       if (name === "s") return setProcSort((s) => nextSort(s));
       if (name === "x") return requestKill(false);
@@ -1586,6 +1691,23 @@ export function Cockpit(props: CockpitProps): ReactNode {
   // root's intrinsic height and making the terminal scroll the breadcrumb off
   // its fixed top row: header + divider + body + footer = terminal height.
   const bodyH = Math.max(1, props.height - 3);
+  const prContentRows = Math.max(1, view.prs?.length ?? 0);
+  const processContentRows = Math.max(
+    1,
+    Math.min(2, monitor.result?.slices[0]?.procs.length ?? 0),
+  );
+  const sidebarSectionHeaderRows = 4;
+  const sidebarDividerRows = 3;
+  const sessionContentRows = 2;
+  const stackContentRows = Math.max(
+    1,
+    bodyH -
+      sidebarSectionHeaderRows -
+      sidebarDividerRows -
+      sessionContentRows -
+      prContentRows -
+      processContentRows,
+  );
 
   const rightTitle = useMemo(() => {
     const arrow = ` ${glyph.arrow} `;
@@ -1601,7 +1723,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
           ? `${ciLog.repo}${arrow}CI log`
           : `${view.prs?.[prSel]?.repo ?? slice}${arrow}PR`;
       case "session":
-        return `${slice}${arrow}Session`;
+        return `${slice}${arrow}Sessions`;
       case "procs":
         return `${slice}${arrow}Processes`;
     }
@@ -1734,6 +1856,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
               rows={stackRows}
               sel={stackSel}
               flexGrow={1}
+              availableRows={stackContentRows}
             />
             <Divider width={dividerW} />
             <PrsSection view={view} focused={panel === "prs"} prSel={prSel} />
@@ -1745,6 +1868,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
               exists={hasSession}
               shellExists={hasShellSession}
               outsideRepos={sessionOutsideRepos}
+              totalSessions={tmuxSessions.length}
             />
             <Divider width={dividerW} />
             <ProcsSection procs={monitor.result} focused={panel === "procs"} />
@@ -1823,9 +1947,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
                 <SessionRight
                   view={view}
                   lines={captureLines}
-                  agentExists={hasSession}
-                  shellExists={hasShellSession}
-                  outsideRepos={sessionOutsideRepos}
+                  sessions={tmuxSessions}
+                  selected={sessionSel}
+                  pendingKill={pendingSessionKill}
+                  killStatus={sessionKillStatus}
                 />
               ) : (
                 <ProcsRight

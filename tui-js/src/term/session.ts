@@ -26,6 +26,7 @@ export interface TermSessionOpts {
   // Display name of the picked agent, shown in the tab label. Set only when the
   // agent picker chose one (>1 configured); undefined keeps the plain slice label.
   agentLabel?: string;
+  targetSession?: string;
 }
 
 // Bun's PTY handle: .write / .resize / .close. Typed loosely — Bun.Terminal is
@@ -58,10 +59,12 @@ export class TermSession {
   async attach(cols: number, rows: number, onData: (bytes: Uint8Array) => void, opts: TermSessionOpts): Promise<void> {
     if (this.attached) return;
 
-    await ensureSession(opts.slice, opts.members, opts.sessionOpts, opts.kind);
+    if (!opts.targetSession) {
+      await ensureSession(opts.slice, opts.members, opts.sessionOpts, opts.kind);
+    }
 
     // Only type a launch line at a shell prompt — never into a running agent.
-    if (opts.kind === "agent" && opts.launchAgent && isShellCmd(await activePaneCommand(opts.slice, opts.kind))) {
+    if (!opts.targetSession && opts.kind === "agent" && opts.launchAgent && isShellCmd(await activePaneCommand(opts.slice, opts.kind))) {
       await sendKeys(
         opts.slice,
         agentLaunchLine({
@@ -86,7 +89,7 @@ export class TermSession {
         data: (_t: unknown, bytes: Uint8Array) => onData(bytes),
       },
     } as unknown as Parameters<typeof Bun.spawn>[1];
-    const proc = Bun.spawn(["tmux", "attach", "-t", sessionName(opts.slice, opts.kind)], spawnOpts) as unknown as {
+    const proc = Bun.spawn(["tmux", "attach", "-t", opts.targetSession ?? sessionName(opts.slice, opts.kind)], spawnOpts) as unknown as {
       terminal: PtyHandle;
       kill(): void;
       exited: Promise<number>;

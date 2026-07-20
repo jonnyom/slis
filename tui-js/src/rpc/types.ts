@@ -132,6 +132,8 @@ export interface ShowResult {
 export interface StatusEntry {
   slice: string;
   status: SessionStatus;
+  session_id?: string;
+  cwd?: string;
 }
 
 // ── pr-stack ───────────────────────────────────────────────────────────────

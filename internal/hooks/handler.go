@@ -137,7 +137,13 @@ func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir strin
 
 	previous := notify.ReadStatus(eventsDir, sliceName)
 	status := StatusForEvent(eName)
-	if err := notify.WriteStatus(eventsDir, sliceName, status, timeNS); err != nil {
+	if err := notify.WriteStatusRecord(eventsDir, notify.Status{
+		Slice:     sliceName,
+		Status:    status.String(),
+		TimeNS:    timeNS,
+		SessionID: hi.SessionID,
+		Cwd:       cwd,
+	}); err != nil {
 		return err
 	}
 
@@ -168,8 +174,28 @@ func shellSingleQuote(s string) string {
 // focusCommand builds the shell command a clicked banner runs: the running slis
 // binary invoked as `<self> focus <slice>`, with both the binary path and the
 // slice name shell-quoted so spaces or quotes cannot break the command.
-func focusCommand(slice string) string {
-	return shellSingleQuote(selfExecutable()) + " focus " + shellSingleQuote(slice)
+func focusCommand(slice, terminalApp string) string {
+	prefix := ""
+	if terminalApp != "" {
+		prefix = "SLIS_TERMINAL_APP=" + shellSingleQuote(terminalApp) + " "
+	}
+	return prefix + shellSingleQuote(selfExecutable()) + " focus " + shellSingleQuote(slice)
+}
+
+func notificationTerminal(configuredBundleID string) (string, string) {
+	if configuredBundleID != "" {
+		if configuredBundleID == "com.mitchellh.ghostty" {
+			return configuredBundleID, "ghostty"
+		}
+		return configuredBundleID, ""
+	}
+	if strings.EqualFold(os.Getenv("SLIS_TERMINAL_APP"), "ghostty") {
+		return "com.mitchellh.ghostty", "ghostty"
+	}
+	if strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") {
+		return "com.mitchellh.ghostty", "ghostty"
+	}
+	return "", ""
 }
 
 // fireNotification best-effort delivers a desktop banner for a slice that just
@@ -197,8 +223,9 @@ func fireNotification(slice string, status model.SessionStatus, cfg config.Notif
 	default:
 		return
 	}
-	n.ExecuteOnClick = focusCommand(slice)
-	n.Activate = cfg.Activate
+	activate, terminalApp := notificationTerminal(cfg.Activate)
+	n.Activate = activate
+	n.ExecuteOnClick = focusCommand(slice, terminalApp)
 	if err := notifier(n); err != nil {
 		fmt.Fprintf(errOut, "slis hook: notification delivery failed: %v\n", err)
 	}

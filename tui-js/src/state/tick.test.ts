@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { tickPlan } from "./tick";
+import { newlyDiscoveredSliceNames, shouldRefreshDiscovery, tickPlan } from "./tick";
 
 describe("tickPlan", () => {
   test("paused (PTY tab / prompt) never runs", () => {
@@ -21,4 +21,15 @@ describe("tickPlan", () => {
     });
   });
 
+});
+
+describe("discovery refresh", () => {
+  test("runs whenever background work is not paused", () => {
+    expect(shouldRefreshDiscovery({ paused: false, focusedSlice: null })).toBe(true);
+    expect(shouldRefreshDiscovery({ paused: true, focusedSlice: "a" })).toBe(false);
+  });
+
+  test("returns only slices introduced by the latest discovery result", () => {
+    expect(newlyDiscoveredSliceNames(["a", "b"], ["b", "c", "d"])).toEqual(["c", "d"]);
+  });
 });

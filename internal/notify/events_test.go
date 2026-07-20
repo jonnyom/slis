@@ -28,6 +28,23 @@ func TestWriteReadStatus(t *testing.T) {
 	}
 }
 
+func TestWriteReadStatusRecordPreservesClaudeSession(t *testing.T) {
+	dir := t.TempDir()
+	want := notify.Status{
+		Slice:     "checkout",
+		Status:    model.SessWaitingInput.String(),
+		TimeNS:    123,
+		SessionID: "session-123",
+		Cwd:       "/worktrees/checkout/api",
+	}
+	if err := notify.WriteStatusRecord(dir, want); err != nil {
+		t.Fatalf("WriteStatusRecord: %v", err)
+	}
+	if got := notify.ReadStatusRecord(dir, "checkout"); got != want {
+		t.Fatalf("ReadStatusRecord = %#v, want %#v", got, want)
+	}
+}
+
 func TestReadAllStatuses(t *testing.T) {
 	dir := t.TempDir()
 

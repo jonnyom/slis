@@ -14,9 +14,11 @@ import (
 
 // Status is the on-disk shape for a single slice's session status.
 type Status struct {
-	Slice  string `json:"slice"`
-	Status string `json:"status"`  // model.SessionStatus.String()
-	TimeNS int64  `json:"time_ns"` // caller-supplied timestamp
+	Slice     string `json:"slice"`
+	Status    string `json:"status"`  // model.SessionStatus.String()
+	TimeNS    int64  `json:"time_ns"` // caller-supplied timestamp
+	SessionID string `json:"session_id,omitempty"`
+	Cwd       string `json:"cwd,omitempty"`
 }
 
 // statusFileName returns the filename (without directory) for a slice's status
@@ -41,19 +43,18 @@ func RemoveStatus(eventsDir, slice string) error {
 // WriteStatus writes (or overwrites) <eventsDir>/<sanitized-slice>.json with
 // the given status and timestamp. The directory is created if it does not exist.
 func WriteStatus(eventsDir, slice string, st model.SessionStatus, timeNS int64) error {
+	return WriteStatusRecord(eventsDir, Status{Slice: slice, Status: st.String(), TimeNS: timeNS})
+}
+
+func WriteStatusRecord(eventsDir string, status Status) error {
 	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
 		return err
 	}
-	s := Status{
-		Slice:  slice,
-		Status: st.String(),
-		TimeNS: timeNS,
-	}
-	data, err := json.Marshal(s)
+	data, err := json.Marshal(status)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(eventsDir, statusFileName(slice))
+	path := filepath.Join(eventsDir, statusFileName(status.Slice))
 	return os.WriteFile(path, data, 0o644)
 }
 
@@ -75,16 +76,20 @@ func parseStatus(s string) model.SessionStatus {
 // ReadStatus reads the status file for slice inside eventsDir. If the file is
 // absent or cannot be read/parsed, SessNone is returned.
 func ReadStatus(eventsDir, slice string) model.SessionStatus {
+	return parseStatus(ReadStatusRecord(eventsDir, slice).Status)
+}
+
+func ReadStatusRecord(eventsDir, slice string) Status {
 	path := filepath.Join(eventsDir, statusFileName(slice))
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return model.SessNone
+		return Status{}
 	}
 	var s Status
 	if err := json.Unmarshal(data, &s); err != nil {
-		return model.SessNone
+		return Status{}
 	}
-	return parseStatus(s.Status)
+	return s
 }
 
 // ReadAllStatuses returns a map of sliceName → SessionStatus for every status

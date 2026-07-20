@@ -122,19 +122,44 @@ type SliceDetailDTO struct {
 
 // StatusDTO is a JSON-friendly representation of a slice's Claude session status.
 type StatusDTO struct {
-	Slice  string `json:"slice"`
-	Status string `json:"status"`
+	Slice     string `json:"slice"`
+	Status    string `json:"status"`
+	SessionID string `json:"session_id,omitempty"`
+	Cwd       string `json:"cwd,omitempty"`
+}
+
+func SliceStatusDTO(eventsDir, slice string) StatusDTO {
+	record := notify.ReadStatusRecord(eventsDir, slice)
+	status := notify.ReadStatus(eventsDir, slice)
+	if status == model.SessNone && tmuxctl.SessionExists(slice) {
+		status = model.SessRunning
+	}
+	return StatusDTO{
+		Slice:     slice,
+		Status:    status.String(),
+		SessionID: record.SessionID,
+		Cwd:       record.Cwd,
+	}
 }
 
 // SliceStatus returns the semantic hook status when one has been recorded. A
 // live tmux session is a conservative running fallback for older/broken hook
 // installations, matching the legacy TUI instead of labelling active work idle.
 func SliceStatus(eventsDir, slice string) model.SessionStatus {
-	status := notify.ReadStatus(eventsDir, slice)
-	if status == model.SessNone && tmuxctl.SessionExists(slice) {
+	return parseStatusDTO(SliceStatusDTO(eventsDir, slice))
+}
+
+func parseStatusDTO(status StatusDTO) model.SessionStatus {
+	switch status.Status {
+	case model.SessRunning.String():
 		return model.SessRunning
+	case model.SessWaitingInput.String():
+		return model.SessWaitingInput
+	case model.SessDone.String():
+		return model.SessDone
+	default:
+		return model.SessNone
 	}
-	return status
 }
 
 // PRStackRowDTO is a JSON-friendly representation of one repo's PR in a slice's
@@ -433,7 +458,7 @@ func SliceStatuses(ws config.Workspace, sp config.Paths) ([]StatusDTO, error) {
 
 	out := make([]StatusDTO, 0, len(dtos))
 	for _, s := range dtos {
-		out = append(out, StatusDTO{Slice: s.Name, Status: SliceStatus(sp.EventsDir, s.Name).String()})
+		out = append(out, SliceStatusDTO(sp.EventsDir, s.Name))
 	}
 	sort.Slice(out, func(i, k int) bool { return out[i].Slice < out[k].Slice })
 	return out, nil

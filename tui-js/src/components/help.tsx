@@ -61,6 +61,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
       ["C", "launch agent + open terminal tab (picks when multiple are available)"],
       [",", "configure the default launch agent"],
       ["t", "open a separate persistent shell terminal"],
+      ["s", "all running Slis sessions: attach or close"],
       ["P", "processes across all slices"],
     ],
   },

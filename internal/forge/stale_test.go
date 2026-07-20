@@ -1,13 +1,64 @@
 package forge
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	gitutil "github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/testutil"
 )
+
+func TestParsePRListFindsMergedPRForDeletedRemoteBranch(t *testing.T) {
+	raw := `[{"number":119,"state":"MERGED","headRefName":"jonny/pay-119","headRefOid":"abc123","url":"https://github.com/Noryai/nory/pull/119"}]`
+	pr, err := parsePRList("jonny/pay-119", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr == nil || pr.Number != 119 || pr.State != "MERGED" || pr.HeadSHA != "abc123" {
+		t.Fatalf("parsePRList = %+v", pr)
+	}
+	if !strings.Contains(pr.URL, "/119") {
+		t.Fatalf("URL = %q", pr.URL)
+	}
+}
+
+func TestPRForBranchFallsBackToMergedHistoryAfterRemoteBranchDeletion(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	worktree := filepath.Join(t.TempDir(), "pay-119")
+	testutil.AddWorktree(t, repo, "jonny/pay-119", worktree)
+	head, err := gitutil.RevParse(worktree, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binDir := t.TempDir()
+	gh := filepath.Join(binDir, "gh")
+	script := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  echo "no pull requests found for branch" >&2
+  exit 1
+fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+  echo '[{"number":119,"state":"MERGED","headRefName":"jonny/pay-119","headRefOid":"%s","url":"https://github.com/Noryai/nory/pull/119"}]'
+  exit 0
+fi
+echo '[]'
+`, head)
+	if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	pr, err := PRForBranch(worktree, "jonny/pay-119")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr == nil || pr.State != "MERGED" || pr.Number != 119 {
+		t.Fatalf("PRForBranch = %+v", pr)
+	}
+}
 
 func TestHistoricalPRBecomesStaleWhenCheckoutHasNewWork(t *testing.T) {
 	repo := testutil.NewRepo(t)

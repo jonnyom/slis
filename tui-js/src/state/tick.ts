@@ -16,3 +16,12 @@ export function tickPlan(ctx: TickContext): TickPlan {
   if (ctx.paused) return { run: false };
   return ctx.focusedSlice ? { run: true, slices: [ctx.focusedSlice] } : { run: false };
 }
+
+export function shouldRefreshDiscovery(ctx: TickContext): boolean {
+  return !ctx.paused;
+}
+
+export function newlyDiscoveredSliceNames(previous: string[], next: string[]): string[] {
+  const known = new Set(previous);
+  return next.filter((name) => !known.has(name));
+}

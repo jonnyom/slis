@@ -123,6 +123,7 @@ func TestHandleHookDoneFires(t *testing.T) {
 }
 
 func TestHandleHookSetsFocusClickAction(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "")
 	fired, restore := captureNotifier(t)
 	defer restore()
 
@@ -150,14 +151,74 @@ func TestHandleHookSetsFocusClickAction(t *testing.T) {
 }
 
 func TestFocusCommandQuotesQuoteInSliceName(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "")
 	origSelf := selfExecutable
 	selfExecutable = func() string { return "slis" }
 	defer func() { selfExecutable = origSelf }()
 
-	got := focusCommand("weird'name")
+	got := focusCommand("weird'name", "")
 	want := `'slis' focus 'weird'\''name'`
 	if got != want {
 		t.Errorf("focusCommand = %q, want %q", got, want)
+	}
+}
+
+func TestGhosttyNotificationNeedsNoExplicitActivateConfiguration(t *testing.T) {
+	fired, restore := captureNotifier(t)
+	defer restore()
+	t.Setenv("TERM_PROGRAM", "ghostty")
+
+	wt := t.TempDir()
+	sendHook(t, "Notification", wt, t.TempDir(), config.Notify{}, 1)
+
+	got := (*fired)[0]
+	if got.Activate != "com.mitchellh.ghostty" {
+		t.Fatalf("Activate = %q, want com.mitchellh.ghostty", got.Activate)
+	}
+	if !strings.HasPrefix(got.ExecuteOnClick, "SLIS_TERMINAL_APP='ghostty' ") {
+		t.Fatalf("ExecuteOnClick = %q, want Ghostty terminal marker", got.ExecuteOnClick)
+	}
+}
+
+func TestAgentTerminalMarkerDetectsGhosttyWithoutTermProgram(t *testing.T) {
+	fired, restore := captureNotifier(t)
+	defer restore()
+	t.Setenv("TERM_PROGRAM", "")
+	t.Setenv("SLIS_TERMINAL_APP", "ghostty")
+
+	wt := t.TempDir()
+	sendHook(t, "Notification", wt, t.TempDir(), config.Notify{}, 1)
+
+	got := (*fired)[0]
+	if got.Activate != "com.mitchellh.ghostty" {
+		t.Fatalf("Activate = %q, want com.mitchellh.ghostty", got.Activate)
+	}
+}
+
+func TestConfiguredActivateOverridesDetectedGhostty(t *testing.T) {
+	fired, restore := captureNotifier(t)
+	defer restore()
+	t.Setenv("TERM_PROGRAM", "ghostty")
+
+	wt := t.TempDir()
+	sendHook(t, "Notification", wt, t.TempDir(), config.Notify{Activate: "custom.terminal"}, 1)
+
+	if got := (*fired)[0].Activate; got != "custom.terminal" {
+		t.Fatalf("Activate = %q, want custom.terminal", got)
+	}
+}
+
+func TestConfiguredGhosttyDrivesDetachedSessionFallback(t *testing.T) {
+	fired, restore := captureNotifier(t)
+	defer restore()
+	t.Setenv("TERM_PROGRAM", "")
+
+	wt := t.TempDir()
+	sendHook(t, "Notification", wt, t.TempDir(), config.Notify{Activate: "com.mitchellh.ghostty"}, 1)
+
+	got := (*fired)[0]
+	if !strings.HasPrefix(got.ExecuteOnClick, "SLIS_TERMINAL_APP='ghostty' ") {
+		t.Fatalf("ExecuteOnClick = %q, want Ghostty terminal marker", got.ExecuteOnClick)
 	}
 }
 

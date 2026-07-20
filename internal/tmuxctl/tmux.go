@@ -40,9 +40,8 @@ type SessionOpts struct {
 	// Root is the workspace root. When set and the layout includes it, the
 	// session opens a window there (so you can run Claude across the whole stack).
 	Root string
-	// Layout is "root", "repos", or "both". Empty defaults to "repos" for a
-	// multi-repo slice (avoids an ambiguous enclosing Git checkout), and "root"
-	// for a single member when Root is set.
+	// Layout is "root", "repos", or "both". Empty defaults to "root" when Root
+	// is set and the members share a parent, otherwise "repos".
 	Layout string
 }
 
@@ -89,7 +88,7 @@ func sessionWindows(members []model.SliceMember, opts SessionOpts) []window {
 
 	layout := opts.Layout
 	if layout == "" {
-		if opts.Root != "" && len(sorted) == 1 {
+		if opts.Root != "" {
 			layout = "root"
 		} else {
 			layout = "repos"
@@ -283,6 +282,72 @@ type Pane struct {
 	Command string
 }
 
+type SessionPane struct {
+	Session string
+	Path    string
+	Command string
+}
+
+func ListSessionPanes() ([]SessionPane, error) {
+	format := "#{session_name}\t#{pane_current_path}\t#{pane_current_command}"
+	out, err := exec.Command("tmux", "list-panes", "-a", "-F", format).Output()
+	if err != nil {
+		return nil, fmt.Errorf("tmux list-panes: %w", err)
+	}
+	var panes []SessionPane
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) != 3 || (!strings.HasPrefix(parts[0], "slis/") && !strings.HasPrefix(parts[0], "slis-shell/")) {
+			continue
+		}
+		panes = append(panes, SessionPane{Session: parts[0], Path: parts[1], Command: parts[2]})
+	}
+	return panes, nil
+}
+
+func RelatedSessionNames(slice string, members []model.SliceMember, panes []SessionPane) []string {
+	names := map[string]bool{
+		SessionName(slice):                       true,
+		"slis-shell/" + sanitiser.Replace(slice): true,
+	}
+	for _, pane := range panes {
+		panePath := filepath.Clean(pane.Path)
+		if resolved, err := filepath.EvalSymlinks(panePath); err == nil {
+			panePath = resolved
+		}
+		for _, member := range members {
+			memberPath := filepath.Clean(member.WorktreePath)
+			if resolved, err := filepath.EvalSymlinks(memberPath); err == nil {
+				memberPath = resolved
+			}
+			rel, err := filepath.Rel(memberPath, panePath)
+			if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				names[pane.Session] = true
+			}
+		}
+	}
+	result := make([]string, 0, len(names))
+	for name := range names {
+		result = append(result, name)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func KillSessionNamed(name string) error {
+	if !strings.HasPrefix(name, "slis/") && !strings.HasPrefix(name, "slis-shell/") {
+		return fmt.Errorf("refusing to kill non-Slis tmux session %q", name)
+	}
+	err := exec.Command("tmux", "kill-session", "-t", name).Run()
+	if err == nil {
+		return nil
+	}
+	if exec.Command("tmux", "has-session", "-t", name).Run() != nil {
+		return nil
+	}
+	return fmt.Errorf("tmux kill-session: %w", err)
+}
+
 // Panes returns every pane in a slice session with an address suitable for
 // SelectPane.
 func Panes(slice string) ([]Pane, error) {
@@ -462,6 +527,10 @@ func MostRecentClient(clients []Client) (Client, bool) {
 // spawning tmux.
 func SwitchClientArgv(clientTTY, slice string) (string, []string) {
 	return "tmux", []string{"switch-client", "-c", clientTTY, "-t", SessionName(slice)}
+}
+
+func SwitchClientTargetArgv(clientTTY, target string) (string, []string) {
+	return "tmux", []string{"switch-client", "-c", clientTTY, "-t", target}
 }
 
 // KillSession kills the slice's session (used for cleanup/teardown).

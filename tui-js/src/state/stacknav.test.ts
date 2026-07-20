@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { buildStackRows, clampSel, compactStackGroups, stepStackBranch } from "./stacknav";
+import {
+  buildStackRows,
+  clampSel,
+  compactStackGroups,
+  fitStackGroups,
+  stepStackBranch,
+  withScopedMemberStats,
+} from "./stacknav";
 import type { SliceView } from "./derive";
 
 function view(): SliceView {
@@ -82,6 +89,44 @@ describe("buildStackRows", () => {
     const row = buildStackRows(v).find((item) => item.branch === "jonny/checkout");
     expect({ added: row!.added, deleted: row!.deleted }).toEqual({ added: 12, deleted: 4 });
   });
+
+  test("replaces member counts with the selected scope's live diff totals", () => {
+    const v = view();
+    v.show!.members[0]!.stack![1]!.added = 7;
+    v.show!.members[0]!.stack![1]!.deleted = 2;
+    v.show!.members[0]!.stack![2]!.added = 0;
+    v.show!.members[0]!.stack![2]!.deleted = 0;
+
+    const rows = withScopedMemberStats(buildStackRows(v), [
+      {
+        repo: "web",
+        branch: "jonny/checkout",
+        stat: { files: [], added: 53, deleted: 3 },
+      },
+    ]);
+
+    expect(rows.find((row) => row.branch === "jonny/checkout-base")).toMatchObject({
+      added: 7,
+      deleted: 2,
+    });
+    expect(rows.find((row) => row.branch === "jonny/checkout")).toMatchObject({
+      added: 53,
+      deleted: 3,
+    });
+  });
+
+  test("clears stale member counts while a new scoped diff is loading", () => {
+    const v = view();
+    v.show!.members[0]!.stack![2]!.added = 12;
+    v.show!.members[0]!.stack![2]!.deleted = 4;
+
+    const member = withScopedMemberStats(buildStackRows(v), undefined).find(
+      (row) => row.repo === "web" && row.isMember,
+    );
+
+    expect(member!.added).toBeUndefined();
+    expect(member!.deleted).toBeUndefined();
+  });
 });
 
 test("stack navigation skips visible trunk context rows", () => {
@@ -118,6 +163,21 @@ describe("compactStackGroups", () => {
     expect(group!.rows.map((item) => item.index)).toContain(6);
     expect(group!.rows[0]!.index).toBe(0);
     expect(group!.hiddenBefore + group!.hiddenAfter).toBe(4);
+  });
+
+  test("shows the complete stack when every branch fits", () => {
+    const [group] = fitStackGroups(rows, 7, 8);
+    expect(group!.rows).toHaveLength(8);
+    expect(group!.hiddenBefore).toBe(0);
+    expect(group!.hiddenAfter).toBe(0);
+  });
+
+  test("compacts only when the rendered stack exceeds the available rows", () => {
+    const [group] = fitStackGroups(rows, 6, 5);
+    const renderedRows =
+      group!.rows.length + Number(group!.hiddenBefore > 0) + Number(group!.hiddenAfter > 0);
+    expect(renderedRows).toBeLessThanOrEqual(5);
+    expect(group!.rows.map((item) => item.index)).toContain(6);
   });
 });
 

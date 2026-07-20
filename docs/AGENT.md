@@ -87,10 +87,14 @@ never includes siblings or upstack descendants checked out by other worktrees:
 Per-slice Claude session status. With a slice arg → a single object; without →
 an array of every slice in the workspace (status `"none"` when no event recorded).
 ```jsonc
-[{ "slice": "checkout", "status": "waiting-input" }]
+[{ "slice": "checkout", "status": "waiting-input",
+   "session_id": "ebfc8340-a13e-4ac9-9e31-b79f90e43ed7",
+   "cwd": "/abs/path/to/worktree" }]
 ```
 `status` ∈ `none | running | waiting-input | done`. See
-[Session status](#session-status) for the data flow.
+[Session status](#session-status) for the data flow. `session_id` and `cwd` are
+optional for compatibility with older event records; when present they let the
+TUI resume a stopped Claude conversation from the Sessions panel.
 
 ### `slis summary <slice> --json` → array
 Per-repo commit subjects between each repo's trunk and the branch tip. `--json`
@@ -284,11 +288,16 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 - **Storage (fallback):** one file per slice at
   `$XDG_STATE_HOME/slis/events/<slice>.json` (fallback `~/.local/state/slis/events`);
   slashes in the slice name become dashes. On-disk shape:
-  `{ "slice": "...", "status": "running", "time_ns": 1719... }`.
+  `{ "slice": "...", "status": "running", "time_ns": 1719...,
+  "session_id": "...", "cwd": "/abs/path" }`.
 - **Data flow:** Claude Code fires a hook → `slis hook <event>` (installed by
   `slis init-hooks`) maps the hook's `cwd` to a slice and writes the status:
   `Notification → waiting-input`, `Stop`/`SubagentStop → done`, else `running`.
   No hooks installed → every slice reads `none`.
+- **Recovery:** the Sessions panel marks a waiting/done conversation as
+  `resume` when no related agent process remains. Enter recreates or reuses the
+  slice tmux session, selects the pane matching `cwd`, and runs
+  `claude --resume <session_id>`.
 - **Desktop notifications:** the `slis hook` process itself fires the banner when
   a slice's status *changes* to `waiting-input` or `done` (deduped — an unchanged
   status never re-fires; `→ running` is silent). This is independent of the TUI:
@@ -388,6 +397,7 @@ inline env vars (each single-quoted) onto the launch command. An agent running
 | `SLIS_ACTIVE` | `1` if the slice is swapped into the primaries, else `0` |
 | `SLIS_HARNESS` | `claude` or `codex` |
 | `SLIS_WORKTREES` | comma-separated `repo=worktree_path` pairs — make edits in these worktrees, never the primaries |
+| `SLIS_TERMINAL_APP` | originating terminal when detected (currently `ghostty`), used to route notification clicks |
 
 ## Untrusted data
 

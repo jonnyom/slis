@@ -6,8 +6,8 @@
 // `active` is true, so exactly one keyboard owner is live at a time.
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { useKeyboard } from "@opentui/react";
-import type { KeyEvent } from "@opentui/core";
+import { useKeyboard, usePaste } from "@opentui/react";
+import { decodePasteBytes, stripAnsiSequences, type KeyEvent } from "@opentui/core";
 import type {
   AgentSpec,
   Candidate,
@@ -52,7 +52,7 @@ import {
   ungroupSlice,
   type MutateResult,
 } from "../rpc/mutate";
-import { editText } from "./textinput";
+import { appendPastedText, editText } from "./textinput";
 import {
   CandidatesOverlay,
   CiRerunOverlay,
@@ -220,6 +220,20 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     helpReturn.current = null;
     setOverlay({ kind: "help" });
   }, []);
+
+  usePaste((event) => {
+    if (
+      overlay?.kind !== "create" &&
+      overlay?.kind !== "adopt" &&
+      overlay?.kind !== "group" &&
+      overlay?.kind !== "comment"
+    ) {
+      return;
+    }
+    const pasted = stripAnsiSequences(decodePasteBytes(event.bytes));
+    setOverlay({ ...overlay, text: appendPastedText(overlay.text, pasted) });
+    event.preventDefault();
+  });
 
   // Working → Result → refresh. A `successToast` routes a clean run to a
   // transient toast (and closes the modal) instead of a Result overlay; a

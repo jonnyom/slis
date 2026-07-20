@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os/exec"
 	"testing"
 
@@ -58,6 +59,46 @@ func TestMembersOfSliceSorted(t *testing.T) {
 	got := membersOfSlice(sl)
 	if len(got) != 2 || got[0].Repo != "alpha" || got[1].Repo != "zeta" {
 		t.Errorf("membersOfSlice = %+v, want [alpha, zeta]", got)
+	}
+}
+
+func TestTargetSessionForSlicePrefersRunningRelatedAgent(t *testing.T) {
+	sl := model.Slice{
+		Name: "grouped",
+		Members: map[string]model.SliceMember{
+			"nory": {Repo: "nory", WorktreePath: "/worktrees/unpaid/nory"},
+		},
+	}
+	panes := []tmuxctl.SessionPane{
+		{Session: "slis/grouped", Path: "/worktrees/unpaid/nory", Command: "zsh"},
+		{Session: "slis/old-name", Path: "/worktrees/unpaid/nory", Command: "claude"},
+	}
+	if got := targetSessionForSlice(sl, panes); got != "slis/old-name" {
+		t.Fatalf("targetSessionForSlice = %q, want slis/old-name", got)
+	}
+}
+
+func TestTargetSessionForSliceFallsBackToCanonicalName(t *testing.T) {
+	sl := model.Slice{Name: "grouped", Members: map[string]model.SliceMember{}}
+	if got := targetSessionForSlice(sl, nil); got != "slis/grouped" {
+		t.Fatalf("targetSessionForSlice = %q, want slis/grouped", got)
+	}
+}
+
+func TestDetachedSessionAttachArgvForGhostty(t *testing.T) {
+	name, args, ok := detachedSessionAttachArgv("ghostty", "slis/alpha")
+	if !ok || name != "open" {
+		t.Fatalf("detachedSessionAttachArgv = %q, %v, %v", name, args, ok)
+	}
+	want := []string{"-na", "Ghostty.app", "--args", "-e", "tmux", "attach", "-t", "slis/alpha"}
+	if fmt.Sprint(args) != fmt.Sprint(want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+}
+
+func TestDetachedSessionAttachArgvRejectsUnknownTerminal(t *testing.T) {
+	if _, _, ok := detachedSessionAttachArgv("unknown", "slis/alpha"); ok {
+		t.Fatal("unknown terminal unexpectedly supported")
 	}
 }
 

@@ -52,8 +52,9 @@ export function updatePrefs(patch: Partial<UiPrefs>, path = prefsPath()): void {
 }
 
 export function normalizeDiffScope(value: UiPrefs["diff_scope"]): DiffScope {
+  if (value === "dirty") return "working";
   if (value === "parent" || value === "trunk" || value === "working") return value;
-  return "working"; // Go's historical "dirty" name maps to the working tree.
+  return "working";
 }
 
 export function normalizeThemePreference(value: unknown): ThemePreference {

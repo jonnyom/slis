@@ -1,6 +1,8 @@
 package report
 
 import (
+	"strings"
+
 	"github.com/jonnyom/slis/internal/diff"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
@@ -39,15 +41,6 @@ type DiffResult struct {
 	Repos []DiffRepoResult `json:"repos"`
 }
 
-// SliceDiffScoped computes a slice's diff for one of three scopes and returns
-// it as a marshal-ready DiffResult:
-//
-//   - "working" — the worktree's uncommitted changes only (staged + unstaged +
-//     untracked), no base.
-//   - "parent"  — the committed branch diff vs the branch's Graphite parent
-//     (falling back to the repo trunk when the branch is not stacked).
-//   - "trunk"   — the committed branch diff vs the repo trunk.
-//
 // format selects what each repo entry carries: "stat" (numstat only, cheapest),
 // "patch" (the unified diff text only), or "both".
 func SliceDiffScoped(sl model.Slice, scope, format string) (DiffResult, error) {
@@ -57,10 +50,11 @@ func SliceDiffScoped(sl model.Slice, scope, format string) (DiffResult, error) {
 	var err error
 	switch scope {
 	case "working":
+		bases := scopeBases(sl, "parent")
 		if statOnly {
-			repoDiffs, err = diff.SliceDirtyStat(sl)
+			repoDiffs, err = diff.SliceStatBases(sl, bases)
 		} else {
-			repoDiffs, err = diff.SliceDirtyDiff(sl)
+			repoDiffs, err = diff.SliceDiffBases(sl, bases)
 		}
 	default:
 		bases := scopeBases(sl, scope)
@@ -157,7 +151,20 @@ func gtParent(dir, branch string) string {
 	if !ok || len(bs.Parents) == 0 {
 		return ""
 	}
-	return bs.Parents[0].Ref
+	parent := bs.Parents[0].Ref
+	trunk := git.DetectBase(dir)
+	if sameBranchRef(parent, trunk) {
+		return trunk
+	}
+	return parent
+}
+
+func sameBranchRef(left, right string) bool {
+	normalize := func(ref string) string {
+		ref = strings.TrimPrefix(ref, "refs/heads/")
+		return strings.TrimPrefix(ref, "origin/")
+	}
+	return normalize(left) == normalize(right)
 }
 
 // scopeBases computes the per-repo diff base for a non-working scope, mirroring

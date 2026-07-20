@@ -2,7 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -49,6 +52,42 @@ func membersOfSlice(sl model.Slice) []model.SliceMember {
 	return members
 }
 
+func targetSessionForSlice(sl model.Slice, panes []tmuxctl.SessionPane) string {
+	related := make(map[string]bool)
+	for _, pane := range panes {
+		if strings.HasPrefix(pane.Session, "slis-shell/") {
+			continue
+		}
+		for _, member := range sl.Members {
+			relative, err := filepath.Rel(member.WorktreePath, pane.Path)
+			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				continue
+			}
+			related[pane.Session] = true
+			if !tmuxctl.IsShellCommand(pane.Command) {
+				return pane.Session
+			}
+		}
+	}
+	canonical := tmuxctl.SessionName(sl.Name)
+	if related[canonical] {
+		return canonical
+	}
+	for _, pane := range panes {
+		if related[pane.Session] {
+			return pane.Session
+		}
+	}
+	return canonical
+}
+
+func detachedSessionAttachArgv(terminalApp, target string) (string, []string, bool) {
+	if strings.EqualFold(terminalApp, "ghostty") {
+		return "open", []string{"-na", "Ghostty.app", "--args", "-e", "tmux", "attach", "-t", target}, true
+	}
+	return "", nil, false
+}
+
 var focusCmd = &cobra.Command{
 	Use:   "focus <slice>",
 	Short: "Switch the active tmux client to a slice's session (used by notification clicks)",
@@ -76,7 +115,11 @@ var focusCmd = &cobra.Command{
 			return fmt.Errorf("ensure tmux session: %w", err)
 		}
 
-		target := tmuxctl.SessionName(sl.Name)
+		panes, err := tmuxctl.ListSessionPanes()
+		if err != nil {
+			return err
+		}
+		target := targetSessionForSlice(sl, panes)
 		clients, err := tmuxctl.ListClients()
 		if err != nil {
 			return err
@@ -84,12 +127,18 @@ var focusCmd = &cobra.Command{
 
 		switch action, client := decideFocus(clients, target); action {
 		case focusAttachHint:
+			if launchName, launchArgs, ok := detachedSessionAttachArgv(os.Getenv("SLIS_TERMINAL_APP"), target); ok {
+				if out, err := exec.Command(launchName, launchArgs...).CombinedOutput(); err != nil {
+					return fmt.Errorf("open terminal session: %w: %s", err, out)
+				}
+				return nil
+			}
 			fmt.Printf("tmux attach -t %s\n", target)
 			return nil
 		case focusAlready:
 			return nil
 		default:
-			switchName, switchArgs := tmuxctl.SwitchClientArgv(client.TTY, sl.Name)
+			switchName, switchArgs := tmuxctl.SwitchClientTargetArgv(client.TTY, target)
 			if out, err := exec.Command(switchName, switchArgs...).CombinedOutput(); err != nil {
 				return fmt.Errorf("tmux switch-client: %w: %s", err, out)
 			}

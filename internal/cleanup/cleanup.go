@@ -80,6 +80,12 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 			return rep, fmt.Errorf("slice %q is live (swapped in); run `slis deactivate` first", sl.Name)
 		}
 	}
+	members := make([]model.SliceMember, 0, len(sl.Repos()))
+	for _, repo := range sl.Repos() {
+		members = append(members, sl.Members[repo])
+	}
+	panes, _ := tmuxctl.ListSessionPanes()
+	sessionNames := tmuxctl.RelatedSessionNames(sl.Name, members, panes)
 
 	allRemoved := len(sl.Repos()) > 0
 	for _, repo := range sl.Repos() {
@@ -111,8 +117,10 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 	// Kill the tmux session only when every worktree was removed — a failed or
 	// partial clear must not destroy a session the user may still be working in.
 	if allRemoved && tmuxctl.Available() {
-		if err := tmuxctl.KillSession(sl.Name); err == nil {
-			rep.SessionKilled = true
+		for _, sessionName := range sessionNames {
+			if err := tmuxctl.KillSessionNamed(sessionName); err == nil {
+				rep.SessionKilled = true
+			}
 		}
 	}
 

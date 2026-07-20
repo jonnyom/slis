@@ -124,8 +124,8 @@ describe("cockpitHints", () => {
     expect(labels).toContain("kill");
   });
 
-  test("session hints surface reload (G10)", () => {
-    expect(cockpitHints("session", base).some((h) => h.label === "reload")).toBe(true);
+  test("session hints surface swap", () => {
+    expect(cockpitHints("session", base).some((h) => h.label === "swap")).toBe(true);
   });
 
   test("every non-modal panel keeps hints within the 4–6 range", () => {

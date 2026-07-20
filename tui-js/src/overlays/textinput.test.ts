@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { editText, visibleTextLines } from "./textinput";
+import { appendPastedText, editText, visibleTextLines } from "./textinput";
 
 describe("editText", () => {
   test("appends a printable character via its sequence", () => {
@@ -27,6 +27,14 @@ describe("editText", () => {
   test("ignores ctrl/meta-modified printable keys", () => {
     expect(editText("ab", { name: "c", sequence: "c", ctrl: true })).toBe("ab");
     expect(editText("ab", { name: "v", sequence: "v", meta: true })).toBe("ab");
+  });
+});
+
+describe("appendPastedText", () => {
+  test("appends an entire pasted branch name", () => {
+    expect(appendPastedText("", "jonny/wfm-common-worker-shared-lib")).toBe(
+      "jonny/wfm-common-worker-shared-lib",
+    );
   });
 });
 

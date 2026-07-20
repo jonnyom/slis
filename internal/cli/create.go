@@ -127,17 +127,13 @@ func trunkStartPoint(primary, trunk string, fetch bool) string {
 	return ""
 }
 
-// createFreshWorktree creates branch at start and checks it out at path. A
-// local branch with the requested name may be left behind by an older, already
-// merged slice. Reusing that ref verbatim would resurrect the old slice (and
-// any historical PR attached to its branch name), so recycle it to the fresh
-// trunk start only when Git proves its current tip is contained there. A
-// divergent branch is preserved and rejected; `slis adopt` is the explicit
-// operation for existing work.
 func createFreshWorktree(primary, path, branch, start, mergedPRHead string) error {
 	effectiveStart := start
 	if effectiveStart == "" {
 		effectiveStart = "HEAD"
+	}
+	if currentBranch, err := git.CurrentBranch(path); err == nil && currentBranch == branch {
+		return nil
 	}
 
 	if !git.RefExists(primary, "refs/heads/"+branch) {
@@ -148,7 +144,8 @@ func createFreshWorktree(primary, path, branch, start, mergedPRHead string) erro
 	localTip, _ := git.RevParse(primary, "refs/heads/"+branch)
 	mergedHistorically := mergedPRHead != "" && localTip == mergedPRHead
 	if !git.IsMergedInto(primary, branch, effectiveStart) && !mergedHistorically {
-		return fmt.Errorf("branch %q already exists with work not merged into %s; use `slis adopt %s` to keep that work, or choose a different slice name", branch, effectiveStart, branch)
+		_, err := git.Run(primary, "worktree", "add", "--", path, branch)
+		return err
 	}
 
 	// The old ref is fully contained in trunk, so moving it cannot orphan any
@@ -200,6 +197,7 @@ var createCmd = &cobra.Command{
 
 		plans := worktreePlan(ws, sliceName, branch)
 		createdPlans := make([]struct{ Repo, Primary, Branch, Path, StartPoint string }, 0, len(plans))
+		failedRepos := make([]string, 0)
 
 		for _, p := range plans {
 			// Resolve the freshest trunk to fork from (fetches origin trunk unless
@@ -222,10 +220,11 @@ var createCmd = &cobra.Command{
 			}
 			if err := createFreshWorktree(p.Primary, p.Path, p.Branch, start, historicalHead); err != nil {
 				fmt.Printf("slis: skipping %s — %v\n", p.Repo, err)
+				failedRepos = append(failedRepos, p.Repo+": "+err.Error())
 				continue
 			}
 
-			fmt.Printf("created worktree for %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
+			fmt.Printf("ready worktree for %s at %s (branch: %s)\n", p.Repo, p.Path, p.Branch)
 			createdPlans = append(createdPlans, p)
 
 			// Both a brand-new branch and a safely recycled merged branch are
@@ -270,6 +269,9 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		if len(failedRepos) > 0 {
+			return fmt.Errorf("slice %q is incomplete (%d/%d repos ready): %s", sliceName, len(createdPlans), len(plans), strings.Join(failedRepos, "; "))
+		}
 		return nil
 	},
 }

@@ -34,7 +34,7 @@ describe("hasFailingCi", () => {
 describe("listHints (contextual browser hint bar)", () => {
   test("baseline exposes separate agent and shell terminals", () => {
     const h = listHints(view(), false);
-    expect(keys(h)).toEqual(["enter", "a", "C", "V", "t", "w", "space", "/", ","]);
+    expect(keys(h)).toEqual(["enter", "a", "C", "V", "t", "s", "w", "space", "/", ","]);
     expect(label(h, "a")).toBe("agent");
     expect(label(h, "C")).toBe("launch");
     expect(label(h, "V")).toBe("review");

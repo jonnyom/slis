@@ -323,18 +323,24 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	var pr *PR
 	if err != nil {
 		msg := strings.ToLower(stderr.String())
 		if strings.Contains(msg, "no pull requests found") ||
-			strings.Contains(msg, "no open pull requests") {
-			return nil, nil
+			strings.Contains(msg, "no open pull requests") ||
+			strings.Contains(msg, "could not resolve to a pullrequest") {
+			pr, err = historicalPRForBranch(repoDir, branch)
+			if err != nil || pr == nil {
+				return pr, err
+			}
+		} else {
+			return nil, fmt.Errorf("forge: gh pr view: %w\nstderr: %s", err, stderr.String())
 		}
-		return nil, fmt.Errorf("forge: gh pr view: %w\nstderr: %s", err, stderr.String())
-	}
-
-	pr, err := ParsePR(branch, stdout.Bytes())
-	if err != nil || pr == nil {
-		return pr, err
+	} else {
+		pr, err = ParsePR(branch, stdout.Bytes())
+		if err != nil || pr == nil {
+			return pr, err
+		}
 	}
 	if historicalPRIsStale(repoDir, branch, pr) {
 		return nil, nil
@@ -351,6 +357,37 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 		return pr, fmt.Errorf("forge: inline comments: %w", ierr)
 	}
 	return pr, nil
+}
+
+func parsePRList(branch string, data []byte) (*PR, error) {
+	var rows []json.RawMessage
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return nil, fmt.Errorf("forge: unmarshal PR list JSON: %w", err)
+	}
+	for _, row := range rows {
+		var candidate ghPR
+		if err := json.Unmarshal(row, &candidate); err != nil {
+			return nil, fmt.Errorf("forge: unmarshal PR list entry: %w", err)
+		}
+		if candidate.HeadRefName == branch {
+			return ParsePR(branch, row)
+		}
+	}
+	return nil, nil
+}
+
+func historicalPRForBranch(repoDir, branch string) (*PR, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", jsonFields)
+	cmd.Dir = repoDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("forge: gh pr list: %w\nstderr: %s", err, stderr.String())
+	}
+	return parsePRList(branch, stdout.Bytes())
 }
 
 // historicalPRIsStale prevents a merged/closed PR from being attached to a new

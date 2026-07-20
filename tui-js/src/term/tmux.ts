@@ -18,14 +18,26 @@ export interface TermMember {
 
 /** Window-layout options, mirroring internal/tmuxctl.SessionOpts. */
 export interface SessionOpts {
-  /** Workspace root; a "root"/"both" layout opens one window here. */
+  /** Workspace root; enables a "root"/"both" window at the slice's shared parent. */
   root?: string;
-  /** "root" | "repos" | "both". Empty → repos for multi-repo slices. */
+  /** "root" | "repos" | "both". Empty → root when members share a parent. */
   layout?: string;
 }
 
 /** Agent and ad-hoc shell terminals intentionally use separate tmux sessions. */
 export type SessionKind = "agent" | "shell";
+
+export interface TmuxPane {
+  path: string;
+  command: string;
+  target?: string;
+}
+
+export interface TmuxSessionInfo {
+  name: string;
+  kind: SessionKind;
+  panes: TmuxPane[];
+}
 
 /** tmux disallows ':' and '.' in session names → replace with '-'. */
 export function sessionName(slice: string, kind: SessionKind = "agent"): string {
@@ -42,6 +54,36 @@ async function sh(cmd: string[]): Promise<{ code: number; out: string }> {
 
 export function tmuxAvailable(): boolean {
   return Bun.which("tmux") !== null;
+}
+
+export function parseTmuxSessions(output: string): TmuxSessionInfo[] {
+  const sessions = new Map<string, TmuxSessionInfo>();
+  for (const line of output.split("\n")) {
+    if (!line) continue;
+    const [name, path, command, target] = line.split("\t");
+    if (!name || !path || !command) continue;
+    const kind = name.startsWith("slis/")
+      ? "agent"
+      : name.startsWith("slis-shell/")
+        ? "shell"
+        : null;
+    if (!kind) continue;
+    const session = sessions.get(name) ?? { name, kind, panes: [] };
+    session.panes.push({ path, command, target });
+    sessions.set(name, session);
+  }
+  return [...sessions.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
+  const result = await sh([
+    "tmux",
+    "list-panes",
+    "-a",
+    "-F",
+    "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_name}:#{window_index}.#{pane_index}",
+  ]);
+  return result.code === 0 ? parseTmuxSessions(result.out) : [];
 }
 
 export async function sessionExists(slice: string, kind: SessionKind = "agent"): Promise<boolean> {
@@ -73,6 +115,59 @@ export function sessionHasPaneOutsideMembers(paths: string[], members: TermMembe
   return paths.some((path) => !members.some((member) => pathIsWithin(path, member.worktreePath)));
 }
 
+export function tmuxSessionRelatedToMembers(
+  session: TmuxSessionInfo,
+  members: TermMember[],
+): boolean {
+  return session.panes.some((pane) =>
+    members.some((member) => pathIsWithin(pane.path, member.worktreePath)),
+  );
+}
+
+export function preferredRunningAgentSession(
+  sessions: TmuxSessionInfo[],
+  members: TermMember[],
+): TmuxSessionInfo | undefined {
+  return sessions.find(
+    (session) =>
+      session.kind === "agent" &&
+      tmuxSessionRelatedToMembers(session, members) &&
+      session.panes.some((pane) => !isShellCmd(pane.command)),
+  );
+}
+
+export async function killTmuxSession(name: string): Promise<boolean> {
+  if (!name.startsWith("slis/") && !name.startsWith("slis-shell/")) return false;
+  return (await sh(["tmux", "kill-session", "-t", name])).code === 0;
+}
+
+export async function resumeClaudeSession(opts: {
+  slice: string;
+  sessionId: string;
+  cwd?: string;
+  members: TermMember[];
+  sessionOpts: SessionOpts;
+}): Promise<string> {
+  if (!/^[A-Za-z0-9-]+$/.test(opts.sessionId)) throw new Error("invalid Claude session id");
+  await ensureSession(opts.slice, opts.members, opts.sessionOpts, "agent");
+  const name = sessionName(opts.slice);
+  const session = (await listTmuxSessions()).find((candidate) => candidate.name === name);
+	const target = session?.panes.find((pane) => isShellCmd(pane.command))?.target ?? name;
+	const root = rootWindowCwd(opts.members);
+	const resume = `claude --resume ${opts.sessionId}`;
+	const command = root.ok ? `cd ${shellSingleQuote(root.cwd)} && ${resume}` : resume;
+  const result = await sh([
+    "tmux",
+    "send-keys",
+    "-t",
+    target,
+		command,
+    "Enter",
+  ]);
+  if (result.code !== 0) throw new Error(`tmux send-keys: ${result.out}`);
+  return name;
+}
+
 interface Window {
   name: string;
   cwd: string;
@@ -95,11 +190,11 @@ function rootWindowCwd(sorted: TermMember[]): { cwd: string; ok: boolean } {
   return { cwd: parent, ok: true };
 }
 
-function sessionWindows(members: TermMember[], opts: SessionOpts): Window[] {
+export function sessionWindows(members: TermMember[], opts: SessionOpts): Window[] {
   const sorted = [...members].sort((a, b) => a.repo.localeCompare(b.repo));
 
   let layout = opts.layout ?? "";
-  if (layout === "") layout = opts.root && sorted.length === 1 ? "root" : "repos";
+  if (layout === "") layout = opts.root ? "root" : "repos";
 
   let wins: Window[] = [];
   if ((layout === "root" || layout === "both") && opts.root) {
@@ -242,6 +337,9 @@ function slisEnvPrefix(
     "SLIS_HARNESS=" + shellSingleQuote(harness),
     "SLIS_WORKTREES=" + shellSingleQuote(pairs.join(",")),
   ];
+  const terminalApp = process.env.SLIS_TERMINAL_APP ||
+    (process.env.TERM_PROGRAM?.toLowerCase() === "ghostty" ? "ghostty" : "");
+  if (terminalApp) vars.push("SLIS_TERMINAL_APP=" + shellSingleQuote(terminalApp));
   return vars.join(" ");
 }
 
@@ -259,9 +357,11 @@ export function agentLaunchLine(opts: {
   wsRoot: string;
 }): string {
   const { agent, harness, slice, members, active, wsRoot } = opts;
-  return (
+	const launch = (
     slisEnvPrefix(slice, members, active, wsRoot, harness) +
     " " +
     withSlisContext(agent, slice, members, active)
   );
+	const root = rootWindowCwd(members);
+	return root.ok ? `cd ${shellSingleQuote(root.cwd)} && ${launch}` : launch;
 }

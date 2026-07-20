@@ -1,6 +1,6 @@
 import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   CaptureResult,
   ConflictsResult,
@@ -67,8 +67,10 @@ export interface BrowserProps {
   onConfigureAgents: () => void;
   onFocusSlice: (slice: string) => void;
   initialFocusSlice?: string | null;
+  focusRequest?: { id: number; slice: string } | null;
   onRefresh: () => void;
   onToggleProcs: () => void;
+  onToggleSessions: () => void;
   onQuit: () => void;
   // Changes when the mutable semantic palette is switched; also invalidates
   // memoized slice rows so every cell repaints in the new theme.
@@ -582,6 +584,28 @@ export function Browser(props: BrowserProps): ReactNode {
   const [focusIndex, setFocusIndex] = useState(() =>
     focusIndexForSlice(rows, props.initialFocusSlice),
   );
+  const appliedFocusRequest = useRef(0);
+
+  useEffect(() => {
+    const request = props.focusRequest;
+    if (!request || appliedFocusRequest.current >= request.id) return;
+    if (filterIndex !== 0) {
+      setFilterIndex(0);
+      return;
+    }
+    if (search !== "") {
+      setSearch("");
+      setSearching(false);
+      return;
+    }
+    const requestedIndex = rows.findIndex(
+      (row) => row.kind === "slice" && row.view.slice.name === request.slice,
+    );
+    if (requestedIndex < 0) return;
+    setFocusIndex(requestedIndex);
+    setHubFocus("list");
+    appliedFocusRequest.current = request.id;
+  }, [props.focusRequest, filterIndex, search, rows]);
 
   useEffect(() => {
     setFocusIndex((i) => clampFocus(rows, i));
@@ -619,6 +643,7 @@ export function Browser(props: BrowserProps): ReactNode {
     if (isQuitKey(key, name)) return props.onQuit();
     if (name === "?") return overlays.help();
     if (name === "P") return props.onToggleProcs();
+    if (name === "s") return props.onToggleSessions();
     if (name === "r") return props.onRefresh();
     if (name === "/") {
       setSearch("");

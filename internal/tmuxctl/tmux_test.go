@@ -1,6 +1,7 @@
 package tmuxctl_test
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -8,6 +9,19 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
+
+func TestRelatedSessionNamesIncludesCanonicalShellAndLegacySessions(t *testing.T) {
+	members := []model.SliceMember{{Repo: "nory", WorktreePath: "/worktrees/pay-119/nory"}}
+	panes := []tmuxctl.SessionPane{
+		{Session: "slis/old-pay-119", Path: "/worktrees/pay-119/nory", Command: "claude"},
+		{Session: "slis/unrelated", Path: "/worktrees/elsewhere", Command: "claude"},
+	}
+	got := tmuxctl.RelatedSessionNames("pay-119", members, panes)
+	want := []string{"slis-shell/pay-119", "slis/old-pay-119", "slis/pay-119"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("RelatedSessionNames = %v, want %v", got, want)
+	}
+}
 
 // TestSessionNameSanitises ensures dots and colons are replaced and the prefix is correct.
 func TestSessionNameSanitises(t *testing.T) {

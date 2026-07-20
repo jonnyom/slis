@@ -48,7 +48,7 @@ func TestSessionWindows(t *testing.T) {
 		opts    SessionOpts
 		want    []string
 	}{
-		{"default+root, multi repo → safe repo windows", shareParent, SessionOpts{Root: "/ws"}, []string{"alpha", "beta"}},
+		{"default+root, multi repo → root window", shareParent, SessionOpts{Root: "/ws"}, []string{"root"}},
 		{"default no root → repos (sorted)", shareParent, SessionOpts{}, []string{"alpha", "beta"}},
 		{"both, common parent → root then repos", shareParent, SessionOpts{Root: "/ws", Layout: "both"}, []string{"root", "alpha", "beta"}},
 		{"repos explicit unchanged", shareParent, SessionOpts{Root: "/ws", Layout: "repos"}, []string{"alpha", "beta"}},

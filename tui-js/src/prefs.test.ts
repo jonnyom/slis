@@ -23,8 +23,10 @@ describe("prefs", () => {
 
   test("normalizes legacy and invalid diff scopes", () => {
     expect(normalizeDiffScope("parent")).toBe("parent");
+    expect(normalizeDiffScope("working")).toBe("working");
     expect(normalizeDiffScope("dirty")).toBe("working");
     expect(normalizeDiffScope(undefined)).toBe("working");
+    expect(normalizeDiffScope("wat" as never)).toBe("working");
   });
 
   test("accepts known themes and defaults unknown values to auto", () => {

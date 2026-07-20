@@ -281,9 +281,10 @@ Useful cockpit keys:
 
 ### 5. Use a terminal or coding agent
 
-With tmux installed, each slice can have an isolated session rooted in its own
-worktrees. From the hub, press `a` to attach or `C` to launch the configured
-agent.
+With tmux installed, each slice can have an isolated session rooted at the
+slice directory containing its repo worktrees. From the hub, press `a` to
+attach or `C` to launch the configured agent. Set `sessions.layout: repos` if
+you explicitly want one tmux window per repo instead.
 
 The equivalent CLI workflow is available through `slis focus`, `slis status`,
 and the review commands. For example:

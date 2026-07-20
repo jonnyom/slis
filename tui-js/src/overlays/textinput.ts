@@ -27,6 +27,10 @@ export function editText(text: string, key: EditKey): string {
   return text;
 }
 
+export function appendPastedText(text: string, pasted: string): string {
+  return text + pasted;
+}
+
 // Soft-wrap a controlled input and retain the tail that fits in its capped
 // viewport. Since the caret is append-only, this is the terminal equivalent of
 // automatically scrolling the textarea as the comment grows.

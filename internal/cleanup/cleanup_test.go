@@ -2,6 +2,7 @@ package cleanup_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,29 @@ import (
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/testutil"
 )
+
+func TestRemoveKillsLegacySessionRelatedByWorktreePath(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on PATH")
+	}
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat-session", wt)
+	const legacySession = "slis/legacy-cleanup-test"
+	_ = exec.Command("tmux", "kill-session", "-t", legacySession).Run()
+	if out, err := exec.Command("tmux", "new-session", "-d", "-s", legacySession, "-c", wt).CombinedOutput(); err != nil {
+		t.Fatalf("create legacy session: %v: %s", err, out)
+	}
+	t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", legacySession).Run() })
+
+	ws, sl := sliceFor("r", repo, "feat-session", wt)
+	if _, err := cleanup.Remove(ws, sl, cleanup.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if exec.Command("tmux", "has-session", "-t", legacySession).Run() == nil {
+		t.Fatal("legacy related session still exists after cleanup")
+	}
+}
 
 func sliceFor(repoName, repo, branch, wt string) (config.Workspace, model.Slice) {
 	ws := config.Workspace{Repos: map[string]config.Repo{repoName: {Primary: repo}}}

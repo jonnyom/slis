@@ -56,7 +56,7 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 				}
 				fmt.Println(line)
 			}
-			fmt.Println("  + kill tmux session, clear grouping override + status")
+			fmt.Println("  + kill related tmux sessions, clear grouping override + status")
 			if opts.Force {
 				fmt.Println("  (force: removes dirty worktrees and unmerged branches)")
 			}
@@ -85,7 +85,7 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 			}
 		}
 		if rep.SessionKilled {
-			fmt.Println("  tmux session killed")
+			fmt.Println("  related tmux sessions killed")
 		}
 		return nil
 	},

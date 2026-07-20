@@ -5,13 +5,6 @@ import "strings"
 // DetectBase resolves the trunk/base ref to diff a feature branch against, for
 // the repository that dir belongs to. dir may be a linked worktree — refs are
 // shared with the primary, so trunk branches resolve from there too. Resolution
-// order:
-//
-//  1. the target of refs/remotes/origin/HEAD (the remote's default branch),
-//  2. the first of main, master, develop, trunk that resolves to a commit,
-//     preferring the local branch and falling back to origin/<name>,
-//  3. "main" as a last resort.
-//
 // This exists because a slice spans several repos whose trunks differ (one repo
 // on master, another on main): there is no single slice-wide base, so the base
 // must be detected per repo rather than presumed.
@@ -33,17 +26,15 @@ func DetectBase(dir string) string {
 	return "main"
 }
 
-// resolveTrunk returns name if a branch/ref by that name resolves in dir, else
-// "origin/"+name if that remote-tracking ref resolves, else "".
 func resolveTrunk(dir, name string) string {
 	if name == "" {
 		return ""
 	}
-	if RefExists(dir, name) {
-		return name
-	}
 	if RefExists(dir, "origin/"+name) {
 		return "origin/" + name
+	}
+	if RefExists(dir, name) {
+		return name
 	}
 	return ""
 }

@@ -7,6 +7,7 @@
 // Kept React-free so the flattening + clamping is unit-testable.
 
 import type { SliceView } from "./derive";
+import type { DiffRepo } from "../rpc/types";
 
 export interface StackRow {
   repo: string;
@@ -69,6 +70,22 @@ export function buildStackRows(view: SliceView): StackRow[] {
   return rows;
 }
 
+export function withScopedMemberStats(
+  rows: StackRow[],
+  repos: DiffRepo[] | undefined,
+): StackRow[] {
+  const reposByName = new Map((repos ?? []).map((repo) => [repo.repo, repo]));
+  return rows.map((row) => {
+    if (!row.isMember) return row;
+    const stat = reposByName.get(row.repo)?.stat;
+    return {
+      ...row,
+      added: stat?.added,
+      deleted: stat?.deleted,
+    };
+  });
+}
+
 // compactStackGroups caps each repo without breaking keyboard navigation. The
 // trunk/first row stays visible as the repo's inline anchor; when selection
 // moves deep into a large stack, a small window follows it and explicit
@@ -109,6 +126,34 @@ export function compactStackGroups(
       hiddenAfter: Math.max(0, items.length - (start + tail.length)),
     };
   });
+}
+
+export function fitStackGroups(
+  rows: StackRow[],
+  selected: number,
+  availableRows: number,
+): VisibleStackGroup[] {
+  const largestGroup = rows.reduce((counts, row) => {
+    counts.set(row.repo, (counts.get(row.repo) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const maximumCap = Math.max(1, ...largestGroup.values());
+  const rowBudget = Math.max(1, availableRows);
+
+  for (let cap = maximumCap; cap >= 1; cap--) {
+    const groups = compactStackGroups(rows, selected, cap);
+    const renderedRows = groups.reduce(
+      (total, group) =>
+        total +
+        group.rows.length +
+        Number(group.hiddenBefore > 0) +
+        Number(group.hiddenAfter > 0),
+      0,
+    );
+    if (renderedRows <= rowBudget) return groups;
+  }
+
+  return compactStackGroups(rows, selected, 1);
 }
 
 // clampSel keeps a selection index within [0, len-1] (0 when the list is empty),

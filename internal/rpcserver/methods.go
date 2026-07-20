@@ -75,10 +75,7 @@ func (s *Server) status(raw json.RawMessage) (interface{}, *rpcError) {
 		return nil, rerr
 	}
 	if p.Slice != "" {
-		return report.StatusDTO{
-			Slice:  p.Slice,
-			Status: report.SliceStatus(s.sp.EventsDir, p.Slice).String(),
-		}, nil
+		return report.SliceStatusDTO(s.sp.EventsDir, p.Slice), nil
 	}
 	dtos, err := report.SliceStatuses(s.ws, s.sp)
 	if err != nil {

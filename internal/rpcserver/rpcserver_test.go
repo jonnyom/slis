@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -299,8 +300,15 @@ func TestDiffWorkingScope(t *testing.T) {
 	ws := makeWorkspace(t)
 	h := newHarness(t, ws)
 
-	// Dirty the web worktree so the working-tree diff is non-empty.
 	wt := filepath.Join(ws.Root, "web-checkout")
+	writeFile(t, filepath.Join(wt, "committed.txt"), "committed\n")
+	for _, args := range [][]string{{"add", "committed.txt"}, {"commit", "-m", "committed change"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = wt
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
 	writeFile(t, filepath.Join(wt, "new.txt"), "hello\nworld\n")
 
 	resp := h.call(1, "diff", `{"slice":"checkout","scope":"working","format":"both"}`)
@@ -316,8 +324,8 @@ func TestDiffWorkingScope(t *testing.T) {
 			webPatch = *r.Patch
 		}
 	}
-	if webPatch == "" {
-		t.Error("expected a non-empty web working-tree diff after dirtying it")
+	if !strings.Contains(webPatch, "committed.txt") || !strings.Contains(webPatch, "new.txt") {
+		t.Errorf("working diff should include committed and uncommitted files, got %q", webPatch)
 	}
 }
 

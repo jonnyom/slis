@@ -37,12 +37,17 @@ export type TabEntry =
 
 /** The stable id a tab is keyed by. Agent and shell tabs may coexist per slice. */
 export function tabKey(t: TabEntry): string {
-  return t.kind === "session" ? `${t.opts.kind}:${t.slice}` : t.id;
+  return t.kind === "session"
+    ? t.opts.targetSession
+      ? `tmux:${t.opts.targetSession}`
+      : `${t.opts.kind}:${t.slice}`
+    : t.id;
 }
 
 /** The label shown in the tab bar. Session tabs annotate the picked agent. */
 export function tabLabel(t: TabEntry): string {
   if (t.kind !== "session") return t.title;
+  if (t.opts.targetSession) return t.opts.targetSession.replace(/^slis(?:-shell)?\//, "");
   if (t.opts.kind === "shell") return `${t.slice} · shell`;
   return t.opts.agentLabel ? `${t.slice} · ${t.opts.agentLabel}` : t.slice;
 }

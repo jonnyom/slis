@@ -57,7 +57,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis ls` | read | **yes** | List all slices + members + active flag (`● stale` when the active slice's branches advanced past the primaries; `● partial` / `"partial": true` when the active swap covers only some member repos — a crash mid-activate). `--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`; each slice carries optional Graphite `stack_id`/`stack_order` — siblings share a `stack_id` |
 | `slis candidates` | read | **yes** | List discovered-but-unmanaged worktrees awaiting opt-in import |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
-| `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done) |
+| `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done), plus optional Claude `session_id`/`cwd` for recovery |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
 | `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
@@ -138,15 +138,18 @@ trust them:
 | `SLIS_ACTIVE` | `1` if the slice is swapped into the primaries, else `0` |
 | `SLIS_HARNESS` | `claude` or `codex` |
 | `SLIS_WORKTREES` | comma-separated `repo=worktree_path` pairs (make edits here, never the primaries) |
+| `SLIS_TERMINAL_APP` | originating terminal when detected (currently `ghostty`), used to route notification clicks |
 
 ## Agent recipes
 
 ### Which slice needs my input?
 ```sh
-slis status --json    # → [{slice, status}] ; act on status == "waiting-input"
+slis status --json    # → [{slice, status, session_id?, cwd?}]
 ```
 Requires `slis init-hooks` once so Claude Code writes the events. `slis status
-<slice>` is a direct lookup for one slice.
+<slice>` is a direct lookup for one slice. The TUI Sessions panel offers
+`resume` when a waiting/done Claude process is gone but its recorded session can
+be recovered.
 
 ### Fix failing CI on a slice
 ```sh

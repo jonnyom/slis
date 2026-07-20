@@ -113,12 +113,12 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
       ];
     case "session":
       return [
-        { key: "tab", label: "panel" },
-        { key: "enter", label: "zoom" },
+        { key: "j/k", label: "session" },
+        { key: "enter", label: "attach" },
+        { key: "x", label: "close" },
         { key: "a", label: "agent" },
         { key: "C", label: "launch" },
         { key: "t", label: "shell" },
-        { key: "r", label: "reload" },
         { key: "w", label: "swap" },
       ];
     case "procs":

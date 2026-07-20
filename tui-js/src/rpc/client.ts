@@ -35,6 +35,10 @@ export function isMethodNotFound(err: unknown): boolean {
   return err instanceof RpcError && err.code === METHOD_NOT_FOUND;
 }
 
+export function isSliceNotFound(err: unknown): boolean {
+  return err instanceof RpcError && err.kind === "slice-not-found";
+}
+
 interface JsonRpcRequest {
   jsonrpc: "2.0";
   id: number;

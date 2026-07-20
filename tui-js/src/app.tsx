@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createRpcClient } from "./rpc";
+import { createRpcClient, isSliceNotFound } from "./rpc";
 import type {
   AgentSpec,
   ConflictsResult,
@@ -21,6 +21,7 @@ import type {
   RpcClient,
   SessionStatus,
   ShowResult,
+  StatusEntry,
 } from "./rpc/types";
 import type { SliceView } from "./state/derive";
 import { setTheme, theme, themeName, type ThemeName } from "./theme";
@@ -28,11 +29,12 @@ import { Browser } from "./views/browser";
 import { Cockpit } from "./views/cockpit";
 import type { CockpitEntry } from "./views/cockpit.hints";
 import { AllSlicesProcOverlay } from "./components/procoverlay";
+import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { DIM } from "./components/ui";
 import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
-import { tmuxAvailable, type TermMember } from "./term/tmux";
+import { resumeClaudeSession, tmuxAvailable, type TermMember } from "./term/tmux";
 import type { OpenTermMode, TermSessionOpts } from "./term/session";
 import { availableAgents, findSavedAgent, pickableAgents, agentCmdline } from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
@@ -44,8 +46,9 @@ import {
   createBusyLabel,
   createReducer,
   initialCreateState,
+  resolveCreatedSliceName,
 } from "./state/create";
-import { tickPlan } from "./state/tick";
+import { newlyDiscoveredSliceNames, shouldRefreshDiscovery, tickPlan } from "./state/tick";
 import { isGatherableStackSlice } from "./state/cluster";
 import { normalizeKeyName } from "./util/keys";
 import {
@@ -73,16 +76,22 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
 
   const [hello, setHello] = useState<HelloResult | null>(null);
   const [ls, setLs] = useState<LsResult | null>(null);
+  const lsRef = useRef<LsResult | null>(null);
   const [statuses, setStatuses] = useState<Record<string, SessionStatus>>({});
+  const [statusEntries, setStatusEntries] = useState<StatusEntry[]>([]);
   const [prStacks, setPrStacks] = useState<Record<string, PrStackEntry[]>>({});
   const [shows, setShows] = useState<Record<string, ShowResult>>({});
   const [conflicts, setConflicts] = useState<ConflictsResult | null>(null);
   const [connected, setConnected] = useState(true);
+  const [workspaceResyncNonce, setWorkspaceResyncNonce] = useState(0);
 
   const [view, setView] = useState<"browser" | "cockpit">("browser");
   const [current, setCurrent] = useState<string | null>(null);
+  const currentRef = useRef<string | null>(null);
+  currentRef.current = current;
   const [cockpitEntry, setCockpitEntry] = useState<CockpitEntry | null>(null);
   const [procsOpen, setProcsOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const [activeTheme, setActiveTheme] = useState(themeName);
   const [uiPrefs, setUiPrefs] = useState(initialPrefs);
   const requestedTheme = process.env.SLIS_THEME?.trim().toLowerCase();
@@ -117,6 +126,11 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // Transient toasts (spec §3.5) + non-blocking create (spec D2).
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const [createState, dispatchCreate] = useReducer(createReducer, initialCreateState);
+  const [browserFocusRequest, setBrowserFocusRequest] = useState<{
+    id: number;
+    slice: string;
+  } | null>(null);
+  const nextBrowserFocusRequest = useRef(0);
 
   // The slice the browser has focused (for the lazy-mode background tick, G7).
   const browserFocusRef = useRef<string | null>(null);
@@ -124,33 +138,38 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const loadSlice = useCallback(
     (name: string): Promise<void> => {
       loadedRef.current.add(name);
-      return Promise.all([
-        client.prStack(name).then(
-          (prs) => setPrStacks((m) => ({ ...m, [name]: prs })),
-          () => {},
-        ),
-        client.show(name).then(
-          (show) => setShows((m) => ({ ...m, [name]: show })),
-          () => {},
-        ),
-      ]).then(() => {});
+      return Promise.allSettled([
+        client.prStack(name).then((prs) => setPrStacks((m) => ({ ...m, [name]: prs }))),
+        client.show(name).then((show) => setShows((m) => ({ ...m, [name]: show }))),
+      ]).then((results) => {
+        if (!results.some((result) => result.status === "rejected" && isSliceNotFound(result.reason))) {
+          return;
+        }
+        setView("browser");
+        setCurrent(null);
+        setWorkspaceResyncNonce((nonce) => nonce + 1);
+      });
     },
     [client],
   );
 
   const refresh = useCallback(
-    (onDone?: () => void) => {
+    (onDone?: (result: LsResult) => void) => {
       // ls first so the browser paints fast; the sidecar caps subprocess work at
       // 4 in flight, so the expensive fan-out (conflicts + per-slice PR/stack)
       // must wait behind ls rather than starve it.
       client.hello().then(setHello, () => {});
       client.status().then(
-        (rows) => setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status]))),
+        (rows) => {
+          setStatusEntries(rows);
+          setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status])));
+        },
         () => {},
       );
       client.ls().then((res) => {
+        lsRef.current = res;
         setLs(res);
-        onDone?.();
+        onDone?.(res);
         client.conflicts().then(setConflicts, () => {});
         const plan = bulkLoadPlan(res.slices.length, bulkPhaseRef.current);
         if (plan.prompt) {
@@ -172,6 +191,29 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [client, loadSlice],
   );
 
+  const refreshDiscovery = useCallback(() => {
+    return client.ls().then(
+      (result) => {
+        const previousNames = (lsRef.current?.slices ?? []).map((slice) => slice.name);
+        const nextNames = result.slices.map((slice) => slice.name);
+        const discovered = newlyDiscoveredSliceNames(previousNames, nextNames);
+        const available = new Set(nextNames);
+        lsRef.current = result;
+        setLs(result);
+        loadedRef.current = new Set(
+          [...loadedRef.current].filter((name) => available.has(name)),
+        );
+        for (const name of discovered) void loadSlice(name);
+        const active = currentRef.current;
+        if (active && !available.has(active)) {
+          setView("browser");
+          setCurrent(null);
+        }
+      },
+      () => {},
+    );
+  }, [client, loadSlice]);
+
   // Manual refresh (`r`) confirms with a toast once ls returns.
   const manualRefresh = useCallback(() => {
     refresh(() => pushToast("Refreshed workspace", "ci-pass"));
@@ -183,7 +225,10 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const tickRefresh = useCallback(
     (sliceNames: string[]) => {
       client.status().then(
-        (rows) => setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status]))),
+        (rows) => {
+          setStatusEntries(rows);
+          setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status])));
+        },
         () => {},
       );
       client.conflicts().then(setConflicts, () => {});
@@ -225,6 +270,10 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     };
   }, [client, refresh]);
 
+  useEffect(() => {
+    if (workspaceResyncNonce > 0) refresh();
+  }, [workspaceResyncNonce, refresh]);
+
   const tickCtxRef = useRef({
     paused: false,
     focusedSlice: null as string | null,
@@ -237,9 +286,10 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     const id = setInterval(() => {
       const plan = tickPlan(tickCtxRef.current);
       if (plan.run) tickRefresh(plan.slices);
+      if (shouldRefreshDiscovery(tickCtxRef.current)) void refreshDiscovery();
     }, 30_000);
     return () => clearInterval(id);
-  }, [tickRefresh]);
+  }, [refreshDiscovery, tickRefresh]);
 
   const quit = useCallback(() => {
     manager.detachAll(); // drop every tmux client — sessions keep running
@@ -291,7 +341,14 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           dispatchCreate({ type: "finish" });
           if (res.code === 0) {
             pushToast(`Created ${name}`, "ci-pass");
-            refresh();
+            refresh((result) => {
+              const createdSlice = resolveCreatedSliceName(result, name);
+              if (!createdSlice) return;
+              setBrowserFocusRequest({
+                id: ++nextBrowserFocusRequest.current,
+                slice: createdSlice,
+              });
+            });
           } else {
             const body =
               (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)";
@@ -514,6 +571,55 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [launchTermTab, overlays, agentList, preferredAgent, rememberAgent, savedAgent],
   );
 
+  const openExistingSession = useCallback(
+    (slice: string | null, targetSession: string) => {
+      const kind = targetSession.startsWith("slis-shell/") ? "shell" : "agent";
+      const displaySlice = slice ?? targetSession.replace(/^slis(?:-shell)?\//, "");
+      const opts: TermSessionOpts | null = slice
+        ? buildTermOpts(slice, kind === "shell" ? "shell" : "agent")
+        : {
+            slice: displaySlice,
+            kind,
+            members: [],
+            active: false,
+            wsRoot: hello?.workspaceRoot ?? "",
+            sessionOpts: {},
+            launchAgent: false,
+            agent: "",
+            harness: hello?.sessions.harness || "claude",
+          };
+      if (!opts) return;
+      const targetOpts = { ...opts, launchAgent: false, targetSession };
+      const entry: TabEntry = { kind: "session", slice: displaySlice, opts: targetOpts };
+      const key = tabKey(entry);
+      setTabs((previous) =>
+        previous.some((tab) => tabKey(tab) === key) ? previous : [...previous, entry],
+      );
+      setActiveTab(key);
+      setTermMode(true);
+    },
+    [buildTermOpts, hello],
+  );
+
+  const resumeExistingClaudeSession = useCallback(
+    (entry: StatusEntry) => {
+      if (!entry.session_id) return;
+      const opts = buildTermOpts(entry.slice, "agent");
+      if (!opts) return;
+      resumeClaudeSession({
+        slice: entry.slice,
+        sessionId: entry.session_id,
+        cwd: entry.cwd,
+        members: opts.members,
+        sessionOpts: opts.sessionOpts,
+      }).then(
+        (target) => openExistingSession(entry.slice, target),
+        (error) => overlays.info("Could not resume Claude", String(error)),
+      );
+    },
+    [buildTermOpts, openExistingSession, overlays],
+  );
+
   // Remove a tab and re-point the active tab / term mode. When a *command* tab
   // closes, run the post-mutation refresh — the same resync the captured path
   // does after a mutation completes.
@@ -554,7 +660,8 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       return;
     }
     setTermMode(false);
-  }, [tabs, activeTab, closeTab]);
+    void refreshDiscovery();
+  }, [tabs, activeTab, closeTab, refreshDiscovery]);
 
   if (!ls) {
     return (
@@ -573,7 +680,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   }
 
   const bulkPromptOpen = bulkPromptCount !== null;
-  const overlayEnabled = !overlays.active && !procsOpen && !bulkPromptOpen;
+  const overlayEnabled = !overlays.active && !procsOpen && !sessionsOpen && !bulkPromptOpen;
 
   return (
     <box width="100%" height="100%" backgroundColor={theme.bg}>
@@ -594,8 +701,10 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onConfigureAgents={configureAgents}
           onFocusSlice={onFocusSlice}
           initialFocusSlice={browserFocusRef.current}
+          focusRequest={browserFocusRequest}
           onRefresh={manualRefresh}
           onToggleProcs={() => setProcsOpen(true)}
+          onToggleSessions={() => setSessionsOpen(true)}
           onQuit={quit}
           createBusy={createBusyLabel(createState)}
           themeVersion={activeTheme}
@@ -617,9 +726,11 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onDiffScopeChange={(scope) => persistUiPrefs({ diff_scope: scope })}
           onBack={() => setView("browser")}
           onOpenTerm={openTerm}
+          onOpenExistingSession={openExistingSession}
           onConfigureAgents={configureAgents}
           onToggleProcs={() => setProcsOpen(true)}
           onRefresh={manualRefresh}
+          onRefreshSlice={loadSlice}
           onQuit={quit}
         />
       )}
@@ -673,6 +784,22 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           client={client}
           enabled={procsOpen}
           onClose={() => setProcsOpen(false)}
+        />
+      ) : null}
+      {sessionsOpen ? (
+        <SessionOverlay
+          enabled={sessionsOpen && !termMode}
+          views={views}
+          statusEntries={statusEntries}
+          onClose={() => setSessionsOpen(false)}
+          onAttach={(slice, session) => {
+            setSessionsOpen(false);
+            openExistingSession(slice, session);
+          }}
+          onResume={(entry) => {
+            setSessionsOpen(false);
+            resumeExistingClaudeSession(entry);
+          }}
         />
       ) : null}
       {bulkPromptOpen ? (

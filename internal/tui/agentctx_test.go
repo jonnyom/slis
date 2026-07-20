@@ -58,6 +58,7 @@ func TestWithSlisContext(t *testing.T) {
 }
 
 func TestSlisEnvPrefix(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "ghostty")
 	sl := model.Slice{
 		Name: "wfm-1",
 		Members: map[string]model.SliceMember{
@@ -74,6 +75,7 @@ func TestSlisEnvPrefix(t *testing.T) {
 		"SLIS_ROOT='/root'",
 		"SLIS_ACTIVE='1'",
 		"SLIS_HARNESS='codex'",
+		"SLIS_TERMINAL_APP='ghostty'",
 		// Worktrees are sorted by repo and joined repo=path,repo=path.
 		"SLIS_WORKTREES='api=/wt/api,web=/wt/web'",
 	} {
@@ -112,6 +114,9 @@ func TestAgentLaunchLine(t *testing.T) {
 
 	// claude → env prefix + claude with the append-system-prompt flag.
 	claudeLine := agentLaunchLine("claude", sl, "/root", "claude")
+	if !strings.HasPrefix(claudeLine, "cd '/wt/web' && ") {
+		t.Errorf("claude launch line does not start in the slice root: %s", claudeLine)
+	}
 	if !strings.Contains(claudeLine, "SLIS_HARNESS='claude'") {
 		t.Errorf("claude launch line missing env prefix: %s", claudeLine)
 	}

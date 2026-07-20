@@ -90,7 +90,7 @@ func TestHandleHookWritesStatus(t *testing.T) {
 	}
 
 	t.Run("matching cwd writes status", func(t *testing.T) {
-		body := fmt.Sprintf(`{"cwd":%q,"hook_event_name":"Notification"}`, worktreeDir)
+		body := fmt.Sprintf(`{"cwd":%q,"session_id":"session-123","hook_event_name":"Notification"}`, worktreeDir)
 		r := strings.NewReader(body)
 		if err := hooks.HandleHook("Notification", r, slices, eventsDir, config.Notify{}, 1); err != nil {
 			t.Fatalf("HandleHook: %v", err)
@@ -98,6 +98,10 @@ func TestHandleHookWritesStatus(t *testing.T) {
 		got := notify.ReadStatus(eventsDir, "my-slice")
 		if got != model.SessWaitingInput {
 			t.Errorf("ReadStatus = %v, want SessWaitingInput", got)
+		}
+		record := notify.ReadStatusRecord(eventsDir, "my-slice")
+		if record.SessionID != "session-123" || record.Cwd != worktreeDir {
+			t.Errorf("ReadStatusRecord = %#v", record)
 		}
 	})
 

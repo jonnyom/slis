@@ -4,6 +4,8 @@ package agentlaunch
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jonnyom/slis/internal/model"
@@ -76,10 +78,39 @@ func EnvPrefix(sl model.Slice, wsRoot, harness string) string {
 		"SLIS_HARNESS=" + ShellSingleQuote(harness),
 		"SLIS_WORKTREES=" + ShellSingleQuote(strings.Join(pairs, ",")),
 	}
+	terminalApp := os.Getenv("SLIS_TERMINAL_APP")
+	if terminalApp == "" && strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") {
+		terminalApp = "ghostty"
+	}
+	if terminalApp != "" {
+		vars = append(vars, "SLIS_TERMINAL_APP="+ShellSingleQuote(terminalApp))
+	}
 	return strings.Join(vars, " ")
 }
 
 // Line builds the complete one-line command typed into the tmux shell.
 func Line(agent string, sl model.Slice, wsRoot, harness string) string {
-	return EnvPrefix(sl, wsRoot, harness) + " " + WithSliceContext(agent, sl)
+	launch := EnvPrefix(sl, wsRoot, harness) + " " + WithSliceContext(agent, sl)
+	workingDirectory := sliceWorkingDirectory(sl)
+	if workingDirectory == "" {
+		return launch
+	}
+	return "cd " + ShellSingleQuote(workingDirectory) + " && " + launch
+}
+
+func sliceWorkingDirectory(sl model.Slice) string {
+	repos := sl.Repos()
+	if len(repos) == 0 {
+		return ""
+	}
+	if len(repos) == 1 {
+		return sl.Members[repos[0]].WorktreePath
+	}
+	parent := filepath.Dir(sl.Members[repos[0]].WorktreePath)
+	for _, repo := range repos[1:] {
+		if filepath.Dir(sl.Members[repo].WorktreePath) != parent {
+			return ""
+		}
+	}
+	return parent
 }

@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/git"
@@ -46,7 +44,7 @@ func TestCreateFreshWorktreeRecyclesMergedBranchAtTrunk(t *testing.T) {
 	}
 }
 
-func TestCreateFreshWorktreePreservesDivergentExistingBranch(t *testing.T) {
+func TestCreateFreshWorktreeChecksOutDivergentExistingBranch(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	gitCreate(t, repo, "switch", "-q", "-c", "test")
 	gitCreate(t, repo, "commit", "-q", "--allow-empty", "-m", "unmerged work")
@@ -57,19 +55,26 @@ func TestCreateFreshWorktreePreservesDivergentExistingBranch(t *testing.T) {
 	gitCreate(t, repo, "switch", "-q", "main")
 
 	wt := filepath.Join(t.TempDir(), "test-worktree")
-	err = createFreshWorktree(repo, wt, "test", "main", "")
-	if err == nil || !strings.Contains(err.Error(), "not merged") {
-		t.Fatalf("error = %v, want unmerged-branch refusal", err)
+	if err = createFreshWorktree(repo, wt, "test", "main", ""); err != nil {
+		t.Fatalf("createFreshWorktree: %v", err)
 	}
-	if _, statErr := os.Stat(wt); !os.IsNotExist(statErr) {
-		t.Fatalf("refused create made worktree %q (stat err %v)", wt, statErr)
-	}
-	got, revErr := git.RevParse(repo, "test")
+	got, revErr := git.RevParse(wt, "HEAD")
 	if revErr != nil {
 		t.Fatal(revErr)
 	}
 	if got != want {
 		t.Fatalf("divergent branch moved from %s to %s", want, got)
+	}
+}
+
+func TestCreateFreshWorktreeReusesMatchingPlannedWorktree(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "test-worktree")
+	if err := createFreshWorktree(repo, wt, "test", "main", ""); err != nil {
+		t.Fatalf("first createFreshWorktree: %v", err)
+	}
+	if err := createFreshWorktree(repo, wt, "test", "main", ""); err != nil {
+		t.Fatalf("second createFreshWorktree: %v", err)
 	}
 }
 

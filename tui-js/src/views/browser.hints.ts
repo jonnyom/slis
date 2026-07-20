@@ -25,6 +25,7 @@ export function listHints(focused: SliceView | undefined, searchActive: boolean)
     { key: "C", label: "launch" },
     { key: "V", label: "review" },
     { key: "t", label: "shell" },
+    { key: "s", label: "sessions" },
   ];
   if (hasFailingCi(focused)) hints.push({ key: "v", label: "why" }, { key: "F", label: "fix" });
   if (focused && needsRestack(focused)) hints.push({ key: "R", label: "stack" });

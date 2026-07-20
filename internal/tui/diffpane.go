@@ -22,15 +22,12 @@ type diffLoadedMsg struct {
 	diffs []diff.RepoDiff
 }
 
-// diffScope selects what the cockpit diff pane shows, cycled by [b]:
-// working-tree (uncommitted only, the default) → vs the Graphite parent → vs
-// the repo trunk.
 type diffScope int
 
 const (
-	scopeDirty  diffScope = iota // staged+unstaged+untracked vs HEAD (default)
-	scopeParent                  // committed branch diff vs the Graphite parent
-	scopeTrunk                   // committed branch diff vs the repo trunk
+	scopeDirty  diffScope = iota
+	scopeParent           // committed branch diff vs the Graphite parent
+	scopeTrunk            // committed branch diff vs the repo trunk
 	diffScopeCount
 )
 
@@ -103,29 +100,31 @@ func gtParent(dir, branch string) string {
 	if !ok || len(bs.Parents) == 0 {
 		return ""
 	}
-	return strings.TrimSpace(bs.Parents[0].Ref)
+	parent := strings.TrimSpace(bs.Parents[0].Ref)
+	trunk := git.DetectBase(dir)
+	if sameBranchRef(parent, trunk) {
+		return trunk
+	}
+	return parent
+}
+
+func sameBranchRef(left, right string) bool {
+	normalize := func(ref string) string {
+		ref = strings.TrimPrefix(ref, "refs/heads/")
+		return strings.TrimPrefix(ref, "origin/")
+	}
+	return normalize(left) == normalize(right)
 }
 
 // loadDiffCmd computes each member's diff off the UI goroutine, according to the
 // selected scope:
 //
-//   - scopeDirty  — the worktree's uncommitted changes only (staged + unstaged +
-//     untracked), no base. This is the default.
 //   - scopeParent — the committed branch diff vs the branch's Graphite PARENT
 //     (so a stacked branch shows only its own changes), falling back to the
 //     repo's trunk when the branch isn't stacked.
 //   - scopeTrunk  — the committed branch diff vs the repo trunk (the cumulative
 //     feature change).
-//
-// An explicit sl.Base override wins over parent/trunk base detection; it does
-// not apply to the working-tree scope (which has no base).
 func loadDiffCmd(sl model.Slice, scope diffScope) tea.Cmd {
-	if scope == scopeDirty {
-		return func() tea.Msg {
-			diffs, _ := diff.SliceDirtyDiff(sl)
-			return diffLoadedMsg{slice: sl.Name, diffs: diffs}
-		}
-	}
 	override := sl.Base
 	return func() tea.Msg {
 		bases := make(map[string]string, len(sl.Members))
@@ -133,7 +132,7 @@ func loadDiffCmd(sl model.Slice, scope diffScope) tea.Cmd {
 			switch {
 			case override != "":
 				bases[repo] = override
-			case scope == scopeParent:
+			case scope == scopeParent || scope == scopeDirty:
 				if p := gtParent(mem.WorktreePath, mem.Branch); p != "" {
 					bases[repo] = p
 				} else {

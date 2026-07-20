@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createBusyLabel, createReducer, initialCreateState } from "./create";
+import {
+  createBusyLabel,
+  createReducer,
+  initialCreateState,
+  resolveCreatedSliceName,
+} from "./create";
 
 describe("createReducer", () => {
   test("start moves idle → creating with the name", () => {
@@ -30,5 +35,33 @@ describe("createBusyLabel", () => {
     expect(createBusyLabel({ status: "creating", name: "invoice-pdf" })).toBe(
       "creating invoice-pdf…",
     );
+  });
+});
+
+describe("resolveCreatedSliceName", () => {
+  test("maps a prefixed requested branch to its stripped discovered slice name", () => {
+    expect(
+      resolveCreatedSliceName(
+        {
+          slices: [
+            {
+              name: "wfm-common-worker-shared-lib",
+              base: "",
+              active: false,
+              stale: false,
+              members: [
+                {
+                  repo: "web",
+                  branch: "jonny/wfm-common-worker-shared-lib",
+                  worktree_path: "/w",
+                  tip_sha: "abc",
+                },
+              ],
+            },
+          ],
+        },
+        "jonny/wfm-common-worker-shared-lib",
+      ),
+    ).toBe("wfm-common-worker-shared-lib");
   });
 });

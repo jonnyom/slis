@@ -3,7 +3,7 @@ import { SlisRpcClient } from "./client";
 import { FakeRpcClient } from "./fake";
 
 export * from "./types";
-export { RpcError, isMethodNotFound, METHOD_NOT_FOUND } from "./client";
+export { RpcError, isMethodNotFound, isSliceNotFound, METHOD_NOT_FOUND } from "./client";
 
 /**
  * Build the RPC client. SLIS_FAKE=1 selects the in-process fixtures; otherwise
