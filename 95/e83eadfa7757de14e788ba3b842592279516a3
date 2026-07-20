@@ -1,0 +1,228 @@
+tui-js/src/term/session.ts
+  s_63ced3de54af85::t_aa75ad68a9b7ff 29,62-64,67,92
+internal/report/report.go
+  s_63ced3de54af85::t_7d1e053e69f06c 125-142,149-154,156-161,461
+internal/rpcserver/rpcserver_test.go
+  s_63ced3de54af85::t_4d68e952414d88 304-311,327-328
+  s_63ced3de54af85::t_ae0352b86d948a 12
+internal/tmuxctl/windows_test.go
+  s_63ced3de54af85::t_0e6fcd8c167a54 51
+internal/cli/rm.go
+  s_63ced3de54af85::t_74d21a8b12624d 59,88
+tui-js/src/state/create.ts
+  s_63ced3de54af85::t_901c35ffe39110 1-2
+  s_63ced3de54af85::t_33aa3960bcd6e8 30-39
+internal/git/base_test.go
+  s_63ced3de54af85::t_27d8f440549829 5,20-46
+  s_63ced3de54af85::t_447859bacd9467 47-48
+docs/AGENT.md
+  s_63ced3de54af85::t_dc60b7e38a88d5 90-92,95-97,291-292,297-300
+  s_63ced3de54af85::t_8366e32c325acb 400
+tui-js/src/rpc/feature.test.ts
+  s_63ced3de54af85::t_c90fb4da9ecfc0 2,25-39
+  s_f74d1a32fee998::t_4cd1a65bb7be39 40
+tui-js/src/components/help.tsx
+  s_63ced3de54af85::t_d5619c2aa1c36e 64
+tui-js/src/term/tmux.test.ts
+  s_63ced3de54af85::t_6a0f14d144723c 2-3,5-7,9-11,70-73,75-83,85-87,92-94,101-104
+  s_63ced3de54af85::t_a2a08933ab4b03 84,88,95-100
+  s_63ced3de54af85::t_098309296e6df7 4,106-121
+  s_63ced3de54af85::t_208189c6f80367 8,23-26
+  s_63ced3de54af85::t_0e6fcd8c167a54 27,105,122-134
+  s_63ced3de54af85::t_64ae11d038f1d8 74,89-91
+  s_63ced3de54af85::t_488df48c590524 28
+tui-js/src/overlays/textinput.ts
+  s_63ced3de54af85::t_33aa3960bcd6e8 30-33
+tui-js/src/prefs.test.ts
+  s_63ced3de54af85::t_bade7b6a8522f2 26
+  s_63ced3de54af85::t_4d68e952414d88 29
+tui-js/src/rpc/client.ts
+  s_63ced3de54af85::t_4b0188e56a045c 38-41
+tui-js/src/views/browser.hints.test.ts
+  s_63ced3de54af85::t_9cd9d9a9cf148b 37
+internal/forge/forge.go
+  s_63ced3de54af85::t_97a1cf672471ba 326,330-342,362-391
+  s_63ced3de54af85::t_78c3c553708d85 392
+internal/tmuxctl/tmux_test.go
+  s_63ced3de54af85::t_828ebb72c00de9 4,13-24
+  s_63ced3de54af85::t_7b5e0a5dccccb2 25
+internal/rpcserver/methods.go
+  s_63ced3de54af85::t_7d1e053e69f06c 78
+internal/hooks/handler.go
+  s_63ced3de54af85::t_97a1cf672471ba 192-194
+  s_63ced3de54af85::t_74cd95932aebe0 226-227
+  s_63ced3de54af85::t_7d1e053e69f06c 140-146
+  s_63ced3de54af85::t_5edbb35435eb3d 178,181-184,195,197
+  s_63ced3de54af85::t_57fb18d22aa795 177,179-180,185-191,196,198,228
+internal/tui/diffpane.go
+  s_63ced3de54af85::t_4d68e952414d88 135
+  s_63ced3de54af85::t_901c35ffe39110 28
+  s_63ced3de54af85::t_1fd0723608dded 29-30
+  s_63ced3de54af85::t_ec0176562743dc 103-116
+tui-js/src/rpc/index.ts
+  s_63ced3de54af85::t_4b0188e56a045c 6
+tui-js/src/views/cockpit.hints.test.ts
+  s_63ced3de54af85::t_0103aaf4112aba 127-128
+tui-js/src/state/stacknav.ts
+  s_63ced3de54af85::t_81253515a1e0ae 87,131-158
+  s_63ced3de54af85::t_33aa3960bcd6e8 10,73-86
+  s_f74d1a32fee998::t_c7508dab299a40 88
+internal/tui/keys.go
+  s_63ced3de54af85::t_901c35ffe39110 53
+skills/slis/SKILL.md
+  s_63ced3de54af85::t_8366e32c325acb 141
+  s_63ced3de54af85::t_dc60b7e38a88d5 60,147,150-152
+internal/cli/focus.go
+  s_63ced3de54af85::t_5edbb35435eb3d 84-90,130-135
+  s_63ced3de54af85::t_cbfab5f791a148 5
+  s_63ced3de54af85::t_8fa289ac91ba24 7-8,55-83,118-122,141
+internal/hooks/handler_test.go
+  s_63ced3de54af85::t_7d1e053e69f06c 93,102-104
+  s_63ced3de54af85::t_6c43cb507db429 105
+internal/forge/stale_test.go
+  s_63ced3de54af85::t_828ebb72c00de9 7,14-24,60-61
+  s_63ced3de54af85::t_c3ad8c0b9f4124 4,25-59
+  s_63ced3de54af85::t_47462dfa89380a 62
+tui-js/src/prefs.ts
+  s_63ced3de54af85::t_4d68e952414d88 57
+  s_63ced3de54af85::t_33aa3960bcd6e8 55
+internal/report/diff.go
+  s_63ced3de54af85::t_4d68e952414d88 53,55,57
+  s_63ced3de54af85::t_ec0176562743dc 4-5,154-167
+internal/git/base.go
+  s_63ced3de54af85::t_ec0176562743dc 36-37
+  s_63ced3de54af85::t_cb35f000f56f5c 38
+internal/cli/focus_test.go
+  s_63ced3de54af85::t_5edbb35435eb3d 4
+  s_63ced3de54af85::t_693e28947cb3ca 88-104
+  s_63ced3de54af85::t_8fa289ac91ba24 65-87
+tui-js/src/views/browser.hints.ts
+  s_63ced3de54af85::t_d5619c2aa1c36e 28
+tui-js/src/views/cockpit.hints.ts
+  s_63ced3de54af85::t_dcdd751ed0b298 116-118
+internal/config/config.go
+  s_63ced3de54af85::t_fd1740ef39a221 79
+internal/hooks/notify_internal_test.go
+  s_63ced3de54af85::t_693e28947cb3ca 166-182,198-207,222-224
+  s_63ced3de54af85::t_2b24eaa94acbd7 126,154
+  s_63ced3de54af85::t_57fb18d22aa795 159,208-221
+  s_63ced3de54af85::t_828ebb72c00de9 183-197
+internal/agentlaunch/launch.go
+  s_63ced3de54af85::t_97a1cf672471ba 7,81-86
+  s_63ced3de54af85::t_af5b2936680406 8,87,93-115
+internal/tui/agentctx_test.go
+  s_63ced3de54af85::t_0e6fcd8c167a54 117-119
+  s_63ced3de54af85::t_828ebb72c00de9 61,78
+tui-js/src/components/sessionoverlay.tsx
+  s_63ced3de54af85::t_18bea764b86041 4,28-63,67,70,74,77,85-86,133-134,137,174-176,178,185,190,195-199
+  s_63ced3de54af85::t_29db205125ce29 157,166
+  s_63ced3de54af85::t_5b0db1d1a98eb2 188
+  s_63ced3de54af85::t_d5619c2aa1c36e 1-3,5-27,64-66,68-69,71-73,75-76,78-84,87-132,135-136,138-156,158-165,167-173,177,179-184,186-187,189,191-194,200-215
+tui-js/src/state/stacknav.test.ts
+  s_63ced3de54af85::t_9650e64f1d8ce7 6,129,167-181
+  s_63ced3de54af85::t_bade7b6a8522f2 2-5,7-9,92-128
+internal/cleanup/cleanup.go
+  s_63ced3de54af85::t_97a1cf672471ba 83-88,120-123
+internal/cli/create_test.go
+  s_63ced3de54af85::t_fc2759301f7443 47,58-59,61
+  s_63ced3de54af85::t_021c1a74b70472 70-80
+internal/notify/events_test.go
+  s_63ced3de54af85::t_7d1e053e69f06c 31-47
+README.md
+  s_63ced3de54af85::t_fd1740ef39a221 284-287
+tui-js/src/components/sessionoverlay.test.ts
+  s_63ced3de54af85::t_64ae11d038f1d8 1-79
+internal/cli/create.go
+  s_63ced3de54af85::t_401b46ac55a006 135-137,147-148
+  s_63ced3de54af85::t_203b4229089917 200,223,227,272-274
+tui-js/src/state/tick.ts
+  s_63ced3de54af85::t_6693efeb6ee3f5 19-27
+tui-js/src/term/tmux.ts
+  s_63ced3de54af85::t_97a1cf672471ba 340-342
+  s_63ced3de54af85::t_fd1740ef39a221 21,23
+  s_63ced3de54af85::t_af5b2936680406 155-158,164,193,197,360,365-366
+  s_63ced3de54af85::t_885d2078c08aea 33,63,72,84,142-154,159-163,165-169
+  s_63ced3de54af85::t_4e42c394e495d3 30-32,34-41,59-62,64-71,73-83,85-88,118-141
+  s_63ced3de54af85::t_1d9075dead69a0 170
+tui-js/src/views/cockpit.tsx
+  s_63ced3de54af85::t_294948c0d07b11 49,896,927-931,958,1059
+  s_63ced3de54af85::t_fd12db43165e19 64,66-67,70-71,161,891-894,1028-1029,1031-1041,1156-1157
+  s_63ced3de54af85::t_81253515a1e0ae 47,226,233,236,1694-1698,1859
+  s_63ced3de54af85::t_17a9f33f76f5c3 165,1021-1024
+  s_63ced3de54af85::t_34084de8e3d205 65,747
+  s_63ced3de54af85::t_dcdd751ed0b298 379,387,391,1726,1871,1950-1953
+  s_63ced3de54af85::t_45f5eed725db0f 721-724,728-731,736-739,741-746,748-774,777,788
+  s_63ced3de54af85::t_d2dc723359fa8f 1008-1020,1303-1342,1483-1488,1505-1507,1528-1530,1563-1565,1579-1582,1603
+  s_63ced3de54af85::t_8ee96ea8653da1 1699-1710
+tui-js/src/state/create.test.ts
+  s_63ced3de54af85::t_bade7b6a8522f2 2-7,40-65
+  s_63ced3de54af85::t_370eefaa1780d9 66-67
+tui-js/src/rpc/types.ts
+  s_63ced3de54af85::t_885d2078c08aea 135-136
+tui-js/src/state/tick.test.ts
+  s_63ced3de54af85::t_e510560225a885 2,25-34
+  s_63ced3de54af85::t_97a042f557b424 35
+internal/cleanup/cleanup_test.go
+  s_63ced3de54af85::t_1b657fb5aef470 5,17-38
+  s_63ced3de54af85::t_7b68ac2eff157f 39
+tui-js/src/term/tabs.tsx
+  s_63ced3de54af85::t_aa75ad68a9b7ff 40-44,50
+internal/notify/events.go
+  s_63ced3de54af85::t_7d1e053e69f06c 17-21,46-49,53,57,79-82,86,90,92
+tui-js/src/views/browser.tsx
+  s_63ced3de54af85::t_294948c0d07b11 3,70,587-608
+  s_63ced3de54af85::t_d5619c2aa1c36e 73,646
+tui-js/src/overlays/textinput.test.ts
+  s_63ced3de54af85::t_bade7b6a8522f2 2,33-37
+  s_63ced3de54af85::t_1b3be331550f38 38-40
+internal/tmuxctl/tmux.go
+  s_63ced3de54af85::t_2c9fed2354385e 310
+  s_63ced3de54af85::t_af5b2936680406 91
+  s_63ced3de54af85::t_97a1cf672471ba 308-309,311-313,318,324-350,534
+  s_63ced3de54af85::t_478358f5ba56ef 314-317,319-323
+  s_63ced3de54af85::t_8fa289ac91ba24 285-307,532-533
+  s_63ced3de54af85::t_fd1740ef39a221 43-44
+  s_63ced3de54af85::t_e15ded3774e67a 535
+tui-js/src/app.tsx
+  s_63ced3de54af85::t_5dcfb866b8cf6b 24,37,81
+  s_63ced3de54af85::t_294948c0d07b11 49,129-133,157,172,344-351,704
+  s_63ced3de54af85::t_aa75ad68a9b7ff 574,576,591-592,594-600,602-603
+  s_63ced3de54af85::t_0f086e09ee1c59 578
+  s_63ced3de54af85::t_a89640c335fdfb 729
+  s_63ced3de54af85::t_a29eaea2eb4295 604-622
+  s_63ced3de54af85::t_4b0188e56a045c 14,86,141-151,273-275
+  s_63ced3de54af85::t_8af4c706fd504d 163-166,228-231
+  s_63ced3de54af85::t_6693efeb6ee3f5 51,79,90-91,170,194-216,289,292,663-664
+  s_63ced3de54af85::t_d5619c2aa1c36e 32,94,575,577,579-590,593,601,683,707,789-792,794-797,802
+  s_63ced3de54af85::t_17a9f33f76f5c3 733
+  s_63ced3de54af85::t_c1ac7b40d23c27 793,798-801
+  s_63ced3de54af85::t_6d354502a55500 276
+  s_63ced3de54af85::t_4df5c60640a2a2 803-804
+tui-js/src/overlays/useOverlays.tsx
+  s_63ced3de54af85::t_33aa3960bcd6e8 9-10,55,224-236
+  s_63ced3de54af85::t_5f7b631e3e0ac1 237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "95e83eadfa7757de14e788ba3b842592279516a3",
+  "prompts": {},
+  "sessions": {
+    "s_63ced3de54af85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ea0-b36d-7e91-b392-d9b4f2175869",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_f74d1a32fee998": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0143b522-681e-4355-9150-40b4f8d973e4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
