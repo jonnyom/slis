@@ -55,6 +55,10 @@ describe("shortcut contract", () => {
     expect(shortcutAction("agent.configure", "1")).toBeUndefined();
   });
 
+  test("the PR panel owns a focused-URL copy action", () => {
+    expect(shortcutAction("cockpit.prs", "y")).toBe("copy-pr-url");
+  });
+
   test("protected action keys are resolved through the contract in keyboard owners", async () => {
     const roots = [
       new URL("../views/browser.tsx", import.meta.url),

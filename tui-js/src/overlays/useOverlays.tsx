@@ -65,6 +65,7 @@ import {
   RemoveOverlay,
   ResultOverlay,
   ReviewListOverlay,
+  StackActionsHelpOverlay,
   StackActionsOverlay,
   SummaryOverlay,
   SwapOverlay,
@@ -74,11 +75,13 @@ import { AdoptOverlay } from "./adopt";
 import { normalizeKeyName } from "../util/keys";
 import { Help } from "../components/help";
 import type { BadgeState, ResultStatus } from "../theme";
+import { stackOverlayAction } from "./stack";
 
 type Overlay =
   | { kind: "help" }
   | { kind: "swap"; slice: string; active: boolean; replacing?: string }
-  | { kind: "stack"; slices: string[]; conflictWith: string[] }
+  | { kind: "stack"; slices: string[]; conflictWith: string[]; gatherable: boolean }
+  | { kind: "stackHelp"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "remove"; slices: string[] }
   | { kind: "ciRerun"; slice: string }
   | { kind: "create"; text: string }
@@ -118,7 +121,7 @@ export interface OverlayApi {
   // modal openers
   help(): void;
   swap(slice: string, active: boolean): void;
-  stack(slices: string[], conflictWith: string[]): void;
+  stack(slices: string[], conflictWith: string[], gatherable: boolean): void;
   remove(slices: string[]): void;
   ciRerun(slice: string): void;
   fixCi(slice: string): void;
@@ -148,6 +151,7 @@ export interface OverlayApi {
   // immediate actions (still funnel through the shared runner)
   ungroup(slice: string): void;
   yankDiff(text: string): void;
+  yankPrUrl(url: string): void;
   yankPrStack(slice: string): void;
   openPr(url: string): void;
 }
@@ -416,7 +420,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     node: renderOverlay(overlay, conflicts, view, height),
     help: openHelp,
     swap: openSwap,
-    stack: (slices, conflictWith) => setOverlay({ kind: "stack", slices, conflictWith }),
+    stack: (slices, conflictWith, gatherable) =>
+      setOverlay({ kind: "stack", slices, conflictWith, gatherable }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
     ciRerun: (slice) => setOverlay({ kind: "ciRerun", slice }),
     fixCi: (slice) =>
@@ -442,6 +447,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     error: (title, body) => setOverlay({ kind: "result", title, body, status: "failure" }),
     ungroup: (slice) => runMutation("Ungroup " + slice, () => ungroupSlice(slice)),
     yankDiff: (text) => runQuiet("Copied diff to clipboard", () => copyToClipboard(text)),
+    yankPrUrl: (url) => runQuiet("Copied PR URL to clipboard", () => copyToClipboard(url)),
     yankPrStack: (slice) =>
       runQuiet("Copied PR-stack markdown", async () => {
         const md = await prStackMarkdown(slice);
@@ -487,23 +493,36 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         return;
       case "stack": {
         const first = overlay.slices[0] ?? "";
-        if (name === "r")
+        const action = stackOverlayAction(isCancel ? "escape" : name, overlay.gatherable);
+        if (action === "context-help") setOverlay({ ...overlay, kind: "stackHelp" });
+        else if (action === "restack")
           runMutation("Restack " + overlay.slices.join(", "), () =>
             runSequential(overlay.slices, restackSlice),
           );
-        else if (name === "p")
+        else if (action === "submit")
           runMutationRouted("Submit " + first, "submit", [first], () => submitSlice(first));
-        else if (name === "m")
+        else if (action === "merge")
           runMutationRouted("Merge " + first, "merge", [first], () => mergeSlice(first));
-        else if (name === "s")
+        else if (action === "sync")
           runMutationRouted("Sync " + first, "sync", [first], () => syncSlice(first));
-        else if (name === "g")
+        else if (action === "gather")
           runMutation("Gather " + first, () => gatherStack(first, first));
-        else if (name === "x")
+        else if (action === "gather-unavailable")
+          setOverlay({
+            kind: "result",
+            title: "Gather unavailable",
+            body: `${first} is a standalone Graphite branch. A stack label applies to the slices beneath it.`,
+            status: "warn",
+          });
+        else if (action === "scatter")
           runMutation("Scatter " + first, () => scatterStack(first));
-        else if (name === "n" || isCancel) close();
+        else if (action === "close") close();
         return;
       }
+      case "stackHelp":
+        if (name === "?" || name === "q" || isCancel)
+          setOverlay({ ...overlay, kind: "stack" });
+        return;
       case "remove":
         if (name === "y")
           runMutation("Clear " + overlay.slices.join(", "), () =>
@@ -763,7 +782,20 @@ function renderOverlay(
         />
       );
     case "stack":
-      return <StackActionsOverlay slices={overlay.slices} conflictWith={overlay.conflictWith} />;
+      return (
+        <StackActionsOverlay
+          slices={overlay.slices}
+          conflictWith={overlay.conflictWith}
+          gatherable={overlay.gatherable}
+        />
+      );
+    case "stackHelp":
+      return (
+        <StackActionsHelpOverlay
+          target={overlay.slices[0] ?? ""}
+          gatherable={overlay.gatherable}
+        />
+      );
     case "remove":
       return <RemoveOverlay slices={overlay.slices} />;
     case "ciRerun":

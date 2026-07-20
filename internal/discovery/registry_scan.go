@@ -164,10 +164,14 @@ func removeEmptyManagedDirectories(root string) {
 	}
 	var dirs []candidate
 	_ = filepath.WalkDir(base, func(path string, entry os.DirEntry, err error) error {
-		if err == nil && entry.IsDir() && path != base {
-			if info, infoErr := entry.Info(); infoErr == nil {
-				dirs = append(dirs, candidate{path: path, modTime: info.ModTime()})
-			}
+		if err != nil || !entry.IsDir() || path == base {
+			return nil
+		}
+		if _, markerErr := os.Lstat(filepath.Join(path, ".git")); markerErr == nil || !os.IsNotExist(markerErr) {
+			return filepath.SkipDir
+		}
+		if info, infoErr := entry.Info(); infoErr == nil {
+			dirs = append(dirs, candidate{path: path, modTime: info.ModTime()})
 		}
 		return nil
 	})

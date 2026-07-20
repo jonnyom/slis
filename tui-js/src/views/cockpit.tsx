@@ -76,6 +76,7 @@ import { HintBar } from "../components/hintbar";
 import { DiffView, type DiffMode } from "../components/diffview";
 import { FileTree } from "../components/filetree";
 import { FileView, contentLines } from "../components/fileview";
+import { TerminalLink } from "../components/terminal-link";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 import { isQuitKey, normalizeKeyName } from "../util/keys";
@@ -141,6 +142,7 @@ export interface CockpitProps {
   overlays: OverlayApi;
   width: number;
   height: number;
+  gatherable: boolean;
   // Entry focus when opened from the browser (M4): which panel to land on and
   // whether to auto-open the focused PR's failing-CI log.
   initialPanel?: PanelId;
@@ -653,9 +655,7 @@ function PrDetailRight({
           {pr.review_decision || "—"}
         </span>
       </text>
-      <text fg={color.dim} wrapMode="none">
-        {pr.url ?? ""}
-      </text>
+      {pr.url ? <TerminalLink url={pr.url} /> : null}
       {rc ? (
         <CommentsBlock repo={pr.repo} prNumber={rc.pr} comments={rc.comments} width={width} />
       ) : null}
@@ -1010,11 +1010,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     };
   }, [client, slice, scope, panel]);
 
-  // Load each selected branch's stat-vs-parent for the summary and file tree.
-  // A method-not-found means the sidecar predates F3.
   useEffect(() => {
     if (panel !== "stack") return;
-    if (!stackReviewSupported || !selectedBranch) return;
+    if (!stackReviewSupported || !selectedBranch || onMemberBranch) return;
     let live = true;
     setBranchDiff(null);
     client.branchDiff({ slice, repo: selectedRepo, branch: selectedBranch, format: "stat" }).then(
@@ -1030,6 +1028,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     client,
     slice,
     panel,
+    onMemberBranch,
     selectedRepo,
     selectedBranch,
     stackReviewSupported,
@@ -1503,9 +1502,16 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (name === "X") return requestKill(true);
     }
     if (panel === "prs") {
-      if (name === "v") return toggleCiLog();
+      const prShortcut = shortcutAction("cockpit.prs", name);
+      if (prShortcut === "ci-detail") return toggleCiLog();
       if (key.ctrl && name === "r") return overlays.ciRerun(slice);
-      if (name === "F") return overlays.fixCi(slice);
+      if (prShortcut === "fix-ci") return overlays.fixCi(slice);
+      if (prShortcut === "copy-pr-url") {
+        const pr = focusedPr();
+        if (pr?.url) overlays.yankPrUrl(pr.url);
+        else overlays.info("Copy PR URL", "No PR for the focused repo yet.");
+        return;
+      }
     }
     if (name === "j" || name === "down") return moveSel(1);
     if (name === "k" || name === "up") return moveSel(-1);
@@ -1520,7 +1526,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       return;
     }
     // stack actions + slice mutations (overlays own the confirm / run flow).
-    if (name === "R") return overlays.stack([slice], []);
+    if (name === "R") return overlays.stack([slice], [], props.gatherable);
     if (name === "s") return overlays.summary(slice, false);
     if (name === "S") return overlays.summary(slice, true);
     if (cockpitShortcut === "clear-slice" && !key.ctrl) {

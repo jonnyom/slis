@@ -14,6 +14,7 @@ import { Spinner } from "../components/spinner";
 import { BOLD } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 import { visibleTextLines } from "./textinput";
+import { stackHelpItems } from "./stack";
 
 export function SwapOverlay({
   slice,
@@ -200,9 +201,11 @@ export function ResultOverlay({
 export function StackActionsOverlay({
   slices,
   conflictWith,
+  gatherable,
 }: {
   slices: string[];
   conflictWith: string[];
+  gatherable: boolean;
 }): ReactNode {
   const target = slices[0] ?? "";
   return (
@@ -215,8 +218,9 @@ export function StackActionsOverlay({
         { key: "p", label: "submit" },
         { key: "m", label: "merge" },
         { key: "s", label: "sync" },
-        { key: "g", label: "gather" },
+        ...(gatherable ? [{ key: "g", label: "gather" }] : []),
         { key: "x", label: "scatter" },
+        { key: "?", label: "help" },
         { key: "esc", label: "cancel" },
       ]}
     >
@@ -226,10 +230,48 @@ export function StackActionsOverlay({
           stale; committed changes only)
         </text>
       ) : null}
-      <text fg={theme.textDim} wrapMode="word">
-        restack runs across all targets; submit / merge / sync / gather / scatter act on the first
-        target. gather folds the first target's whole Graphite stack into it (scatter undoes it).
-      </text>
+      {gatherable ? (
+        <text fg={theme.textDim} wrapMode="word">
+          restack runs across all targets; submit / merge / sync / gather / scatter act on the first
+          target. gather folds the first target's whole Graphite stack into it (scatter undoes it).
+        </text>
+      ) : (
+        <text fg={theme.textDim} wrapMode="word">
+          {target} is standalone, so it cannot be gathered. Stack labels apply to the slices beneath
+          them.
+        </text>
+      )}
+    </Card>
+  );
+}
+
+export function StackActionsHelpOverlay({
+  target,
+  gatherable,
+}: {
+  target: string;
+  gatherable: boolean;
+}): ReactNode {
+  return (
+    <Card
+      title="Stack actions · help"
+      subtitle={`target: ${target}`}
+      width={82}
+      hints={[
+        { key: "?", label: "back" },
+        { key: "esc", label: "back" },
+      ]}
+    >
+      {stackHelpItems(gatherable).map((item) => (
+        <box key={item.key} flexDirection="row" width="100%">
+          <text wrapMode="none" fg={theme.focus} attributes={BOLD}>
+            {`${item.key} ${item.label}`.padEnd(15)}
+          </text>
+          <text flexGrow={1} wrapMode="word" fg={theme.text}>
+            {item.detail}
+          </text>
+        </box>
+      ))}
     </Card>
   );
 }

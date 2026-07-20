@@ -4,23 +4,15 @@
 // refresh — so the gating is unit-testable and the app.tsx interval stays a thin
 // shell around it.
 
-import type { BulkPhase } from "./bulkload";
-
 export interface TickContext {
   // A PTY terminal tab is focused, or a blocking prompt (bulk-load) is open.
   paused: boolean;
-  phase: BulkPhase;
   focusedSlice: string | null;
-  slices: string[];
 }
 
 export type TickPlan = { run: false } | { run: true; slices: string[] };
 
 export function tickPlan(ctx: TickContext): TickPlan {
   if (ctx.paused) return { run: false };
-  if (ctx.phase === "lazy") {
-    return ctx.focusedSlice ? { run: true, slices: [ctx.focusedSlice] } : { run: false };
-  }
-  if (ctx.slices.length === 0) return { run: false };
-  return { run: true, slices: ctx.slices };
+  return ctx.focusedSlice ? { run: true, slices: [ctx.focusedSlice] } : { run: false };
 }

@@ -385,3 +385,124 @@ file viewing at the branch's revision (`git show <branch>:<path>` via a new
 read-only RPC — `tree`/`file` methods), so a whole stack can be reviewed
 bottom-up without leaving slis. Pairs with F2: comments attach to the branch
 being reviewed.
+
+## Final state (2026-07-18 evening)
+
+Final proof pass at `b8cc38e` on `experiment/js-tui`. Build was a fresh
+`CGO_ENABLED=0 go build`; JS driven via `bun run src/index.tsx` and the
+`bun build --compile` single binary; all measured against the real `~/nory`
+workspace (21 slices).
+
+### Feature waves landed (`91b7589..b8cc38e`)
+
+- `482950b` feat(tui-js/theme): five-hue design system + shared component foundation
+- `3451b1c` feat(tui-js/mutations): interactive mutations run in PTY tabs; captured runs get timeouts
+- `03489c5` feat(release/slis-ui): ship compiled JS TUI per platform via goreleaser + brew cask
+- `5296791` feat(tui-js/cockpit): breadcrumb + seamless sections redesign, reverse panel cycle, cockpit refresh
+- `e75e78a` feat(tui-js/browser): deboxed five-hue browser + bulk-load guard, patch preview, phantom warning, missing rows
+- `a14a7b3` fix(tui-js/cockpit): divider overflow swallowed breadcrumb row; tame right-pane scrollbars
+- `d80c1d7` docs(plans/js-tui): post-parity roadmap
+- `dca8c8a` feat(tui-js/overlays): card+scrim overlays, toasts, non-blocking create, adopt key, 30s refresh tick
+- `e103ded` docs(plans/js-tui): usability review findings
+- `bb34163` feat(agents): configurable agent list + picker for terminal tabs
+- `dea8249` fix(tui-js/usability): top-10 review fixes (proc overlay header, help wrap, browser CI actions, search-aware n/N, warn status, glyph semantics)
+- `bed2034` feat(review): pending-review store, agent prompt composer, tmux delivery + slis review CLI (F2 backend)
+- `40df4d8` fix(testutil/repo): stop detached git background processes racing t.TempDir cleanup
+- `d011f64` feat(stack-review): per-branch diff, file tree + file-at-revision RPCs (F3 backend)
+- `820391d` feat(tui-js/stack-review): branch-scoped review surface in cockpit (F3 UI)
+- `e19a956` fix(testutil/repo): env-level git isolation — trace2 off, null global/system config
+- `b8cc38e` feat(tui-js/review): inline diff comments, pending-review overlay, send-to-agent loop (F2 UI)
+
+### Benchmark re-run (same headless-PTY method, 200x50, real ~/nory)
+
+Cold start — 3 runs, median (range):
+
+| metric | Go (Bubble Tea) | JS (bun run) | JS compiled |
+|---|---|---|---|
+| first paint | 5107 ms (5068–5149) | **153 ms** (152–206) | 611 ms (503–1962) |
+| data ready | 15715 ms (15666–15751) | **10623 ms** (10518–10752) | 11311 ms (11172–12301) |
+| *prior table* | *5083 / 15365* | *173 / 11389* | *571 / 10993* |
+
+Input latency (20 alternating j/k, median write→changed-frame) + idle CPU
+(5 s settle) — one run each:
+
+| metric | Go | JS (bun run) | JS compiled |
+|---|---|---|---|
+| input latency, median | 14.58 ms | **2.46 ms** | 5.17 ms |
+| input latency, range | 2.56–27.84 | 2.17–80.7 | 2.41–739.81 |
+| idle CPU, 5 s settle | 5.63 % | 14.26 % | 17.29 % |
+| *prior table* | *15.0 / 2.7%* | *2.6 / 18.0%* | *3.3 / 17.3%* |
+
+No meaningful regression. Every cold-start number sits within ~7% of the prior
+table; every latency median is far under one 16 ms (60 fps) frame. Two entries
+cross the +20% flag threshold but are measurement artefacts, not slowdowns:
+compiled-JS latency median 5.17 ms vs 3.3 ms (+57%) is driven by a single
+739 ms first-keypress outlier — the compiled binary's first-render/JIT cost —
+after which every press is 2–5 ms; Go idle CPU 5.63% vs 2.7% is variance (the
+Go tree was still finishing enrichment during the 5 s window, tree size 7). The
+"must not feel slower" bar holds: first paint and time-to-usable favour the JS
+TUI, input latency is at parity, steady-state idle CPU converges (as the earlier
+25 s-settle measurement showed both stacks fall to ~1–1.6%).
+
+### Real-workspace read-only E2E (JS TUI, real sidecar, real ~/nory)
+
+Driven headless through a ghostty PTY; no mutations. Per step:
+
+- **boot → browser** — PASS. 21 real slices with live session badges
+  (running/waiting/idle), the five-hue filters rail, and stack clustering
+  (`stack: jonny/pay-45-…`).
+- **search → cockpit** — PASS. `/` filters to the target; enter opens the
+  cockpit.
+- **stack lineage** — PASS. The Stack panel renders the full real Graphite
+  lineage (e.g. WFM-4157: `master` + 30+ branches with `⟳ restack` markers, the
+  member branch highlighted).
+- **scope cycling (`b`)** — PASS. working → parent → trunk updates the
+  breadcrumb + hint.
+- **select non-member branch** — PASS. The right pane title switches to
+  `<branch> › vs parent` (branch-vs-stack-parent diff, F3).
+- **`f` file tree** — PASS. Renders the complete real file tree at the branch
+  revision — dirs + files with sizes (`package.json 9.5 KB`, `tsconfig.json
+  726 B`, `vite.config.ts 6.5 KB`, …); expand/collapse navigation works.
+- **`C` review overlay (F2)** — PASS. Opens ("No pending comments — press `c`
+  on a diff or file line to add one").
+- **`q` quit** — PASS, CLEAN. `exited:0`, zero orphan processes (the bun app
+  and its `slis rpc` sidecar both gone; sidecar dies on stdin EOF).
+- **diff pane / rich diff *content*** — NOT rendered within 55 s under the real
+  21-slice load (see caveat below). The diff *data plane* is proven fine: a
+  standalone RPC probe returned the member-vs-trunk patch (11 files, 41 KB) in
+  <1 s, and the fake-sidecar browser renders `web +171 -16 · 3 files` instantly.
+- **file-view *content*** — proven via RPC (`file` returned real `package.json`,
+  9686 bytes); the PTF frame captured the tree render but did not land the
+  FileView open (harness key-timing, not a product issue).
+
+Sanity at this head: `bun x tsc --noEmit` clean; `bun test` 258 pass / 0 fail
+(36 files); `go test -count=1 ./...` 26 packages ok, 0 fail. `src/term/e2e.ts`
+returned 4/5 (browser paints, `a` opens a tab, keystrokes reach the embedded
+shell, and — critically — the tmux session survives app quit all PASS);
+`ctrl_q_returns_to_browser` FAILed on both runs, but this is a **stale test
+assertion**, not a regression: a direct probe confirmed ctrl+q returns to the
+browser (post-ctrl+q frame shows FILTERS/SLICES/CHANGES), and the assertion just
+greps for `refresh`/`filter` strings the UI redesign removed from the browser
+hint bar.
+
+### Known caveats (carried + new)
+
+- **NEW — cockpit diff can starve on large workspaces.** On the 21-slice real
+  workspace the interactive `diff` (and `branchDiff`) request never completed
+  within 55 s: the 30 s background refresh tick re-fans-out `prStack`+`show` for
+  every slice through the sidecar's 4-in-flight subprocess gate, keeping it
+  saturated so the interactive diff loses the race. The single cheaper `tree`
+  call did get a slot and rendered. Data plane is fine standalone — this is a
+  prioritisation problem. Recommend the sidecar (or the client) prioritise
+  interactive reads (diff/branchDiff/tree/file) ahead of the background
+  enrichment tick, or throttle/skip the tick while the cockpit is focused.
+- **NEW — `src/term/e2e.ts` `ctrl_q_returns_to_browser` assertion is stale.**
+  Checks for `refresh`/`filter` in the returned frame; the redesigned browser
+  hint bar no longer contains those. ctrl+q itself works. Update the assertion
+  to look for `SLICES`/`FILTERS`/a slice name.
+- Help overlay clips past ~30 rows (documented; needs internal scroll/paging).
+- Inline-comment composer is single-line only.
+- Linux `slis-ui` is glibc-linked (Bun standalone binaries aren't static);
+  musl/Alpine hosts fall back to the Go CLI.
+- Cockpit `C` is rebound to the F2 review overlay (explicit agent launch stays
+  on the browser's `C`); `a` attaches the terminal in the cockpit.

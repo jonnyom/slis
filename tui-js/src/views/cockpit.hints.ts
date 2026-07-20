@@ -108,8 +108,8 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         { key: "enter", label: "zoom" },
         { key: "v", label: "CI log" },
         { key: "F", label: "fix-ci" },
+        { key: "y", label: "copy URL" },
         { key: "O", label: "open PR" },
-        { key: "w", label: "swap" },
       ];
     case "session":
       return [

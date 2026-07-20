@@ -66,6 +66,12 @@ export function clusterByStack(views: SliceView[]): Clustered {
   return { ordered, leaders };
 }
 
+export function isGatherableStackSlice(views: SliceView[], sliceName: string): boolean {
+  const stackId = views.find((view) => view.slice.name === sliceName)?.slice.stack_id;
+  if (!stackId) return false;
+  return views.filter((view) => view.slice.stack_id === stackId).length > 1;
+}
+
 // attentionIndices returns the positions in views of slices that need attention
 // (attentionRank < 99), preserving the list's own order.
 export function attentionIndices(views: SliceView[]): number[] {
@@ -127,6 +133,19 @@ export function selectableIndices(rows: BrowserRow[]): number[] {
 
 export function firstSelectable(rows: BrowserRow[]): number {
   return selectableIndices(rows)[0] ?? 0;
+}
+
+export function focusIndexForSlice(
+  rows: BrowserRow[],
+  sliceName: string | null | undefined,
+): number {
+  if (sliceName) {
+    const index = rows.findIndex(
+      (row) => row.kind === "slice" && row.view.slice.name === sliceName,
+    );
+    if (index >= 0) return index;
+  }
+  return firstSelectable(rows);
 }
 
 export function lastSelectable(rows: BrowserRow[]): number {

@@ -86,6 +86,7 @@ export const SHORTCUT_CONTEXTS = {
   "cockpit.prs": [
     { action: "ci-detail", keys: ["v"] },
     { action: "fix-ci", keys: ["F"] },
+    { action: "copy-pr-url", keys: ["y"] },
     { action: "open-pr", keys: ["O"] },
   ],
   "cockpit.processes": [

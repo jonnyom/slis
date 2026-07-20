@@ -6,6 +6,8 @@ import {
   buildRows,
   clampFocus,
   clusterByStack,
+  focusIndexForSlice,
+  isGatherableStackSlice,
   missingSliceNames,
   nextAttentionIndex,
   nextAttentionRow,
@@ -72,6 +74,20 @@ describe("clusterByStack", () => {
   });
 });
 
+describe("stack actions", () => {
+  const views = [
+    view("standalone"),
+    view("parent", { stack_id: "web\x00root", stack_order: 1 }),
+    view("child", { stack_id: "web\x00root", stack_order: 2 }),
+  ];
+
+  test("only enables gather for a slice with stack siblings", () => {
+    expect(isGatherableStackSlice(views, "standalone")).toBe(false);
+    expect(isGatherableStackSlice(views, "parent")).toBe(true);
+    expect(isGatherableStackSlice(views, "child")).toBe(true);
+  });
+});
+
 describe("attention navigation", () => {
   const views = [
     view("calm"), // rank 99
@@ -125,6 +141,12 @@ describe("browser rows (missing-row navigation skip)", () => {
   test("missing rows are appended and non-selectable", () => {
     expect(rows.map((r) => r.kind)).toEqual(["slice", "slice", "missing", "missing"]);
     expect(selectableIndices(rows)).toEqual([0, 1]);
+  });
+
+  test("restores focus by slice identity after the browser remounts", () => {
+    expect(focusIndexForSlice(rows, "b")).toBe(1);
+    expect(focusIndexForSlice(rows, "gone")).toBe(0);
+    expect(focusIndexForSlice(rows, null)).toBe(0);
   });
 
   test("stepSelectable never lands on a missing row and clamps", () => {

@@ -227,6 +227,12 @@ func TestReportRemovesOnlyEmptyManagedDirectoryLitter(t *testing.T) {
 	empty := filepath.Join(root, ".slis", "worktrees", "old", "web")
 	freshEmpty := filepath.Join(root, ".slis", "worktrees", "creating", "web")
 	nonEmpty := filepath.Join(root, ".slis", "worktrees", "inspect", "web")
+	managedWorktree := filepath.Join(root, ".slis", "worktrees", "preserve", "web")
+	managedWorktreeEmptyDirectory := filepath.Join(managedWorktree, "nested", "empty")
+	testutil.AddWorktree(t, repo, "preserve", managedWorktree)
+	if err := os.MkdirAll(managedWorktreeEmptyDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(empty, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +251,9 @@ func TestReportRemovesOnlyEmptyManagedDirectoryLitter(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.Chtimes(managedWorktreeEmptyDirectory, old, old); err != nil {
+		t.Fatal(err)
+	}
 
 	rp := regPath(t)
 	writeEmptyRegistry(t, rp)
@@ -260,6 +269,9 @@ func TestReportRemovesOnlyEmptyManagedDirectoryLitter(t *testing.T) {
 	}
 	if _, err := os.Stat(freshEmpty); err != nil {
 		t.Fatalf("fresh empty directory may belong to an in-flight create: %v", err)
+	}
+	if _, err := os.Stat(managedWorktreeEmptyDirectory); err != nil {
+		t.Fatalf("managed worktree contents were altered: %v", err)
 	}
 }
 

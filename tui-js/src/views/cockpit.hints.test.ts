@@ -109,10 +109,11 @@ describe("cockpitHints", () => {
     expect(readOnlyTree.some((h) => h.key === "e")).toBe(false);
   });
 
-  test("prs hints surface CI log, fix-ci and open PR", () => {
+  test("prs hints surface CI log, fix-ci, copy URL and open PR", () => {
     const labels = cockpitHints("prs", base).map((h) => h.label);
     expect(labels).toContain("CI log");
     expect(labels).toContain("fix-ci");
+    expect(labels).toContain("copy URL");
     expect(labels).toContain("open PR");
   });
 

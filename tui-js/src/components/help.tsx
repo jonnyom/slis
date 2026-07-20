@@ -114,7 +114,8 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     label: "stack & prs",
     bindings: [
       ["R", "stack actions: restack / submit / merge / sync"],
-      ["y / Y", "yank diff / PR-stack markdown to clipboard"],
+      ["y (Stack) / Y", "copy focused diff / PR-stack markdown"],
+      ["y (PRs)", "copy focused PR URL"],
       ["v", "failing CI log in right pane (PRs panel)"],
       ["ctrl+r", "re-run failed CI runs (PRs panel)"],
       ["F", "fix-ci: point the agent at failing CI (PRs panel)"],

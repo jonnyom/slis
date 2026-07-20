@@ -36,7 +36,7 @@ import { tmuxAvailable, type TermMember } from "./term/tmux";
 import type { OpenTermMode, TermSessionOpts } from "./term/session";
 import { availableAgents, findSavedAgent, pickableAgents, agentCmdline } from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
-import { bulkLoadPlan, type BulkPhase } from "./state/bulkload";
+import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
 import { useToasts, ToastLayer } from "./components/toast";
 import { agentDefaultSet, createSlice } from "./rpc/mutate";
@@ -46,6 +46,7 @@ import {
   initialCreateState,
 } from "./state/create";
 import { tickPlan } from "./state/tick";
+import { isGatherableStackSlice } from "./state/cluster";
 import { normalizeKeyName } from "./util/keys";
 import {
   normalizeDiffScope,
@@ -110,6 +111,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
 
   const bulkPhaseRef = useRef<BulkPhase>("unprompted");
   const loadedRef = useRef<Set<string>>(new Set());
+  const bulkLoadRunRef = useRef(0);
   const [bulkPromptCount, setBulkPromptCount] = useState<number | null>(null);
 
   // Transient toasts (spec §3.5) + non-blocking create (spec D2).
@@ -120,16 +122,18 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const browserFocusRef = useRef<string | null>(null);
 
   const loadSlice = useCallback(
-    (name: string) => {
+    (name: string): Promise<void> => {
       loadedRef.current.add(name);
-      client.prStack(name).then(
-        (prs) => setPrStacks((m) => ({ ...m, [name]: prs })),
-        () => {},
-      );
-      client.show(name).then(
-        (show) => setShows((m) => ({ ...m, [name]: show })),
-        () => {},
-      );
+      return Promise.all([
+        client.prStack(name).then(
+          (prs) => setPrStacks((m) => ({ ...m, [name]: prs })),
+          () => {},
+        ),
+        client.show(name).then(
+          (show) => setShows((m) => ({ ...m, [name]: show })),
+          () => {},
+        ),
+      ]).then(() => {});
     },
     [client],
   );
@@ -156,7 +160,12 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         setBulkPromptCount(null);
         if (plan.fanOut) {
           loadedRef.current = new Set(res.slices.map((s) => s.name));
-          for (const s of res.slices) loadSlice(s.name);
+          const bulkLoadRun = ++bulkLoadRunRef.current;
+          void loadSlicesSequentially(
+            res.slices.map((s) => s.name),
+            (name) =>
+              bulkLoadRun === bulkLoadRunRef.current ? loadSlice(name) : Promise.resolve(),
+          );
         }
       }, () => {});
     },
@@ -216,22 +225,13 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     };
   }, [client, refresh]);
 
-  // 30s background refresh tick (parity gap G7). The gating context is mirrored
-  // into a ref each render so the interval is created once (not reset on every
-  // navigation / status change). `tickPlan` decides whether to run and which
-  // slices — paused while a PTY tab or bulk-load prompt is up, focused-slice
-  // only in lazy mode, everything otherwise.
   const tickCtxRef = useRef({
     paused: false,
-    phase: bulkPhaseRef.current,
     focusedSlice: null as string | null,
-    slices: [] as string[],
   });
   tickCtxRef.current = {
     paused: termMode || bulkPromptCount !== null,
-    phase: bulkPhaseRef.current,
     focusedSlice: view === "cockpit" ? current : browserFocusRef.current,
-    slices: ls?.slices.map((s) => s.name) ?? [],
   };
   useEffect(() => {
     const id = setInterval(() => {
@@ -593,6 +593,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onOpenTerm={openTerm}
           onConfigureAgents={configureAgents}
           onFocusSlice={onFocusSlice}
+          initialFocusSlice={browserFocusRef.current}
           onRefresh={manualRefresh}
           onToggleProcs={() => setProcsOpen(true)}
           onQuit={quit}
@@ -607,6 +608,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           overlays={overlays}
           width={width}
           height={height}
+          gatherable={isGatherableStackSlice(views, currentView.slice.name)}
           initialPanel={cockpitEntry?.panel}
           openCiLog={cockpitEntry?.ciLog}
           initialDiffMode={uiPrefs.split_diff ? "split" : "unified"}

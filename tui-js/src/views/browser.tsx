@@ -24,6 +24,8 @@ import {
   clampFocus,
   clusterByStack,
   firstSelectable,
+  focusIndexForSlice,
+  isGatherableStackSlice,
   lastSelectable,
   missingSliceNames,
   searchAwareNav,
@@ -64,6 +66,7 @@ export interface BrowserProps {
   onOpenTerm: (slice: string, mode: OpenTermMode) => void;
   onConfigureAgents: () => void;
   onFocusSlice: (slice: string) => void;
+  initialFocusSlice?: string | null;
   onRefresh: () => void;
   onToggleProcs: () => void;
   onQuit: () => void;
@@ -552,7 +555,6 @@ const RAIL_HINTS: Hint[] = [
 export function Browser(props: BrowserProps): ReactNode {
   const { views, enabled, overlays, onFocusSlice } = props;
   const [filterIndex, setFilterIndex] = useState(0);
-  const [focusIndex, setFocusIndex] = useState(0);
   const [hubFocus, setHubFocus] = useState<"rail" | "list">("list");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [searching, setSearching] = useState(false);
@@ -577,6 +579,9 @@ export function Browser(props: BrowserProps): ReactNode {
 
   const missing = useMemo(() => missingSliceNames(props.ls.missing), [props.ls.missing]);
   const rows: BrowserRow[] = useMemo(() => buildRows(ordered, missing), [ordered, missing]);
+  const [focusIndex, setFocusIndex] = useState(() =>
+    focusIndexForSlice(rows, props.initialFocusSlice),
+  );
 
   useEffect(() => {
     setFocusIndex((i) => clampFocus(rows, i));
@@ -697,7 +702,11 @@ export function Browser(props: BrowserProps): ReactNode {
     if (name === "R") {
       const targets = targetsFor();
       if (targets.length > 0)
-        overlays.stack(targets, conflictPartners(props.conflicts, targets[0]!));
+        overlays.stack(
+          targets,
+          conflictPartners(props.conflicts, targets[0]!),
+          isGatherableStackSlice(views, targets[0]!),
+        );
       return;
     }
     if (name === "!") return overlays.conflictRadar();

@@ -13,3 +13,10 @@ export function bulkLoadPlan(count: number, phase: BulkPhase): BulkPlan {
   if (phase === "lazy") return { prompt: false, fanOut: false };
   return { prompt: true, fanOut: false };
 }
+
+export async function loadSlicesSequentially(
+  slices: string[],
+  loadSlice: (slice: string) => Promise<void>,
+): Promise<void> {
+  for (const slice of slices) await loadSlice(slice);
+}
