@@ -115,3 +115,63 @@ func TestLoadOverridesMissingFile(t *testing.T) {
 		t.Errorf("expected empty Overrides, got %v", got)
 	}
 }
+
+func TestApplyFoldsHidesSubsumedBranches(t *testing.T) {
+	slices := []model.Slice{
+		{Name: "stack", Members: map[string]model.SliceMember{
+			"web": {Repo: "web", Branch: "pay-105"}, // the tip (representative)
+		}},
+		{Name: "pay-103", Members: map[string]model.SliceMember{
+			"web": {Repo: "web", Branch: "pay-103"},
+		}},
+		{Name: "pay-104", Members: map[string]model.SliceMember{
+			"web": {Repo: "web", Branch: "pay-104"},
+		}},
+		{Name: "unrelated", Members: map[string]model.SliceMember{
+			"web": {Repo: "web", Branch: "other"},
+		}},
+	}
+	folded := Folded{"stack": {"web": {"pay-103", "pay-104"}}}
+
+	got := ApplyFolds(slices, folded)
+
+	names := make([]string, 0, len(got))
+	for _, s := range got {
+		names = append(names, s.Name)
+	}
+	want := []string{"stack", "unrelated"}
+	if !reflect.DeepEqual(names, want) {
+		t.Errorf("kept slices = %v; want %v (folded intermediates hidden, tip + unrelated kept)", names, want)
+	}
+}
+
+func TestApplyFoldsRepoScoped(t *testing.T) {
+	// A branch named "pay-103" in repo "api" is NOT folded by a web-repo fold.
+	slices := []model.Slice{
+		{Name: "api-103", Members: map[string]model.SliceMember{
+			"api": {Repo: "api", Branch: "pay-103"},
+		}},
+	}
+	got := ApplyFolds(slices, Folded{"stack": {"web": {"pay-103"}}})
+	if len(got) != 1 {
+		t.Errorf("api-103 dropped by a web-repo fold; folds must be repo-scoped")
+	}
+}
+
+func TestSaveOverridesPreservesFolds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "overrides.yaml")
+	if err := SaveConfig(path, Overrides{"stack": {"web": "pay-105"}}, Folded{"stack": {"web": {"pay-103", "pay-104"}}}); err != nil {
+		t.Fatal(err)
+	}
+	// A grouping-only save must not wipe the folded section.
+	if err := SaveOverrides(path, Overrides{"stack": {"web": "pay-105"}, "x": {"api": "feat"}}); err != nil {
+		t.Fatal(err)
+	}
+	folded, err := LoadFolded(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(folded, Folded{"stack": {"web": {"pay-103", "pay-104"}}}) {
+		t.Errorf("folds lost after SaveOverrides: %v", folded)
+	}
+}

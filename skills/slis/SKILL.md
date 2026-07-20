@@ -82,6 +82,8 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis rm <slice>` | mutate | no | Remove worktrees + kill tmux + delete merged branches (`--force`, `--dry-run`) |
 | `slis group <name> <slice>...` | mutate | no | Manually group slices under one name (writes `overrides.yaml`) |
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
+| `slis gather <name> <slice>` | mutate | yes | Collapse the Graphite stack `<slice>` belongs to into one slice named `<name>`, represented by the stack **tip**; intermediate branches are folded (hidden as their own slices, worktrees untouched). Per repo. `--json` reports `{name, gathered:[{repo,tip,folded,linear}]}` |
+| `slis scatter <name>` | mutate | no | Undo a gather (folded branches reappear as their own slices) |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |
 | `slis focus <slice>` | mutate | no | Switch the active tmux client to the slice's session (creates it if missing); prints `tmux attach -t …` when no client is attached. This is what a clicked desktop notification runs |
 | `slis review add <slice>` | mutate | no | Add a pending review comment on a line or range (`--repo --file --line [--end-line] --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
