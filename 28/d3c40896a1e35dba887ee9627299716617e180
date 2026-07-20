@@ -1,0 +1,94 @@
+tui-js/src/app.tsx
+  s_63ced3de54af85::t_b79a611cfe93e5 49,596,611
+  s_63ced3de54af85::t_6418a1a796a17e 39,114,125,127-136,163-168
+internal/discovery/registry_scan.go
+  s_63ced3de54af85::t_35a9bc19974913 167-174
+tui-js/src/overlays/stack.test.ts
+  s_63ced3de54af85::t_207887af4231f2 1,3-4,7-11,25-26
+  s_63ced3de54af85::t_678589e6674499 2,5-6,12-24
+tui-js/src/views/cockpit.tsx
+  s_63ced3de54af85::t_b79a611cfe93e5 145,1529
+  s_63ced3de54af85::t_ba2344f91b046f 79,658,1505-1506,1508-1514
+  s_63ced3de54af85::t_346d725ba80f3c 1015,1031
+tui-js/src/overlays/stack.ts
+  s_63ced3de54af85::t_9e3b134219d943 2,14,23-67
+  s_63ced3de54af85::t_78dd6c2ac064f7 1,3-13,15-22,68
+tui-js/src/views/cockpit.hints.test.ts
+  s_63ced3de54af85::t_0320623b1fbc32 112,116
+docs/plans/2026-07-18-js-tui-spike.md
+  s_470615ee13fe83::t_d3994be3b221dd 388-508
+tui-js/src/util/shortcut-contract.test.ts
+  s_63ced3de54af85::t_0320623b1fbc32 58-61
+tui-js/src/state/cluster.ts
+  s_63ced3de54af85::t_78dd6c2ac064f7 69-74,138-149
+  s_a358194a723c08::t_d4788b29451a35 150
+tui-js/src/components/terminal-link.tsx
+  s_63ced3de54af85::t_ba2344f91b046f 1-13
+tui-js/src/state/tick.test.ts
+  s_63ced3de54af85::t_8809affdd11a55 6,12,19
+  s_63ced3de54af85::t_7756d264957357 14
+  s_63ced3de54af85::t_3c4edf0b6781d2 11,18
+internal/discovery/registry_scan_test.go
+  s_63ced3de54af85::t_82d4b073d5ce66 230-235,254-256,273-275
+tui-js/src/state/bulkload.test.ts
+  s_63ced3de54af85::t_25d3945278eb62 2,28-49
+  s_63ced3de54af85::t_f0e7d657c2532e 50
+tui-js/src/components/ui.tsx
+  s_63ced3de54af85::t_ba2344f91b046f 7
+tui-js/src/views/cockpit.hints.ts
+  s_63ced3de54af85::t_ba2344f91b046f 111
+tui-js/src/overlays/useOverlays.tsx
+  s_63ced3de54af85::t_b79a611cfe93e5 78,83,124,423-424,496,502,504,506,508,510-517,519,785-788,796-798
+  s_63ced3de54af85::t_ba2344f91b046f 154,450
+  s_63ced3de54af85::t_be21ba52302afb 68,84,497-498,522-525,789-795
+tui-js/src/state/cluster.test.ts
+  s_63ced3de54af85::t_207887af4231f2 9-10,77-90,146-150
+  s_a358194a723c08::t_4d41e0b1b58acb 151
+tui-js/src/overlays/overlays.tsx
+  s_63ced3de54af85::t_be21ba52302afb 17,244-274
+  s_63ced3de54af85::t_b79a611cfe93e5 204,208,221,223,233-243
+tui-js/src/state/tick.ts
+  s_63ced3de54af85::t_346d725ba80f3c 17
+tui-js/src/state/bulkload.ts
+  s_63ced3de54af85::t_6418a1a796a17e 16-22
+tui-js/src/views/browser.tsx
+  s_63ced3de54af85::t_b79a611cfe93e5 27-28,69,582-584,705-709
+tui-js/src/components/terminal-link.test.tsx
+  s_63ced3de54af85::t_0320623b1fbc32 1-18
+tui-js/src/util/shortcut-contract.ts
+  s_63ced3de54af85::t_ba2344f91b046f 89
+tui-js/src/components/help.tsx
+  s_63ced3de54af85::t_ba2344f91b046f 117-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "28d3c40896a1e35dba887ee9627299716617e180",
+  "prompts": {},
+  "sessions": {
+    "s_470615ee13fe83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8cf730e0-d668-456c-b0f7-a594c0fc26a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_63ced3de54af85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ea0-b36d-7e91-b392-d9b4f2175869",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_a358194a723c08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f85ed68-63d6-498e-8572-6359ff9eaef5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
