@@ -215,6 +215,8 @@ export function StackActionsOverlay({
         { key: "p", label: "submit" },
         { key: "m", label: "merge" },
         { key: "s", label: "sync" },
+        { key: "g", label: "gather" },
+        { key: "x", label: "scatter" },
         { key: "esc", label: "cancel" },
       ]}
     >
@@ -225,7 +227,8 @@ export function StackActionsOverlay({
         </text>
       ) : null}
       <text fg={theme.textDim} wrapMode="word">
-        restack runs across all targets; submit / merge / sync act on the first target.
+        restack runs across all targets; submit / merge / sync / gather / scatter act on the first
+        target. gather folds the first target's whole Graphite stack into it (scatter undoes it).
       </text>
     </Card>
   );

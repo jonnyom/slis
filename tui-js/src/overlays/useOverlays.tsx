@@ -29,6 +29,7 @@ import {
   editRepo,
   editSlice,
   fixCiSlice,
+  gatherStack,
   groupSlices,
   ignoreCandidate,
   importCandidate,
@@ -43,6 +44,7 @@ import {
   reviewAdd,
   reviewRm,
   reviewSend,
+  scatterStack,
   submitSlice,
   summarySlice,
   syncSlice,
@@ -495,6 +497,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           runMutationRouted("Merge " + first, "merge", [first], () => mergeSlice(first));
         else if (name === "s")
           runMutationRouted("Sync " + first, "sync", [first], () => syncSlice(first));
+        else if (name === "g")
+          runMutation("Gather " + first, () => gatherStack(first, first));
+        else if (name === "x")
+          runMutation("Scatter " + first, () => scatterStack(first));
         else if (name === "n" || isCancel) close();
         return;
       }

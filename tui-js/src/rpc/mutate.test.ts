@@ -23,6 +23,8 @@ describe("mutationRoute", () => {
       "restack",
       "group",
       "ungroup",
+      "gather",
+      "scatter",
       "import",
       "ignore",
       "editor",
