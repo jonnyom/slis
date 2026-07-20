@@ -108,9 +108,10 @@ function UnifiedLine({
   return (
     <box
       id={`diffline-${rowIndex}`}
+      flexDirection="row"
       backgroundColor={row.lineType === "add" ? diffColor.addBg : undefined}
     >
-      <text wrapMode="none">
+      <text flexShrink={0} wrapMode="none">
         <LineMark marked={marked} cursor={cursor} selected={selected} />
         <span fg={cursor || selected ? color.white : diffColor.gutter}>
           {gutter(row.oldNumber)} {gutter(row.newNumber)}{" "}
@@ -118,6 +119,8 @@ function UnifiedLine({
         <span fg={markerColor(row.lineType)} attributes={BOLD}>
           {markerChar(row.lineType)}{" "}
         </span>
+      </text>
+      <text flexGrow={1} flexShrink={1} wrapMode="char">
         <CellSpans cells={row.cells} lineType={row.lineType} />
       </text>
     </box>
@@ -144,22 +147,27 @@ function SbsCell({
       width={half}
       overflow="hidden"
       flexShrink={0}
+      flexDirection="row"
       backgroundColor={side.lineType === "add" ? diffColor.addBg : undefined}
     >
-      <text wrapMode="none">
-        {isBlank ? (
+      {isBlank ? (
+        <text wrapMode="none">
           <span fg={color.dim}> </span>
-        ) : (
-          <>
+        </text>
+      ) : (
+        <>
+          <text flexShrink={0} wrapMode="none">
             <LineMark marked={marked} cursor={cursor} selected={selected} />
             <span fg={cursor || selected ? color.white : diffColor.gutter}>{g} </span>
             <span fg={markerColor(side.lineType)} attributes={BOLD}>
               {markerChar(side.lineType)}{" "}
             </span>
+          </text>
+          <text flexGrow={1} flexShrink={1} wrapMode="char">
             <CellSpans cells={side.cells} lineType={side.lineType} />
-          </>
-        )}
-      </text>
+          </text>
+        </>
+      )}
     </box>
   );
 }
@@ -579,7 +587,8 @@ export function DiffView(props: DiffViewProps): ReactNode {
             <scrollbox
               ref={scrollRef}
               flexGrow={1}
-              scrollbarOptions={{ visible: true }}
+              verticalScrollbarOptions={{ visible: true }}
+              horizontalScrollbarOptions={{ visible: false }}
               viewportCulling
             >
               {!selected || !built ? (
@@ -688,7 +697,12 @@ function FileListScroller({
       overflow="hidden"
       flexDirection="column"
     >
-      <scrollbox ref={scrollRef} flexGrow={1} scrollbarOptions={{ visible: true }}>
+      <scrollbox
+        ref={scrollRef}
+        flexGrow={1}
+        verticalScrollbarOptions={{ visible: true }}
+        horizontalScrollbarOptions={{ visible: false }}
+      >
         {groups.map((g) => (
           <box key={g.repo} flexDirection="column">
             <text wrapMode="none">

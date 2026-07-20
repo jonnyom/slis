@@ -27,6 +27,7 @@ declare module "@opentui/react" {
 export const BACK_KEY = process.env["SLIS_TERM_BACK_KEY"]
   ? String.fromCharCode(parseInt(process.env["SLIS_TERM_BACK_KEY"]!, 16))
   : "\x11";
+export const EMBEDDED_TERMINAL_SELECTABLE = false;
 
 // A tmux-session tab (keyed by slice) or an interactive command tab (keyed by a
 // unique id, running a one-shot mutation in a PTY). `exited` tracks a finished
@@ -154,6 +155,7 @@ function TermTab({
       persistent
       showCursor
       focusable
+      selectable={EMBEDDED_TERMINAL_SELECTABLE}
       onMouseScroll={(event) => {
         if (!visible || entry.kind !== "session") return;
         const direction = event.scroll?.direction;
