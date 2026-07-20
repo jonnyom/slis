@@ -1,0 +1,42 @@
+internal/discovery/gather.go
+  s_699369887707dc::t_6a6ca51cd03bfc 71
+  s_699369887707dc::t_cb8b48c121942a 8-13,15-18,20-54,57-58,62-68,70,73,76-80,83,87
+  s_699369887707dc::t_7f84b28a6e261d 1-7,14,19,59-61,69,72,74-75,81-82,84-86,88-98
+  s_699369887707dc::t_628d94fdfa44b4 55-56
+docs/AGENT.md
+  s_699369887707dc::t_ac5fbb9105a472 314
+internal/discovery/overrides.go
+  s_699369887707dc::t_334bf0dcd25cce 141-149
+  s_699369887707dc::t_4c92b6af5a48b7 150-152,154-161,171-188
+  s_699369887707dc::t_153cd9ef7dfbc3 189-190
+  s_699369887707dc::t_10fd5d0260bf1f 18-22,26-62
+internal/discovery/gather_test.go
+  s_699369887707dc::t_cebd5ebfd900b5 60-61
+  s_699369887707dc::t_0415ecb8d59ed6 1-59,62-71
+internal/discovery/overrides_test.go
+  s_699369887707dc::t_f6b2e89c85544a 118-177
+internal/report/report.go
+  s_699369887707dc::t_dc3942fd5153f2 210
+  s_699369887707dc::t_3449c986ad3eab 454
+  s_699369887707dc::t_4f825384734871 536
+internal/cli/gather.go
+  s_699369887707dc::t_91272a187c4c6e 1-138
+skills/slis/SKILL.md
+  s_699369887707dc::t_66792148bdeed6 85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3cabe3a92ac2f3d58e8b56b8f63397da2d2a3a8c",
+  "prompts": {},
+  "sessions": {
+    "s_699369887707dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f6b1505-bbd3-4b7c-bd92-44ea0a2cc56c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
