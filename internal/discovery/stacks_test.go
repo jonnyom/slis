@@ -94,3 +94,28 @@ func TestAnnotateStacksDistinctReposDoNotShare(t *testing.T) {
 		t.Errorf("slices in different repos share StackID %q; must be repo-scoped", slices[0].StackID)
 	}
 }
+
+// TestAnnotateStacksCachesPerRepo verifies the reader is invoked once per
+// distinct repo, not once per member: gt state is repo-global (identical across
+// all of a repo's worktrees), so re-reading it per worktree is wasted subprocess
+// spawns. Four worktrees of one repo must cost exactly one read.
+func TestAnnotateStacksCachesPerRepo(t *testing.T) {
+	st := webStack()
+	calls := 0
+	reader := func(path string) (gt.State, error) {
+		calls++
+		return st, nil
+	}
+	slices := []model.Slice{
+		sliceWith("103", "web", "pay-103", "/w/103"),
+		sliceWith("104", "web", "pay-104", "/w/104"),
+		sliceWith("105", "web", "pay-105", "/w/105"),
+		sliceWith("lone", "web", "lone", "/w/lone"),
+	}
+
+	discovery.AnnotateStacks(slices, reader)
+
+	if calls != 1 {
+		t.Errorf("reader called %d times across 4 worktrees of one repo; want 1 (per-repo cache)", calls)
+	}
+}

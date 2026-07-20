@@ -23,14 +23,25 @@ func AnnotateStacks(slices []model.Slice, read StackReader) []model.Slice {
 	if read == nil {
 		return slices
 	}
+	// gt state is repo-global: every worktree of a repo returns identical stack
+	// metadata, so read it at most once per repo (each read spawns a gt process).
+	stateByRepo := make(map[string]gt.State)
 	for i := range slices {
 		for _, repo := range slices[i].Repos() {
 			m := slices[i].Members[repo]
 			if m.WorktreePath == "" || m.Branch == "" {
 				continue
 			}
-			st, err := read(m.WorktreePath)
-			if err != nil || len(st) == 0 {
+			st, cached := stateByRepo[repo]
+			if !cached {
+				var err error
+				st, err = read(m.WorktreePath)
+				if err != nil {
+					st = nil
+				}
+				stateByRepo[repo] = st
+			}
+			if len(st) == 0 {
 				continue
 			}
 			root, depth, ok := st.StackRoot(m.Branch)
