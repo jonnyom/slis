@@ -1,0 +1,31 @@
+tui-js/src/components/diffview.tsx
+  s_63ced3de54af85::t_0b64ea1c58bb36 590-591,700-705
+  s_63ced3de54af85::t_347128adb29575 111,114,122-123,150,153-154,156-159,165-166,168-170
+tui-js/src/term/tabs.tsx
+  s_63ced3de54af85::t_7cb89512c18120 30,158
+tui-js/src/term/tabs.selection.test.ts
+  s_63ced3de54af85::t_bcb601e7ac276e 1-27
+tui-js/src/components/diffview.wrap.test.tsx
+  s_63ced3de54af85::t_a574041aa67e7b 63
+  s_63ced3de54af85::t_58be5478f144bc 61-62,64
+  s_63ced3de54af85::t_2872c715229334 4,30,49-50
+  s_63ced3de54af85::t_d5b05267437a8d 52,54,56,58,60,65-68
+  s_63ced3de54af85::t_181b9eabd41407 1-3,5-29,31-48,51,53,55,57,69-71
+  s_63ced3de54af85::t_0a674347c5daf4 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b6fe8ed64f326d47b3ce96035bf148ef5e7cd095",
+  "prompts": {},
+  "sessions": {
+    "s_63ced3de54af85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ea0-b36d-7e91-b392-d9b4f2175869",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
