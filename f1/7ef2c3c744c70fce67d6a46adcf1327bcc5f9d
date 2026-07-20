@@ -1,0 +1,28 @@
+tui-js/src/rpc/mutate.test.ts
+  s_699369887707dc::t_16cc29f9b7d3b3 26-27
+tui-js/src/overlays/useOverlays.tsx
+  s_699369887707dc::t_6f2659e7dfc429 32
+  s_699369887707dc::t_860c3f2275da10 47
+  s_699369887707dc::t_d886207b28756c 500-503
+tui-js/src/rpc/mutate.ts
+  s_699369887707dc::t_3064415bdea73d 311-320
+tui-js/src/overlays/overlays.tsx
+  s_699369887707dc::t_2dd838fc1b4e9b 218-219
+  s_699369887707dc::t_0a10a6493bf5f5 230-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f17ef2c3c744c70fce67d6a46adcf1327bcc5f9d",
+  "prompts": {},
+  "sessions": {
+    "s_699369887707dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f6b1505-bbd3-4b7c-bd92-44ea0a2cc56c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
