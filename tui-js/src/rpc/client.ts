@@ -1,6 +1,7 @@
 // Real RPC client: spawns the long-lived `slis rpc` Go sidecar and speaks
 // JSON-RPC 2.0 over NDJSON (one JSON object per line) on its stdio. stderr is
-// the sidecar's log stream and is inherited so it lands in our terminal's log.
+// captured so startup failures can be rendered inside the TUI instead of
+// writing through OpenTUI's active terminal frame.
 //
 // The sidecar is strictly read-only. Mutations (activate/deactivate) are
 // one-shot `slis <cmd>` spawns from the UI, not part of this transport.
@@ -86,6 +87,7 @@ interface Pending {
 const REQUEST_TIMEOUT_MS = 30_000;
 const BACKOFF_MIN_MS = 100;
 const BACKOFF_MAX_MS = 5_000;
+const STDERR_LIMIT = 16_384;
 
 export interface SidecarOptions {
   /** Binary to run. Defaults to $SLIS_BIN or "slis". */
@@ -98,11 +100,13 @@ export class SlisRpcClient implements RpcClient {
   private readonly bin: string;
   private readonly args: string[];
 
-  private proc: Bun.Subprocess<"pipe", "pipe", "inherit"> | null = null;
+  private proc: Bun.Subprocess<"pipe", "pipe", "pipe"> | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private readonly sessionHandlers = new Set<(e: SessionEvent) => void>();
-  private readonly connectionHandlers = new Set<(connected: boolean) => void>();
+  private readonly connectionHandlers = new Set<
+    (connected: boolean, error?: Error) => void
+  >();
 
   private buffer = "";
   private backoff = BACKOFF_MIN_MS;
@@ -123,20 +127,26 @@ export class SlisRpcClient implements RpcClient {
       cmd: [this.bin, "rpc", ...this.args],
       stdin: "pipe",
       stdout: "pipe",
-      stderr: "inherit",
+      stderr: "pipe",
     });
     this.proc = proc;
     this.buffer = "";
+    const stderrText = this.readStderr(proc);
     this.readLoop(proc).catch((err) => this.onTransportDown(err));
     // When the process exits, tear down and schedule a restart.
     proc.exited
-      .then((code) => this.onTransportDown(new Error(`sidecar exited (${code})`)))
+      .then(async (code) => {
+        const diagnostic = (await stderrText).trim();
+        this.onTransportDown(
+          new Error(diagnostic || `sidecar exited (${code})`),
+        );
+      })
       .catch((err) => this.onTransportDown(err));
     this.emitConnection(true);
   }
 
   private async readLoop(
-    proc: Bun.Subprocess<"pipe", "pipe", "inherit">,
+    proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
   ): Promise<void> {
     const decoder = new TextDecoder();
     const reader = proc.stdout.getReader();
@@ -151,6 +161,25 @@ export class SlisRpcClient implements RpcClient {
         if (line) this.handleLine(line);
       }
     }
+  }
+
+  private async readStderr(
+    proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
+  ): Promise<string> {
+    const decoder = new TextDecoder();
+    const reader = proc.stderr.getReader();
+    let diagnostic = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (diagnostic.length < STDERR_LIMIT) {
+        diagnostic += decoder.decode(value, { stream: true }).slice(
+          0,
+          STDERR_LIMIT - diagnostic.length,
+        );
+      }
+    }
+    return diagnostic;
   }
 
   private handleLine(line: string): void {
@@ -189,7 +218,10 @@ export class SlisRpcClient implements RpcClient {
     }
     this.pending.clear();
     this.proc = null;
-    this.emitConnection(false);
+    this.emitConnection(
+      false,
+      err instanceof Error ? err : new Error(String(err)),
+    );
     this.scheduleRestart();
   }
 
@@ -203,9 +235,9 @@ export class SlisRpcClient implements RpcClient {
     }, delay);
   }
 
-  private emitConnection(connected: boolean): void {
+  private emitConnection(connected: boolean, error?: Error): void {
     if (connected) this.backoff = BACKOFF_MIN_MS;
-    for (const handler of this.connectionHandlers) handler(connected);
+    for (const handler of this.connectionHandlers) handler(connected, error);
   }
 
   close(): void {
@@ -326,7 +358,9 @@ export class SlisRpcClient implements RpcClient {
     this.sessionHandlers.add(handler);
     return () => this.sessionHandlers.delete(handler);
   }
-  onConnectionChange(handler: (connected: boolean) => void): () => void {
+  onConnectionChange(
+    handler: (connected: boolean, error?: Error) => void,
+  ): () => void {
     this.connectionHandlers.add(handler);
     return () => this.connectionHandlers.delete(handler);
   }

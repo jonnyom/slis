@@ -376,7 +376,9 @@ export interface RpcClient {
   onSessionEvent(handler: (event: SessionEvent) => void): () => void;
 
   /** Fired when the underlying transport drops/reconnects (for a status line). */
-  onConnectionChange(handler: (connected: boolean) => void): () => void;
+  onConnectionChange(
+    handler: (connected: boolean, error?: Error) => void,
+  ): () => void;
 
   close(): void;
 }

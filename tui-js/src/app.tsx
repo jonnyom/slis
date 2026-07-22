@@ -31,7 +31,6 @@ import type { CockpitEntry } from "./views/cockpit.hints";
 import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
-import { DIM } from "./components/ui";
 import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
 import { resumeClaudeSession, tmuxAvailable, type TermMember } from "./term/tmux";
@@ -41,6 +40,7 @@ import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
 import { useToasts, ToastLayer } from "./components/toast";
+import { InitialScreen } from "./components/initialscreen";
 import { agentDefaultSet, createSlice } from "./rpc/mutate";
 import {
   createBusyLabel,
@@ -83,6 +83,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const [shows, setShows] = useState<Record<string, ShowResult>>({});
   const [conflicts, setConflicts] = useState<ConflictsResult | null>(null);
   const [connected, setConnected] = useState(true);
+  const [initialError, setInitialError] = useState<string | null>(null);
   const [workspaceResyncNonce, setWorkspaceResyncNonce] = useState(0);
 
   const [view, setView] = useState<"browser" | "cockpit">("browser");
@@ -167,6 +168,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         () => {},
       );
       client.ls().then((res) => {
+        setInitialError(null);
         lsRef.current = res;
         setLs(res);
         onDone?.(res);
@@ -260,8 +262,9 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     const offEvent = client.onSessionEvent((e) =>
       setStatuses((m) => ({ ...m, [e.slice]: e.status })),
     );
-    const offConn = client.onConnectionChange((c) => {
+    const offConn = client.onConnectionChange((c, error) => {
       setConnected(c);
+      if (!c && error && !lsRef.current) setInitialError(error.message);
       if (c) refresh(); // resync after a reconnect
     });
     return () => {
@@ -664,19 +667,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   }, [tabs, activeTab, closeTab, refreshDiscovery]);
 
   if (!ls) {
-    return (
-      <box
-        width="100%"
-        height="100%"
-        alignItems="center"
-        justifyContent="center"
-        backgroundColor={theme.bg}
-      >
-        <text fg={theme.textDim} attributes={DIM}>
-          {connected ? "loading workspace…" : "connecting to slis rpc…"}
-        </text>
-      </box>
-    );
+    return <InitialScreen connected={connected} error={initialError} onQuit={quit} />;
   }
 
   const bulkPromptOpen = bulkPromptCount !== null;
