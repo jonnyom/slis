@@ -42,6 +42,7 @@ import {
   removeSlice,
   restackSlice,
   reviewAdd,
+  reviewAgent,
   reviewRm,
   reviewSend,
   scatterStack,
@@ -97,7 +98,15 @@ type Overlay =
       path?: string;
       line?: number;
     }
-  | { kind: "agentPicker"; agents: AgentSpec[]; sel: number; slice: string; preferredAgent?: string; onPick: (agent: AgentSpec) => void }
+  | {
+      kind: "agentPicker";
+      agents: AgentSpec[];
+      sel: number;
+      slice: string;
+      preferredAgent?: string;
+      purpose?: "launch" | "review";
+      onPick: (agent: AgentSpec) => void;
+    }
   | { kind: "agentConfig"; agents: AgentSpec[]; sel: number; preferredAgent?: string; onDefault: (agent: AgentSpec) => void }
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
@@ -109,6 +118,8 @@ type Overlay =
       sel: number;
       confirmSend: boolean;
       onChanged: () => void;
+      agents: AgentSpec[];
+      preferredAgent?: string;
     }
   | { kind: "working"; text: string }
   | { kind: "result"; title: string; body: string; status: ResultStatus }
@@ -133,7 +144,7 @@ export interface OverlayApi {
   summary(slice: string, ai: boolean): void;
   // F2 inline review: comment composer + pending-review overlay.
   comment(ctx: CommentContext, onAdded: () => void): void;
-  review(slice: string, onChanged: () => void): void;
+  review(slice: string, onChanged: () => void, agents: AgentSpec[], preferredAgent?: string): void;
   editor(slice: string, repo?: string, path?: string, line?: number): void;
   agentPicker(
     slice: string,
@@ -349,8 +360,17 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
   );
 
   const openReview = useCallback(
-    (slice: string, onChanged: () => void) => {
-      setOverlay({ kind: "review", slice, comments: null, sel: 0, confirmSend: false, onChanged });
+    (slice: string, onChanged: () => void, agents: AgentSpec[], preferredAgent?: string) => {
+      setOverlay({
+        kind: "review",
+        slice,
+        comments: null,
+        sel: 0,
+        confirmSend: false,
+        onChanged,
+        agents,
+        preferredAgent,
+      });
       reloadReview(slice);
     },
     [reloadReview],
@@ -463,7 +483,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     yankDiff: (text) => runQuiet("Copied diff to clipboard", () => copyToClipboard(text)),
     yankPrUrl: (url) => runQuiet("Copied PR URL to clipboard", () => copyToClipboard(url)),
     yankPrStack: (slice) =>
-      runQuiet("Copied PR-stack markdown", async () => {
+      runQuiet("Copied all PRs and diffs", async () => {
         const md = await prStackMarkdown(slice);
         if (md.code !== 0) return md;
         return copyToClipboard(md.stdout || "(no PRs)");
@@ -714,7 +734,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
         return;
       case "review": {
-        const { slice, comments, sel, confirmSend, onChanged } = overlay;
+        const { slice, comments, sel, confirmSend, onChanged, agents, preferredAgent } = overlay;
         if (confirmSend) {
           if (name === "y" || isEnter) {
             const n = comments?.length ?? 0;
@@ -768,7 +788,44 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
             () => {},
           );
         } else if (name === "s" && list.length > 0) setOverlay({ ...overlay, confirmSend: true });
-        else if (isCancel || name === "q") close();
+        else if (name === "a" && agents.length > 0) {
+          const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
+          setOverlay({
+            kind: "agentPicker",
+            purpose: "review",
+            slice,
+            agents,
+            sel: preferred >= 0 ? preferred : 0,
+            preferredAgent,
+            onPick: (agent) => {
+              setOverlay({ kind: "working", text: `${agent.name} is reviewing ${slice}…` });
+              reviewAgent(slice, agent.name).then(
+                (res) => {
+                  onChanged();
+                  refresh();
+                  if (res.code === 0) {
+                    toast(`${agent.name} review started for ${slice}`, "ci-pass");
+                    close();
+                  } else {
+                    setOverlay({
+                      kind: "result",
+                      title: `${agent.name} review — failed`,
+                      body: (res.stdout + (res.stderr ? `\n${res.stderr}` : "")).trim() || "(no output)",
+                      status: "failure",
+                    });
+                  }
+                },
+                (err) =>
+                  setOverlay({
+                    kind: "result",
+                    title: `${agent.name} review — failed`,
+                    body: String(err),
+                    status: "failure",
+                  }),
+              );
+            },
+          });
+        } else if (isCancel || name === "q") close();
         return;
       }
     }
@@ -834,7 +891,15 @@ function renderOverlay(
         />
       );
     case "agentPicker":
-      return <AgentPickerOverlay mode="launch" agents={overlay.agents} sel={overlay.sel} slice={overlay.slice} preferredAgent={overlay.preferredAgent} />;
+      return (
+        <AgentPickerOverlay
+          mode={overlay.purpose ?? "launch"}
+          agents={overlay.agents}
+          sel={overlay.sel}
+          slice={overlay.slice}
+          preferredAgent={overlay.preferredAgent}
+        />
+      );
     case "agentConfig":
       return <AgentPickerOverlay mode="configure" agents={overlay.agents} sel={overlay.sel} preferredAgent={overlay.preferredAgent} />;
     case "conflicts":

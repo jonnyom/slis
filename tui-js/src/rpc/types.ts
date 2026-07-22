@@ -289,6 +289,7 @@ export interface ReviewComment {
   side?: "new" | "old";
   hunk?: string;
   body: string;
+  author?: string;
   created_at: string;
 }
 

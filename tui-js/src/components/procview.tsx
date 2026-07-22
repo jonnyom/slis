@@ -10,6 +10,7 @@ import { killProc, killSubtree } from "../proc/kill";
 import { sparkline } from "../proc/sparkline";
 import { ProcHistory } from "../proc/history";
 import { color, glyph } from "../theme";
+import { Card } from "./card";
 import { BOLD, DIM } from "./ui";
 
 export const ROW_CPU_WARN = 50; // per-proc CPU% that turns a row orange
@@ -168,20 +169,22 @@ export function ProcTotalsRow({
 export function KillConfirm({ target }: { target: KillTarget }): ReactNode {
   const action = target.subtree ? "kill subtree of" : "kill";
   return (
-    <text wrapMode="none">
-      <span fg={color.missing} attributes={BOLD}>
-        {`SIGTERM — ${action} pid ${target.pid}`}
-      </span>
-      <span fg={color.dim}>{`  (${truncate(target.cmd, 30)})  `}</span>
-      <span fg={color.synced} attributes={BOLD}>
-        [y]
-      </span>
-      <span fg={color.fg}> yes </span>
-      <span fg={color.missing} attributes={BOLD}>
-        [n]
-      </span>
-      <span fg={color.fg}> no</span>
-    </text>
+    <Card
+      id="process-kill-confirmation"
+      title="Terminate process?"
+      subtitle={`PID ${target.pid} · ${truncate(target.cmd, 42)}`}
+      width={64}
+      hints={[
+        { key: "y / enter", label: "send SIGTERM" },
+        { key: "n / esc", label: "cancel" },
+      ]}
+    >
+      <text fg={color.missing} attributes={BOLD} wrapMode="word">
+        {target.subtree
+          ? `This will ${action} pid ${target.pid} and every child process.`
+          : `This will ${action} pid ${target.pid}.`}
+      </text>
+    </Card>
   );
 }
 

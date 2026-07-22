@@ -2,6 +2,7 @@ import { useKeyboard } from "@opentui/react";
 import type { KeyEvent } from "@opentui/core";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
+  AgentSpec,
   CaptureResult,
   ConflictsResult,
   DiffRepo,
@@ -62,6 +63,8 @@ export interface BrowserProps {
   overlays: OverlayApi;
   width: number;
   height: number;
+  agents: AgentSpec[];
+  preferredAgent?: string;
   onEnter: (slice: string, entry?: CockpitEntry) => void;
   onOpenTerm: (slice: string, mode: OpenTermMode) => void;
   onConfigureAgents: () => void;
@@ -769,7 +772,13 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
     if (shortcut === "pending-review") {
-      if (focusedSlice) overlays.review(focusedSlice.slice.name, props.onRefresh);
+      if (focusedSlice)
+        overlays.review(
+          focusedSlice.slice.name,
+          props.onRefresh,
+          props.agents,
+          props.preferredAgent,
+        );
       return;
     }
     if (shortcut === "open-shell") {

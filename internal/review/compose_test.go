@@ -63,3 +63,12 @@ func TestComposePromptIdentifiesOldSide(t *testing.T) {
 		t.Fatalf("old-side prompt location missing:\n%s", got)
 	}
 }
+
+func TestComposePromptIdentifiesReviewer(t *testing.T) {
+	got := ComposePrompt([]Comment{{
+		Slice: "s", Repo: "web", File: "a.go", Line: 9, Side: "new", Body: "guard this write", Author: "Codex",
+	}})
+	if !strings.Contains(got, "web — a.go:9 — reviewer: Codex") {
+		t.Fatalf("reviewer missing from prompt location:\n%s", got)
+	}
+}

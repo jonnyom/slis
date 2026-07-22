@@ -26,6 +26,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AgentSpec,
   BranchDiffResult,
   CiLogResult,
   DiffResult,
@@ -81,6 +82,7 @@ import { HintBar } from "../components/hintbar";
 import { DiffView, type DiffMode } from "../components/diffview";
 import { FileTree } from "../components/filetree";
 import { FileView, contentLines } from "../components/fileview";
+import { SessionCloseConfirmation } from "../components/sessionoverlay";
 import { TerminalLink } from "../components/terminal-link";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
@@ -148,6 +150,8 @@ export interface CockpitProps {
   width: number;
   height: number;
   gatherable: boolean;
+  agents: AgentSpec[];
+  preferredAgent?: string;
   // Entry focus when opened from the browser (M4): which panel to land on and
   // whether to auto-open the focused PR's failing-CI log.
   initialPanel?: PanelId;
@@ -764,9 +768,7 @@ function SessionRight({
         );
       })}
       {pendingKill ? (
-        <text fg={theme.bad} attributes={BOLD} wrapMode="none">
-          {`Close ${pendingKill}? y confirm · n cancel`}
-        </text>
+        <SessionCloseConfirmation target={pendingKill} />
       ) : killStatus ? (
         <text fg={killStatus.startsWith("Closed") ? theme.good : theme.bad} wrapMode="none">
           {killStatus}
@@ -1274,7 +1276,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
     );
   };
 
-  const openReviewOverlay = () => overlays.review(slice, bumpReviews);
+  const openReviewOverlay = () =>
+    overlays.review(slice, bumpReviews, props.agents, props.preferredAgent);
 
   const toggleCollapse = (expand: boolean) => {
     const pid = procRows[procSel]?.proc.pid;

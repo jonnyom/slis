@@ -67,7 +67,7 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const composer = vt.getText();
   const sawComposer =
     composer.includes("Comment on selected lines") &&
-    composer.includes("comment for the agent");
+    composer.toLowerCase().includes("comment for the agent");
 
   pty.write("rename this variable");
   await sleep(400);

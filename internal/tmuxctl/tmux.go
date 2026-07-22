@@ -412,6 +412,18 @@ func SelectOrCreateWindow(slice, window, cwd string) error {
 	return nil
 }
 
+func StartWindow(slice, window, cwd, command string) error {
+	args := []string{"new-window", "-d", "-t", SessionName(slice), "-n", window}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	args = append(args, command)
+	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux new-window %q: %w: %s", window, err, out)
+	}
+	return nil
+}
+
 // PanePIDs returns the pane PIDs across all windows of the slice's session.
 func PanePIDs(slice string) ([]int, error) {
 	name := SessionName(slice)

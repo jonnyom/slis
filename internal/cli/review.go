@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -14,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jonnyom/slis/internal/agentlaunch"
+	"github.com/jonnyom/slis/internal/agentreview"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/review"
@@ -217,12 +221,42 @@ func runReviewSend(store *review.Store, slice string, sess review.Session, keep 
 	return len(comments), nil
 }
 
+func storeAgentFindings(store *review.Store, slice model.Slice, author string, findings []agentreview.Finding) ([]review.Comment, error) {
+	comments := make([]review.Comment, 0, len(findings))
+	for _, finding := range findings {
+		member := slice.Members[finding.Repo]
+		comment := review.Comment{
+			Slice: slice.Name, Repo: finding.Repo, Branch: member.Branch, File: finding.File,
+			Line: finding.Line, EndLine: finding.EndLine, Side: finding.Side, Body: finding.Body, Author: author,
+		}
+		identity, err := json.Marshal(comment)
+		if err != nil {
+			return comments, err
+		}
+		comment.ID = fmt.Sprintf("agent-%x", sha256.Sum256(identity))
+		comment, err = store.Add(comment)
+		if err != nil {
+			return comments, err
+		}
+		comments = append(comments, comment)
+	}
+	return comments, nil
+}
+
 func reviewAgentCommands(s config.Sessions) []string {
 	specs := s.AgentList()
 	out := make([]string, 0, len(specs))
+	seen := make(map[string]bool)
 	for _, spec := range specs {
 		if len(spec.Cmd) > 0 {
-			out = append(out, strings.Join(spec.Cmd, " "))
+			command := strings.Join(spec.Cmd, " ")
+			out = append(out, command)
+			seen[command] = true
+		}
+	}
+	for _, command := range []string{"claude", "codex", "opencode", "gemini", "cursor-agent"} {
+		if !seen[command] {
+			out = append(out, command)
 		}
 	}
 	return out
@@ -242,6 +276,46 @@ func reviewSessionMembers(sl model.Slice) []model.SliceMember {
 		members = append(members, sl.Members[repo])
 	}
 	return members
+}
+
+func reviewAgentForegroundCommand(executable, slice, agent string) string {
+	return strings.Join([]string{
+		agentlaunch.ShellSingleQuote(executable),
+		"review agent",
+		agentlaunch.ShellSingleQuote(slice),
+		"--agent",
+		agentlaunch.ShellSingleQuote(agent),
+		"--foreground",
+	}, " ")
+}
+
+func launchReviewAgent(ws config.Workspace, sl model.Slice, agent config.AgentSpec) error {
+	if !tmuxctl.Available() {
+		return errors.New("tmux is required to run a review agent")
+	}
+	if err := tmuxctl.EnsureSession(sl.Name, reviewSessionMembers(sl), tmuxctl.SessionOpts{
+		Root: ws.Root, Layout: ws.Sessions.Layout,
+	}); err != nil {
+		return fmt.Errorf("ensure review session: %w", err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve slis executable: %w", err)
+	}
+	command := reviewAgentForegroundCommand(executable, sl.Name, agent.Name)
+	command += `; status=$?; if [ "$status" -ne 0 ]; then printf '\nReview failed. Press Enter to close.\n'; read -r _; fi; exit "$status"`
+	window := "review-" + sanitiseWindowName(agent.Name)
+	if err := tmuxctl.StartWindow(sl.Name, window, reviewAgentCwd(sl, ws.Root), command); err != nil {
+		return err
+	}
+	fmt.Printf("%s review started in tmux window %q for slice %q\n", agent.Name, window, sl.Name)
+	return nil
+}
+
+func sanitiseWindowName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.NewReplacer(" ", "-", ":", "-", ".", "-").Replace(name)
+	return name
 }
 
 // reviewAgentCwd chooses a cross-repo-safe cwd for a dedicated agent window.
@@ -372,6 +446,65 @@ var reviewSendCmd = &cobra.Command{
 	},
 }
 
+var reviewAgentCmd = &cobra.Command{
+	Use:   "agent <slice>",
+	Short: "Ask a selected agent to review the stack and deliver its findings",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		if err := validateSliceName(name); err != nil {
+			return err
+		}
+		agentName, _ := cmd.Flags().GetString("agent")
+		if agentName == "" {
+			return fmt.Errorf("--agent is required")
+		}
+		ws, err := config.LoadWorkspace(config.WorkspacePath())
+		if err != nil {
+			return fmt.Errorf("workspace not found — run `slis init` first: %w", err)
+		}
+		slice, err := findSlice(ws, name)
+		if err != nil {
+			return err
+		}
+		agent, err := agentreview.ResolveAgent(ws.Sessions, agentName, exec.LookPath)
+		if err != nil {
+			return err
+		}
+		foreground, _ := cmd.Flags().GetBool("foreground")
+		if !foreground {
+			return launchReviewAgent(ws, slice, agent)
+		}
+		reviewContext, cancel := context.WithTimeout(cmd.Context(), 15*time.Minute)
+		defer cancel()
+		findings, err := agentreview.Run(reviewContext, ws.Root, slice, agent, agentreview.ExecuteCommand)
+		if err != nil {
+			return err
+		}
+		if len(findings) == 0 {
+			fmt.Printf("%s found no review findings on slice %q\n", agent.Name, name)
+			return nil
+		}
+		store := reviewStore()
+		comments, err := storeAgentFindings(store, slice, agent.Name, findings)
+		if err != nil {
+			return err
+		}
+		if !tmuxctl.Available() {
+			return fmt.Errorf("%s stored %d finding(s), but tmux is unavailable so they could not be delivered", agent.Name, len(comments))
+		}
+		sess := review.TmuxSession{AgentCommands: reviewAgentCommands(ws.Sessions)}
+		if err := ensureReviewAgent(ws, slice, sess); err != nil {
+			return fmt.Errorf("%s stored %d finding(s), but delivery failed: %w", agent.Name, len(comments), err)
+		}
+		if err := review.Send(name, comments, sess); err != nil {
+			return fmt.Errorf("%s stored %d finding(s), but delivery failed: %w", agent.Name, len(comments), err)
+		}
+		fmt.Printf("%s stored and delivered %d review finding(s) on slice %q\n", agent.Name, len(comments), name)
+		return nil
+	},
+}
+
 var reviewClearCmd = &cobra.Command{
 	Use:   "clear <slice>",
 	Short: "Discard all pending review comments for a slice",
@@ -406,11 +539,15 @@ func init() {
 
 	reviewListCmd.Flags().Bool("json", false, "Output as JSON")
 	reviewSendCmd.Flags().Bool("keep", false, "Keep the pending comments after a successful send")
+	reviewAgentCmd.Flags().String("agent", "", "Reviewer agent name")
+	reviewAgentCmd.Flags().Bool("foreground", false, "Run the review in the current process")
+	_ = reviewAgentCmd.Flags().MarkHidden("foreground")
 
 	reviewCmd.AddCommand(reviewAddCmd)
 	reviewCmd.AddCommand(reviewListCmd)
 	reviewCmd.AddCommand(reviewRmCmd)
 	reviewCmd.AddCommand(reviewSendCmd)
+	reviewCmd.AddCommand(reviewAgentCmd)
 	reviewCmd.AddCommand(reviewClearCmd)
 	rootCmd.AddCommand(reviewCmd)
 }

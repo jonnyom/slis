@@ -232,7 +232,7 @@ func ListSlices(ws config.Workspace, overridesPath, journalPath string) ([]Slice
 func ListSlicesReport(ws config.Workspace, overridesPath, journalPath string, annotateStacks bool) (LsResultDTO, error) {
 	rep := discovery.Report(ws, RegistryPathFor(overridesPath))
 
-	slices := discovery.Resolve(rep.Slices, overridesPath)
+	slices := discovery.Resolve(rep.Slices, overridesPath, ws.Grouping.StripPrefix)
 
 	// Graphite stack annotation is opt-in: only ls --json needs it, and it costs
 	// a `gt state` read per member, so polling commands (status) skip it.
@@ -476,7 +476,7 @@ func FindSlice(ws config.Workspace, name string) (model.Slice, error) {
 // (e.g. the rpc sidecar, or a test) resolves against those rather than the
 // global state dir.
 func FindSliceIn(ws config.Workspace, sp config.Paths, name string) (model.Slice, error) {
-	slices := discovery.Resolve(discovery.Report(ws, sp.Registry).Slices, sp.Overrides)
+	slices := discovery.Resolve(discovery.Report(ws, sp.Registry).Slices, sp.Overrides, ws.Grouping.StripPrefix)
 
 	j, _ := swap.Load(sp.ActiveJournal)
 	for i, s := range slices {
@@ -558,7 +558,7 @@ func PRStackRows(sl model.Slice) []PRStackRowDTO {
 // index over their changed-file sets. Stats are computed fresh (no TUI card
 // cache outside the running program), concurrently per slice.
 func ComputeConflicts(ws config.Workspace, overridesPath string) (*radar.Index, error) {
-	slices := discovery.Resolve(discovery.Report(ws, RegistryPathFor(overridesPath)).Slices, overridesPath)
+	slices := discovery.Resolve(discovery.Report(ws, RegistryPathFor(overridesPath)).Slices, overridesPath, ws.Grouping.StripPrefix)
 
 	return radar.Build(radar.CollectStats(slices)), nil
 }

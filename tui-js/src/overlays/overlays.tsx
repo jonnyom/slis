@@ -10,7 +10,9 @@ import { agentCmdline } from "../term/agentpick";
 import type { EditorSpec } from "../editor/detect";
 import { glyph, theme, type ResultStatus } from "../theme";
 import { Card } from "../components/card";
+import { CodePreview } from "../components/codepreview";
 import { Spinner } from "../components/spinner";
+import { TextField } from "../components/textfield";
 import { BOLD } from "../components/ui";
 import { stripSgr } from "../util/ansi";
 import { visibleTextLines } from "./textinput";
@@ -115,16 +117,23 @@ export function AgentPickerOverlay({
   slice,
   preferredAgent,
 }: {
-  mode: "launch" | "configure";
+  mode: "launch" | "configure" | "review";
   agents: AgentSpec[];
   sel: number;
   slice?: string;
   preferredAgent?: string;
 }): ReactNode {
   const configuring = mode === "configure";
+  const reviewing = mode === "review";
   return (
     <Card
-      title={configuring ? "Agent settings" : "Launch which agent?"}
+      title={
+        configuring
+          ? "Agent settings"
+          : reviewing
+            ? "Review with which agent?"
+            : "Launch which agent?"
+      }
       subtitle={configuring ? "Choose the default launch agent" : slice}
       width={58}
       hints={configuring
@@ -136,7 +145,7 @@ export function AgentPickerOverlay({
         : [
             { key: "1-9", label: "quick pick" },
             { key: "↑/↓", label: "select" },
-            { key: "enter", label: "launch" },
+            { key: "enter", label: reviewing ? "review" : "launch" },
             { key: "esc", label: "cancel" },
           ]}
     >
@@ -325,17 +334,6 @@ export function RemoveOverlay({ slices }: { slices: string[] }): ReactNode {
   );
 }
 
-function TextInputRow({ text }: { text: string }): ReactNode {
-  return (
-    <text wrapMode="none">
-      <span fg={theme.textBright}>{text}</span>
-      <span fg={theme.focus} attributes={BOLD}>
-        {glyph.focusBar}
-      </span>
-    </text>
-  );
-}
-
 export function CreateOverlay({ text }: { text: string }): ReactNode {
   return (
     <Card
@@ -346,13 +344,12 @@ export function CreateOverlay({ text }: { text: string }): ReactNode {
         { key: "esc", label: "cancel" },
       ]}
     >
-      <text fg={theme.focus} attributes={BOLD} wrapMode="none">
-        new slice name
-      </text>
-      <TextInputRow text={text} />
-      <text fg={theme.textDim} wrapMode="none">
-        Creates a worktree per repo (off each trunk).
-      </text>
+      <TextField
+        id="create-slice-name"
+        label="New slice name"
+        lines={[text]}
+        description="Creates a worktree per repo (off each trunk)."
+      />
     </Card>
   );
 }
@@ -374,10 +371,7 @@ export function GroupOverlay({
         { key: "esc", label: "cancel" },
       ]}
     >
-      <text fg={theme.focus} attributes={BOLD} wrapMode="none">
-        group name
-      </text>
-      <TextInputRow text={text} />
+      <TextField id="group-name" label="Group name" lines={[text]} />
     </Card>
   );
 }
@@ -448,35 +442,17 @@ export function CommentComposerOverlay({
       title={ctx.endLine && ctx.endLine > ctx.line ? "Comment on selected lines" : "Comment on selected line"}
       subtitle={`${ctx.repo} · ${ctx.branch || "?"} ${glyph.arrow} ${location}${side}`}
       width={76}
+      hints={[
+        { key: "enter", label: "add comment" },
+        { key: "esc", label: "cancel" },
+      ]}
     >
       {excerpt.length > 0 ? (
-        <box flexDirection="column" marginBottom={1}>
-          {excerpt.map((l, i) => (
-            <text key={i} fg={theme.textFaint} wrapMode="none">
-              {l === "" ? " " : stripSgr(l)}
-            </text>
-          ))}
+        <box marginBottom={1}>
+          <CodePreview id="comment-code-preview" lines={excerpt} path={ctx.file} />
         </box>
       ) : null}
-      <text fg={theme.textDim} wrapMode="none">
-        <span fg={theme.focus} attributes={BOLD}>enter</span> add comment  ·  <span fg={theme.focus} attributes={BOLD}>esc</span> cancel
-      </text>
-      <text fg={theme.focus} attributes={BOLD} wrapMode="none">comment for the agent</text>
-      <box
-        flexDirection="column"
-        backgroundColor={theme.surfaceAlt}
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        {inputLines.map((line, index) => (
-          <text key={index} wrapMode="none">
-            <span fg={theme.textBright}>{line}</span>
-            {index === inputLines.length - 1 ? (
-              <span fg={theme.focus} attributes={BOLD}>{glyph.focusBar}</span>
-            ) : null}
-          </text>
-        ))}
-      </box>
+      <TextField id="comment-input" label="Comment for the agent" lines={inputLines} />
     </Card>
   );
 }
@@ -539,6 +515,7 @@ export function ReviewListOverlay({
         { key: "j/k", label: "move" },
         { key: "x", label: "delete" },
         ...(count > 0 ? [{ key: "s", label: "send to agent" }] : []),
+        { key: "a", label: "agent review" },
         { key: "?", label: "more" },
         { key: "esc", label: "close" },
       ]}
@@ -566,6 +543,7 @@ export function ReviewListOverlay({
                 <text wrapMode="none">
                   <span fg={theme.focus}>{focused ? glyph.focusBar + " " : "  "}</span>
                   <span fg={theme.textDim}>{c.repo} </span>
+                  {c.author ? <span fg={theme.focus}>{c.author} </span> : null}
                   <span fg={focused ? theme.textBright : theme.text}>
                     {c.file}:{c.line}
                     {c.end_line && c.end_line > c.line ? `-${c.end_line}` : ""}

@@ -29,6 +29,13 @@ export const BACK_KEY = process.env["SLIS_TERM_BACK_KEY"]
   : "\x11";
 export const EMBEDDED_TERMINAL_SELECTABLE = false;
 
+export function isBackKeySequence(sequence: string): boolean {
+  if (sequence === BACK_KEY) return true;
+  const controlCode = BACK_KEY.charCodeAt(0);
+  const keyCode = controlCode >= 1 && controlCode <= 26 ? controlCode + 96 : controlCode;
+  return sequence === `\x1b[${keyCode};5u`;
+}
+
 // A tmux-session tab (keyed by slice) or an interactive command tab (keyed by a
 // unique id, running a one-shot mutation in a PTY). `exited` tracks a finished
 // command so the tab bar / back key can offer to close it.
@@ -278,7 +285,7 @@ export function TerminalLayer({
   useEffect(() => {
     const handler = (seq: string): boolean => {
       if (!focusedRef.current) return false; // browser/cockpit own the keys
-      if (seq === BACK_KEY) {
+      if (isBackKeySequence(seq)) {
         onBackRef.current();
         return true;
       }

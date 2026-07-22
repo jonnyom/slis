@@ -298,6 +298,14 @@ export function reviewSend(slice: string): Promise<MutateResult> {
   return spawnCapture([BIN, "review", "send", slice]);
 }
 
+export function reviewAgentArgs(slice: string, agent: string): string[] {
+  return ["review", "agent", slice, "--agent", agent];
+}
+
+export function reviewAgent(slice: string, agent: string): Promise<MutateResult> {
+  return run(reviewAgentArgs(slice, agent), 900_000);
+}
+
 // ── grouping ─────────────────────────────────────────────────────────────────
 
 export function groupSlices(name: string, slices: string[]): Promise<MutateResult> {
@@ -373,7 +381,11 @@ export function summarySlice(slice: string, ai: boolean): Promise<MutateResult> 
 // pr-stack markdown on stdout (no --copy: we copy JS-side so the result pane can
 // still show the markdown and the clipboard tool is chosen here, per the spec).
 export function prStackMarkdown(slice: string): Promise<MutateResult> {
-  return run(["pr-stack", slice]);
+  return run(shareMarkdownArgs(slice));
+}
+
+export function shareMarkdownArgs(slice: string): string[] {
+  return ["share", slice, "--stdout"];
 }
 
 // ── clipboard + open ─────────────────────────────────────────────────────────

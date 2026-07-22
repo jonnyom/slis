@@ -7,6 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 )
 
@@ -141,10 +142,40 @@ func Apply(slices []model.Slice, ov Overrides) []model.Slice {
 // Resolve applies both the grouping overrides and the gather folds stored at
 // overridesPath to the discovered slices: overrides regroup members, folds hide
 // branches a gather subsumed into a tip. This is the standard read-path view.
-func Resolve(slices []model.Slice, overridesPath string) []model.Slice {
+func Resolve(slices []model.Slice, overridesPath, stripPrefix string) []model.Slice {
 	ov, _ := LoadOverrides(overridesPath)
 	folded, _ := LoadFolded(overridesPath)
+	retargetMovedOverrideMembers(slices, ov, stripPrefix)
 	return ApplyFolds(Apply(slices, ov), folded)
+}
+
+func retargetMovedOverrideMembers(slices []model.Slice, overrides Overrides, stripPrefix string) {
+	branches := make(map[string]map[string]bool)
+	byName := make(map[string]model.Slice)
+	for _, slice := range slices {
+		byName[slice.Name] = slice
+		for _, member := range slice.Members {
+			if branches[member.Repo] == nil {
+				branches[member.Repo] = make(map[string]bool)
+			}
+			branches[member.Repo][member.Branch] = true
+		}
+	}
+	for _, repoBranches := range overrides {
+		for repo, branch := range repoBranches {
+			if branches[repo][branch] {
+				continue
+			}
+			source, ok := byName[config.SliceNameFromBranch(branch, stripPrefix)]
+			if !ok {
+				continue
+			}
+			member, ok := source.Members[repo]
+			if ok {
+				repoBranches[repo] = member.Branch
+			}
+		}
+	}
 }
 
 // SaveOverrides writes ov to the file at path as YAML, preserving any existing

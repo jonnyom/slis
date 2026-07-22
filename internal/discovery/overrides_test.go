@@ -116,6 +116,31 @@ func TestLoadOverridesMissingFile(t *testing.T) {
 	}
 }
 
+func TestResolveKeepsGroupedWorktreeAfterBranchSwitch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "overrides.yaml")
+	if err := SaveOverrides(path, Overrides{
+		"unpaid-leave": {
+			"web":  "jonny/unpaid-leave-j-mapping-ui",
+			"nory": "jonny/unpaid-leave-f2-endpoint-guards",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	slices := []model.Slice{
+		{Name: "unpaid-leave-j-mapping-ui", Members: map[string]model.SliceMember{
+			"web": {Repo: "web", Branch: "jonny/unpaid-leave-j-mapping-ui"},
+		}},
+		{Name: "unpaid-leave-f2-endpoint-guards", Members: map[string]model.SliceMember{
+			"nory": {Repo: "nory", Branch: "jonny/unpaid-leave-e2a-creation-sync"},
+		}},
+	}
+
+	got := Resolve(slices, path, "jonny/")
+	if len(got) != 1 || got[0].Name != "unpaid-leave" || len(got[0].Members) != 2 {
+		t.Fatalf("group split after branch switch: %+v", got)
+	}
+}
+
 func TestApplyFoldsHidesSubsumedBranches(t *testing.T) {
 	slices := []model.Slice{
 		{Name: "stack", Members: map[string]model.SliceMember{

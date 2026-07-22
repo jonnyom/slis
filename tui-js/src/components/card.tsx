@@ -13,6 +13,7 @@ import { Scrim } from "./scrim";
 export type CardStatus = ResultStatus;
 
 export function Card({
+  id,
   title,
   subtitle,
   status,
@@ -21,6 +22,7 @@ export function Card({
   scrim = true,
   children,
 }: {
+  id?: string;
   title: string;
   subtitle?: string;
   status?: CardStatus;
@@ -51,6 +53,7 @@ export function Card({
     >
       {scrim ? <Scrim /> : null}
       <box
+        id={id}
         border
         borderStyle="rounded"
         borderColor={theme.focus}
@@ -75,7 +78,7 @@ export function Card({
           </>
         )}
         {hints && hints.length > 0 ? (
-          <box marginTop={1}>
+          <box id="modal-actions" marginTop={1}>
             <HintBar hints={hints} width={clamped ? clamped - 4 : undefined} />
           </box>
         ) : null}
@@ -86,8 +89,10 @@ export function Card({
 
 function SubtitleRow(subtitle: string): ReactNode {
   return (
-    <text wrapMode="none" fg={theme.textDim}>
-      {subtitle}
-    </text>
+    <box id="modal-subtitle" marginBottom={1}>
+      <text wrapMode="none" fg={theme.textDim}>
+        {subtitle}
+      </text>
+    </box>
   );
 }

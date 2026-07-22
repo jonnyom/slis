@@ -12,6 +12,26 @@ import {
 import { color, glyph, theme } from "../theme";
 import { BOLD, DIM } from "./ui";
 import { normalizeKeyName } from "../util/keys";
+import { Card } from "./card";
+
+export function SessionCloseConfirmation({ target }: { target: string }): ReactNode {
+  return (
+    <Card
+      id="session-close-confirmation"
+      title="Close session?"
+      subtitle={target}
+      width={64}
+      hints={[
+        { key: "y / enter", label: "close session" },
+        { key: "n / esc", label: "cancel" },
+      ]}
+    >
+      <text fg={theme.bad} attributes={BOLD}>
+        This will stop every process running in this tmux session.
+      </text>
+    </Card>
+  );
+}
 
 function relatedSlice(session: TmuxSessionInfo, views: SliceView[]): string | null {
   for (const view of views) {
@@ -202,14 +222,11 @@ export function SessionOverlay({
             })
           )}
         </scrollbox>
-        {pendingKill ? (
-          <text fg={theme.bad} attributes={BOLD} wrapMode="none">
-            {`Close ${pendingKill}? y confirm · n cancel`}
-          </text>
-        ) : status ? (
+        {status ? (
           <text fg={status.startsWith("Closed") ? theme.good : theme.bad}>{status}</text>
         ) : null}
       </box>
+      {pendingKill ? <SessionCloseConfirmation target={pendingKill} /> : null}
     </box>
   );
 }

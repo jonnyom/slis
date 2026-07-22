@@ -47,6 +47,18 @@ func TestAddPreservesExplicitIDAndTime(t *testing.T) {
 	}
 }
 
+func TestAddRejectsConflictingExplicitID(t *testing.T) {
+	s := newTestStore(t)
+	first := Comment{ID: "stable", Slice: "x", Repo: "web", File: "a.go", Line: 1, Body: "first"}
+	if _, err := s.Add(first); err != nil {
+		t.Fatal(err)
+	}
+	first.Body = "different"
+	if _, err := s.Add(first); !errors.Is(err, errCommentIDConflict) {
+		t.Fatalf("Add conflicting ID = %v, want errCommentIDConflict", err)
+	}
+}
+
 func TestListFiltersBySliceAndOrders(t *testing.T) {
 	s := newTestStore(t)
 	// Insert out of order; expect (repo, file, line) ordering on read.

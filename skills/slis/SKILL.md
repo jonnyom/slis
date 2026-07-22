@@ -61,6 +61,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
 | `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
+| `slis share <slice>` | clipboard | no | Copy every PR across every repo stack with parent-relative `+added` / `-deleted` totals as Markdown (`--stdout` prints it instead) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis review list [slice]` | read | **yes** | List pending inline-review comments awaiting delivery to a slice's agent |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
@@ -90,6 +91,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
 | `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
 | `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active pane, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
+| `slis review agent <slice> --agent <name>` | mutate | no | Start the selected configured or PATH-detected reviewer in a dedicated slice tmux window and return immediately; it reviews the whole stack, stores attributed findings, and delivers only those new findings to the working agent. Failed reviews remain visible in tmux |
 
 `*` `edit` opens an editor / prints a path; it does not change repo state.
 `slis hook <event>` exists but is hidden and machine-invoked by Claude Code — never call it by hand.

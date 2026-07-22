@@ -71,6 +71,9 @@ func Report(ws config.Workspace, registryPath string) Result {
 		}
 	}
 	if exists {
+		recs, skipped = restoreRegisteredDetached(reg, recs, skipped)
+	}
+	if exists {
 		if repaired, changed := reconcileRegistry(ws.Root, reg, recs); changed {
 			reg = repaired
 			_ = config.SaveRegistry(registryPath, reg)
@@ -129,6 +132,39 @@ func Report(ws config.Workspace, registryPath string) Result {
 	}
 	sortReport(&result)
 	return result
+}
+
+func restoreRegisteredDetached(reg config.Registry, recs []worktreeRec, skipped []SkippedWorktree) ([]worktreeRec, []SkippedWorktree) {
+	remaining := make([]SkippedWorktree, 0, len(skipped))
+	for _, worktree := range skipped {
+		if worktree.Reason != ReasonDetached {
+			remaining = append(remaining, worktree)
+			continue
+		}
+		member, ok := registeredMemberAtPath(reg, worktree.Repo, worktree.Path)
+		if !ok {
+			remaining = append(remaining, worktree)
+			continue
+		}
+		tip, err := git.RevParse(worktree.Path, "HEAD")
+		if err != nil {
+			remaining = append(remaining, worktree)
+			continue
+		}
+		recs = append(recs, worktreeRec{repo: worktree.Repo, path: worktree.Path, branch: member.Branch, tip: tip})
+	}
+	return recs, remaining
+}
+
+func registeredMemberAtPath(reg config.Registry, repo, path string) (config.RegistryMember, bool) {
+	resolvedPath := resolvePath(path)
+	for _, slice := range reg.Slices {
+		member, ok := slice.Members[repo]
+		if ok && member.WorktreePath != "" && resolvePath(member.WorktreePath) == resolvedPath {
+			return member, true
+		}
+	}
+	return config.RegistryMember{}, false
 }
 
 func pruneStaleManagedWorktreeMetadata(ws config.Workspace) {

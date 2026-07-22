@@ -104,6 +104,23 @@ func TestEnsureSessionLifecycle(t *testing.T) {
 		t.Fatal("session should exist after EnsureSession")
 	}
 
+	if err := tmuxctl.StartWindow(slice, "review", members[0].WorktreePath, "printf review-ready; sleep 30"); err != nil {
+		t.Fatalf("StartWindow: %v", err)
+	}
+	var reviewOutput string
+	for range 20 {
+		output, err := exec.Command("tmux", "capture-pane", "-p", "-t", tmuxctl.SessionName(slice)+":review").Output()
+		if err == nil {
+			reviewOutput = string(output)
+			if strings.Contains(reviewOutput, "review-ready") {
+				break
+			}
+		}
+	}
+	if !strings.Contains(reviewOutput, "review-ready") {
+		t.Fatalf("review window output = %q", reviewOutput)
+	}
+
 	// Slis sessions enable mouse mode locally so wheel input forwarded by the
 	// embedded terminal scrolls tmux history without changing global settings.
 	mouse, err := exec.Command("tmux", "show-options", "-v", "-t", tmuxctl.SessionName(slice), "mouse").Output()

@@ -38,12 +38,14 @@ type Comment struct {
 	Side      string    `json:"side,omitempty"`
 	Hunk      string    `json:"hunk,omitempty"`
 	Body      string    `json:"body"`
+	Author    string    `json:"author,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 // ErrCommentNotFound is returned by Remove when no pending comment has the given
 // id.
 var ErrCommentNotFound = errors.New("review comment not found")
+var errCommentIDConflict = errors.New("review comment ID already exists with different content")
 
 // Store is the pending-review-comment store: a single JSON file holding every
 // slice's pending comments. Reads and writes are serialised by a mutex; each
@@ -76,13 +78,25 @@ func (s *Store) Add(c Comment) (Comment, error) {
 	if c.ID == "" {
 		c.ID = s.newID()
 	}
-	if c.CreatedAt.IsZero() {
-		c.CreatedAt = s.now()
-	}
 
 	all, err := s.load()
 	if err != nil {
 		return Comment{}, err
+	}
+	for _, existing := range all {
+		if existing.ID != c.ID {
+			continue
+		}
+		if c.CreatedAt.IsZero() {
+			c.CreatedAt = existing.CreatedAt
+		}
+		if c != existing {
+			return Comment{}, errCommentIDConflict
+		}
+		return existing, nil
+	}
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = s.now()
 	}
 	all = append(all, c)
 	if err := s.save(all); err != nil {

@@ -4,9 +4,8 @@
 // text-input card mirrors CreateOverlay's shape.
 
 import type { ReactNode } from "react";
-import { glyph, theme } from "../theme";
 import { Card } from "../components/card";
-import { BOLD } from "../components/ui";
+import { TextField } from "../components/textfield";
 
 export function AdoptOverlay({ text }: { text: string }): ReactNode {
   return (
@@ -19,15 +18,7 @@ export function AdoptOverlay({ text }: { text: string }): ReactNode {
         { key: "esc", label: "cancel" },
       ]}
     >
-      <text fg={theme.focus} attributes={BOLD} wrapMode="none">
-        branch name
-      </text>
-      <text wrapMode="none">
-        <span fg={theme.textBright}>{text}</span>
-        <span fg={theme.focus} attributes={BOLD}>
-          {glyph.focusBar}
-        </span>
-      </text>
+      <TextField id="adopt-branch-name" label="Branch name" lines={[text]} />
     </Card>
   );
 }

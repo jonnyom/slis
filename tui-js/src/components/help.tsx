@@ -50,7 +50,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
       ["V", "pending-review overlay: list comments · x delete · s send to agent"],
       ["v", "open cockpit PRs panel + failing-CI log"],
       ["F", "fix-ci: point the agent at failing CI"],
-      ["Y", "copy PR-stack markdown to clipboard"],
+      ["Y", "copy all PRs + diffs as Markdown"],
       ["!", "conflict radar (files changed by >1 slice)"],
     ],
   },
@@ -115,7 +115,7 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     label: "stack & prs",
     bindings: [
       ["R", "stack actions: restack / submit / merge / sync"],
-      ["y (Stack) / Y", "copy focused diff / PR-stack markdown"],
+      ["y (Stack) / Y", "copy focused diff / all PRs + diffs"],
       ["y (PRs)", "copy focused PR URL"],
       ["v", "failing CI log in right pane (PRs panel)"],
       ["ctrl+r", "re-run failed CI runs (PRs panel)"],

@@ -3,6 +3,7 @@ package cli
 import (
 	"testing"
 
+	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/model"
 )
 
@@ -42,5 +43,24 @@ func TestOrderReposByStackAlphabeticalFallback(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("order = %v; want alphabetical %v", got, want)
 		}
+	}
+}
+
+func TestShareTargetBranchesUsesGroupedStackTip(t *testing.T) {
+	slice := model.Slice{Name: "unpaid-leave", Members: map[string]model.SliceMember{
+		"nory": {Repo: "nory", Branch: "jonny/unpaid-leave-e2a-creation-sync", WorktreePath: "/work/nory"},
+	}}
+	overrides := discovery.Overrides{"unpaid-leave": {
+		"nory": "jonny/unpaid-leave-f2-endpoint-guards",
+	}}
+
+	got := shareTargetBranches(slice, overrides, func(path, branch string) bool {
+		return path == "/work/nory" && branch == "jonny/unpaid-leave-f2-endpoint-guards"
+	})
+	if got.Members["nory"].Branch != "jonny/unpaid-leave-f2-endpoint-guards" {
+		t.Fatalf("branch = %q", got.Members["nory"].Branch)
+	}
+	if slice.Members["nory"].Branch != "jonny/unpaid-leave-e2a-creation-sync" {
+		t.Fatalf("input slice was mutated: %+v", slice)
 	}
 }

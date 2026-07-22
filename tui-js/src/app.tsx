@@ -696,6 +696,8 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           overlays={overlays}
           width={width}
           height={height}
+          agents={agentList}
+          preferredAgent={preferredAgent?.name}
           onEnter={onEnter}
           onOpenTerm={openTerm}
           onConfigureAgents={configureAgents}
@@ -718,6 +720,8 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           width={width}
           height={height}
           gatherable={isGatherableStackSlice(views, currentView.slice.name)}
+          agents={agentList}
+          preferredAgent={preferredAgent?.name}
           initialPanel={cockpitEntry?.panel}
           openCiLog={cockpitEntry?.ciLog}
           initialDiffMode={uiPrefs.split_diff ? "split" : "unified"}

@@ -3,6 +3,8 @@ import {
   clipboardCandidates,
   mutationArgv,
   mutationRoute,
+  reviewAgentArgs,
+  shareMarkdownArgs,
   spawnCapture,
   swapArgs,
   swapPlan,
@@ -33,9 +35,28 @@ describe("mutationRoute", () => {
       "edit",
       "summary",
       "pr-stack",
+      "share",
     ]) {
       expect(mutationRoute(c)).toBe("captured");
     }
+  });
+});
+
+describe("shareMarkdownArgs", () => {
+  test("requests the raw Markdown bundle without touching the clipboard", () => {
+    expect(shareMarkdownArgs("feature")).toEqual(["share", "feature", "--stdout"]);
+  });
+});
+
+describe("reviewAgentArgs", () => {
+  test("selects the reviewer by display name", () => {
+    expect(reviewAgentArgs("feature", "Codex")).toEqual([
+      "review",
+      "agent",
+      "feature",
+      "--agent",
+      "Codex",
+    ]);
   });
 });
 

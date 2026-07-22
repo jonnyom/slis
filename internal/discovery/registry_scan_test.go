@@ -138,6 +138,41 @@ func TestReport_RegisteredWorktreeBranchSwitchStaysInSlice(t *testing.T) {
 	}
 }
 
+func TestReport_RegisteredDetachedWorktreeStaysInSlice(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "unpaid", "nory")
+	testutil.AddWorktree(t, repo, "jonny/unpaid-leave-f2-endpoint-guards", wt)
+
+	rp := regPath(t)
+	reg := config.Registry{Slices: map[string]config.RegistrySlice{
+		"unpaid-leave-f2-endpoint-guards": {
+			Name:   "unpaid-leave-f2-endpoint-guards",
+			Source: config.SourceImported,
+			Members: map[string]config.RegistryMember{
+				"nory": {Branch: "jonny/unpaid-leave-f2-endpoint-guards", WorktreePath: wt},
+			},
+		},
+	}}
+	if err := config.SaveRegistry(rp, reg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.Run(wt, "checkout", "--detach"); err != nil {
+		t.Fatal(err)
+	}
+
+	res := discovery.Report(wsFor(map[string]string{"nory": repo}), rp)
+	if len(res.Slices) != 1 || res.Slices[0].Name != "unpaid-leave-f2-endpoint-guards" {
+		t.Fatalf("registered detached worktree disappeared: %+v", res)
+	}
+	member := res.Slices[0].Members["nory"]
+	if member.Branch != "jonny/unpaid-leave-f2-endpoint-guards" || resolvePath(t, member.WorktreePath) != resolvePath(t, wt) {
+		t.Fatalf("member = %+v", member)
+	}
+	if len(res.Missing) != 0 || len(res.Skipped) != 0 {
+		t.Fatalf("registered detached worktree reported missing or skipped: %+v", res)
+	}
+}
+
 func TestReport_ManagedTreeBranchSwitchStaysInDirectorySlice(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	root := t.TempDir()

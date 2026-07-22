@@ -32,6 +32,9 @@ func ComposePrompt(comments []Comment) string {
 		if c.Side == "old" {
 			location += " (old/deleted side)"
 		}
+		if c.Author != "" {
+			location += " — reviewer: " + c.Author
+		}
 		fmt.Fprintf(&b, "%d. %s\n", i+1, location)
 
 		if hunk := strings.TrimRight(c.Hunk, "\n"); hunk != "" {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jonnyom/slis/internal/agentreview"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/review"
@@ -30,6 +31,14 @@ func (f *fakeSession) SendPrompt(_, prompt string) error {
 func newStore(t *testing.T) *review.Store {
 	t.Helper()
 	return review.Open(filepath.Join(t.TempDir(), "reviews.json"))
+}
+
+func TestReviewAgentForegroundCommandQuotesArguments(t *testing.T) {
+	got := reviewAgentForegroundCommand("/tmp/slis app", "slice's name", "Codex Pro")
+	want := "'/tmp/slis app' review agent 'slice'\\''s name' --agent 'Codex Pro' --foreground"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
 }
 
 func TestRunReviewSendNoComments(t *testing.T) {
@@ -101,6 +110,76 @@ func TestRunReviewSendKeepPreservesComments(t *testing.T) {
 	}
 }
 
+func TestStoreAndSendAgentFindingsLeavesHumanDraftAlone(t *testing.T) {
+	store := newStore(t)
+	mustStoreAdd(t, store, review.Comment{Slice: "s", Repo: "web", File: "human.go", Line: 2, Body: "human draft"})
+	slice := model.Slice{Name: "s", Members: map[string]model.SliceMember{
+		"web": {Repo: "web", Branch: "feature", WorktreePath: "/work/web"},
+	}}
+	sess := &fakeSession{exists: true, hasAgent: true}
+
+	comments, err := storeAgentFindings(store, slice, "Codex", []agentreview.Finding{{
+		Repo: "web", File: "agent.go", Line: 7, Side: "new", Body: "agent finding",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("added = %d, want 1", len(comments))
+	}
+	if err := review.Send(slice.Name, comments, sess); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sess.gotPrompt, "human draft") || !strings.Contains(sess.gotPrompt, "agent finding") {
+		t.Fatalf("delivered prompt = %q", sess.gotPrompt)
+	}
+	comments, err = store.List("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("stored comments = %#v", comments)
+	}
+	foundAgentComment := false
+	for _, comment := range comments {
+		if comment.Author == "Codex" {
+			foundAgentComment = true
+		}
+	}
+	if !foundAgentComment {
+		t.Fatalf("stored comments = %#v", comments)
+	}
+}
+
+func TestStoreAgentFindingsIsIdempotentAcrossDeliveryRetries(t *testing.T) {
+	store := newStore(t)
+	slice := model.Slice{Name: "s", Members: map[string]model.SliceMember{
+		"web": {Repo: "web", Branch: "feature", WorktreePath: "/work/web"},
+	}}
+	findings := []agentreview.Finding{{
+		Repo: "web", File: "agent.go", Line: 7, Side: "new", Body: "agent finding",
+	}}
+
+	first, err := storeAgentFindings(store, slice, "Codex", findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := storeAgentFindings(store, slice, "Codex", findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 || len(second) != 1 || first[0].ID != second[0].ID {
+		t.Fatalf("retry comments = %#v then %#v", first, second)
+	}
+	stored, err := store.List(slice.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("stored comments = %#v", stored)
+	}
+}
+
 func TestEnsureReviewAgentLaunchesConfiguredAgentFromShell(t *testing.T) {
 	if !tmuxctl.Available() {
 		t.Skip("tmux not on PATH")
@@ -140,6 +219,21 @@ func TestDefaultReviewAgentUsesFirstConfiguredChoice(t *testing.T) {
 	cmd, harness := defaultReviewAgent(s)
 	if cmd != "codex --full-auto" || harness != "codex" {
 		t.Fatalf("defaultReviewAgent = %q/%q, want codex --full-auto/codex", cmd, harness)
+	}
+}
+
+func TestReviewAgentCommandsRecognizeDetectedAgents(t *testing.T) {
+	commands := reviewAgentCommands(config.Sessions{})
+	for _, expected := range []string{"claude", "codex", "opencode", "gemini", "cursor-agent"} {
+		found := false
+		for _, command := range commands {
+			if command == expected {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("commands %#v do not include %q", commands, expected)
+		}
 	}
 }
 
