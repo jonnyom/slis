@@ -135,6 +135,7 @@ managing the surrounding Git and multi-repo workflow.
 ### Homebrew (recommended)
 
 ```sh
+brew trust --cask jonnyom/tap/slis
 brew install jonnyom/homebrew-tap/slis
 ```
 
