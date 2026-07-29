@@ -18,6 +18,8 @@ func Track(dir, branch, parent string) (string, error) {
 	if _, err := exec.LookPath("gt"); err != nil {
 		return "", ErrNotInstalled
 	}
+	defer acquireSpawnSlot()()
+
 	cmd := exec.Command("gt", "track", "--parent", parent, "--no-interactive", branch)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()

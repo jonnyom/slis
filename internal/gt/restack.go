@@ -21,6 +21,8 @@ func Restack(dir string) (string, error) {
 	if _, err := exec.LookPath("gt"); err != nil {
 		return "", ErrNotInstalled
 	}
+	defer acquireSpawnSlot()()
+
 	cmd := exec.Command("gt", "restack", "--no-interactive")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()

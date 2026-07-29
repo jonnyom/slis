@@ -101,6 +101,13 @@ export class SlisRpcClient implements RpcClient {
   private proc: Bun.Subprocess<"pipe", "pipe", "inherit"> | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  // Identical reads already in flight, keyed by method+params. Every method here
+  // is a read, so a second identical request issued before the first returns is
+  // pure duplicated work: the 30s tick used to re-fire `conflicts` while the
+  // previous one was still fanning out subprocesses in the sidecar, so a slow
+  // workspace queued burst after burst. Joining the in-flight call caps the
+  // sidecar's work at one of each read at a time.
+  private readonly inFlight = new Map<string, Promise<unknown>>();
   private readonly sessionHandlers = new Set<(e: SessionEvent) => void>();
   private readonly connectionHandlers = new Set<(connected: boolean) => void>();
 
@@ -188,7 +195,17 @@ export class SlisRpcClient implements RpcClient {
       pending.reject(err instanceof Error ? err : new Error(String(err)));
     }
     this.pending.clear();
+    // Kill the sidecar we just gave up on. The transport can go down while the
+    // process is still alive (a broken stdout read), and an unreachable sidecar
+    // still holds its in-flight git/gt/gh children — leaking it would leave those
+    // subprocesses burning CPU with nothing left to read their answers.
+    const abandoned = this.proc;
     this.proc = null;
+    try {
+      abandoned?.kill();
+    } catch {
+      // Already exited — which is the common case and the desired state.
+    }
     this.emitConnection(false);
     this.scheduleRestart();
   }
@@ -222,7 +239,20 @@ export class SlisRpcClient implements RpcClient {
 
   // ── request plumbing ──────────────────────────────────────────────────────
 
+  // call coalesces identical concurrent reads onto one request; see inFlight.
   private call<T>(method: string, params?: unknown): Promise<T> {
+    const key = method + ":" + (params === undefined ? "" : JSON.stringify(params));
+    const joined = this.inFlight.get(key) as Promise<T> | undefined;
+    if (joined) return joined;
+
+    const promise = this.send<T>(method, params).finally(() => {
+      this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, promise);
+    return promise;
+  }
+
+  private send<T>(method: string, params?: unknown): Promise<T> {
     const proc = this.proc;
     if (!proc) {
       return Promise.reject(new Error("sidecar not connected"));

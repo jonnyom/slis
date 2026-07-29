@@ -86,6 +86,8 @@ func ReadState(repoDir string) (State, error) {
 		return State{}, nil
 	}
 
+	defer acquireSpawnSlot()()
+
 	ctx, cancel := context.WithTimeout(context.Background(), stateTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gt", "state", "--no-interactive")

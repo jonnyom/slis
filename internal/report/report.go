@@ -556,11 +556,11 @@ func PRStackRows(sl model.Slice) []PRStackRowDTO {
 
 // ComputeConflicts discovers slices, applies overrides, and builds the radar
 // index over their changed-file sets. Stats are computed fresh (no TUI card
-// cache outside the running program), concurrently per slice.
+// cache outside the running program), a bounded number of slices at a time.
 func ComputeConflicts(ws config.Workspace, overridesPath string) (*radar.Index, error) {
 	slices := discovery.Resolve(discovery.Report(ws, RegistryPathFor(overridesPath)).Slices, overridesPath, ws.Grouping.StripPrefix)
 
-	return radar.Build(radar.CollectStats(slices)), nil
+	return radar.Build(radar.CollectStats(slices, gt.ReadStack)), nil
 }
 
 // Conflicts is ComputeConflicts wrapped as a ready-to-marshal ConflictsDTO, with

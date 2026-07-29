@@ -142,20 +142,76 @@ func (idx *Index) OverlapsFor(slice string) []Overlap {
 	return out
 }
 
-// ParentBases returns the per-repo diff base for a slice: each member branch's
+// StackReader reads a Graphite stack for a worktree. gt.ReadStack satisfies it;
+// tests inject a fake so the fan-out logic runs without the gt binary. A nil
+// reader means "no Graphite data", and every slice falls back to trunk bases.
+type StackReader func(worktreePath string) (gt.State, error)
+
+// MaxConcurrentSlices caps how many slices the radar measures at once. Each
+// slice costs a git numstat per repo (and, on a cache miss, a gt read), so an
+// unbounded goroutine-per-slice fan-out burst-spawned one subprocess chain per
+// slice-member — enough to pin every core on a real multi-repo workspace.
+const MaxConcurrentSlices = 4
+
+// stackCache memoises Graphite state per REPO. `gt state` is repo-global: every
+// worktree of a repo returns identical stack metadata, so a workspace of N
+// slices across R repos costs R gt processes, not N*R.
+type stackCache struct {
+	read StackReader
+
+	mu      sync.Mutex
+	entries map[string]*stackEntry
+}
+
+type stackEntry struct {
+	once  sync.Once
+	state gt.State
+}
+
+func newStackCache(read StackReader) *stackCache {
+	return &stackCache{read: read, entries: map[string]*stackEntry{}}
+}
+
+// state returns repo's Graphite stack, reading it through the injected reader at
+// most once. Concurrent callers for the same repo wait on that single read;
+// callers for different repos proceed in parallel.
+func (c *stackCache) state(repo, worktreePath string) gt.State {
+	if c.read == nil {
+		return nil
+	}
+
+	c.mu.Lock()
+	entry := c.entries[repo]
+	if entry == nil {
+		entry = &stackEntry{}
+		c.entries[repo] = entry
+	}
+	c.mu.Unlock()
+
+	entry.once.Do(func() {
+		st, err := c.read(worktreePath)
+		if err != nil {
+			return
+		}
+		entry.state = st
+	})
+	return entry.state
+}
+
+// parentBases returns the per-repo diff base for a slice: each member branch's
 // Graphite parent, so the diff measures only that branch's own changes (not the
 // whole downstack), falling back to "" (auto-detect trunk) when gt has no data.
 // Mirrors the browser card's base computation (slicelist.go) so the radar
 // measures the SAME file set the UI shows.
-func ParentBases(sl model.Slice) map[string]string {
+func parentBases(sl model.Slice, stacks *stackCache) map[string]string {
 	bases := make(map[string]string, len(sl.Members))
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
 		if m.WorktreePath == "" {
 			continue
 		}
-		st, err := gt.ReadStack(m.WorktreePath)
-		if err != nil || len(st) == 0 {
+		st := stacks.state(repo, m.WorktreePath)
+		if len(st) == 0 {
 			continue
 		}
 		if bs, ok := st[m.Branch]; ok && len(bs.Parents) > 0 {
@@ -165,19 +221,26 @@ func ParentBases(sl model.Slice) map[string]string {
 	return bases
 }
 
-// CollectStats computes per-slice changed-file stats (numstat only)
-// concurrently, using each slice's Graphite-parent bases. Result is keyed by
-// slice name and ready for Build. Used by the CLI twin, which has no TUI card
-// cache to reuse.
-func CollectStats(slices []model.Slice) map[string][]diff.RepoDiff {
+// CollectStats computes per-slice changed-file stats (numstat only) using each
+// slice's Graphite-parent bases, at most MaxConcurrentSlices slices at a time and
+// with one gt read per repo. Result is keyed by slice name and ready for Build.
+// Used by the CLI twin, which has no TUI card cache to reuse.
+func CollectStats(slices []model.Slice, read StackReader) map[string][]diff.RepoDiff {
 	out := make(map[string][]diff.RepoDiff, len(slices))
+	stacks := newStackCache(read)
+
 	var mu sync.Mutex
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, MaxConcurrentSlices)
+
 	for _, sl := range slices {
 		wg.Add(1)
 		go func(sl model.Slice) {
 			defer wg.Done()
-			stats, _ := diff.SliceStatBases(sl, ParentBases(sl))
+			slots <- struct{}{}
+			defer func() { <-slots }()
+
+			stats, _ := diff.SliceStatBases(sl, parentBases(sl, stacks))
 			mu.Lock()
 			out[sl.Name] = stats
 			mu.Unlock()
