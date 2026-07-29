@@ -15,6 +15,7 @@ import (
 
 	gitutil "github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/safeterm"
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // ghTimeout bounds a single gh invocation. gh calls are network-bound (GitHub
@@ -316,6 +317,7 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", jsonFields)
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 
 	var stdout, stderr bytes.Buffer
@@ -380,6 +382,7 @@ func historicalPRForBranch(repoDir, branch string) (*PR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", jsonFields)
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -437,6 +440,7 @@ func inlineComments(repoDir, prURL string, number int) ([]Comment, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "api", path, "--paginate")
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 
 	var stdout, stderr bytes.Buffer
@@ -559,6 +563,7 @@ func RerunFailedChecks(repoDir string, pr *PR) (int, error) {
 	var firstErr error
 	for _, id := range ids {
 		cmd := exec.Command("gh", "run", "rerun", id, "--failed")
+		subproc.Configure(cmd)
 		cmd.Dir = repoDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if firstErr == nil {
@@ -582,6 +587,7 @@ func FailedLog(repoDir string, pr *PR) (string, error) {
 		return "", fmt.Errorf("no failing CI run found")
 	}
 	cmd := exec.Command("gh", "run", "view", ids[0], "--log-failed")
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // DefaultTimeout bounds a git invocation made via Run. Every git command slis
@@ -68,6 +70,7 @@ func LocalBranches(dir string) ([]string, error) {
 func RunCtx(ctx context.Context, dir string, args ...string) (string, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	subproc.Configure(cmd)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -84,6 +87,7 @@ func RunRaw(dir string, args ...string) ([]byte, error) {
 	defer cancel()
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	subproc.Configure(cmd)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
