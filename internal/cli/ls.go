@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/spf13/cobra"
 )
@@ -84,7 +85,7 @@ var lsCmd = &cobra.Command{
 
 		renderSlicesTable(os.Stdout, res.Slices)
 		renderMissingTable(os.Stdout, res.Missing)
-		renderSkippedNotice(os.Stderr, res)
+		renderSkippedNotice(os.Stderr, res, ws.Grouping.StripPrefix)
 		return nil
 	},
 }
@@ -107,7 +108,29 @@ func renderMissingTable(w io.Writer, missing []MissingDTO) {
 // renderSkippedNotice prints a short warning to w (stderr) when discovery hid
 // worktrees or a repo failed to list, pointing the user at `slis doctor`. It
 // prints nothing when everything was healthy.
-func renderSkippedNotice(w io.Writer, res LsResultDTO) {
+// sliceBranches lists a slice's member branches in member order.
+func sliceBranches(dto SliceDTO) []string {
+	branches := make([]string, 0, len(dto.Members))
+	for _, m := range dto.Members {
+		branches = append(branches, m.Branch)
+	}
+	return branches
+}
+
+// staleNamedSlices returns the slices whose name no longer describes what they
+// hold. Single definition, shared by the `ls` notice and `slis doctor`, so the two
+// can never disagree about what counts as drift.
+func staleNamedSlices(slices []SliceDTO, stripPrefix string) []SliceDTO {
+	var stale []SliceDTO
+	for _, dto := range slices {
+		if discovery.SliceNameIsStale(dto.Name, sliceBranches(dto), stripPrefix) {
+			stale = append(stale, dto)
+		}
+	}
+	return stale
+}
+
+func renderSkippedNotice(w io.Writer, res LsResultDTO, stripPrefix string) {
 	if len(res.Skipped) > 0 {
 		reasons := make([]string, 0, len(res.Skipped))
 		seen := map[string]bool{}
@@ -120,6 +143,14 @@ func renderSkippedNotice(w io.Writer, res LsResultDTO) {
 		sort.Strings(reasons)
 		fmt.Fprintf(w, "⚠ %d worktree%s hidden (%s) — run slis doctor\n",
 			len(res.Skipped), plural(len(res.Skipped)), strings.Join(reasons, "/"))
+	}
+	if stale := staleNamedSlices(res.Slices, stripPrefix); len(stale) > 0 {
+		names := make([]string, 0, len(stale))
+		for _, dto := range stale {
+			names = append(names, dto.Name)
+		}
+		fmt.Fprintf(w, "⚠ %d slice%s named after a branch it no longer holds (%s) — run slis doctor\n",
+			len(stale), plural(len(stale)), strings.Join(names, ", "))
 	}
 	for _, e := range res.RepoErrors {
 		fmt.Fprintf(w, "⚠ repo %q could not be read: %s — run slis doctor\n", e.Repo, e.Err)

@@ -28,6 +28,8 @@ var skipReasonAdvice = map[string]reasonAdvice{
 		"no branch checked out — `git switch <branch>` inside the worktree."},
 	discovery.ReasonBare: {lvlInfo,
 		"bare worktree — expected to be excluded from slices."},
+	discovery.ReasonIgnored: {lvlInfo,
+		"hidden by an ignore rule — expected (agent scratch worktrees under .claude/worktrees are ignored by default); `slis import <path>` to manage it anyway."},
 	discovery.ReasonInvalidBranchName: {lvlWarn,
 		"branch name starts with '-' (unusable) — rename it with `git branch -m`."},
 	discovery.ReasonRevParseFailed: {lvlWarn,
@@ -65,6 +67,43 @@ func skippedWorktreeFindings(skipped []SkippedWorktreeDTO) []doctorFinding {
 			Title:  fmt.Sprintf("%d hidden worktree%s: %s", len(items), plural(len(items)), reason),
 			Detail: advice.remedy + " (" + strings.Join(paths, ", ") + ")",
 		})
+	}
+	return findings
+}
+
+// staleNameFindings surfaces slices whose name no longer describes what they hold:
+// the branch the name came from is gone and the worktree now carries something
+// else. The name comes from a registered worktree keeping its slice identity across
+// branch changes, which is what stops a stacked workflow losing its slice — but
+// once the original branch is merged and deleted, the label misleads.
+//
+// A slice sitting on a path slis would otherwise ignore (an agent's throwaway
+// worktree) is fixable: dropping the registry entry lets the ignore rule apply
+// again, touching no git state. Anything else is the user's real work, so it is
+// reported with the remedy rather than changed for them.
+func staleNameFindings(ws config.Workspace, dtos []SliceDTO, registryPath string) []doctorFinding {
+	var findings []doctorFinding
+	for _, dto := range staleNamedSlices(dtos, ws.Grouping.StripPrefix) {
+		branches := sliceBranches(dto)
+		ignoredPath := len(dto.Members) > 0
+		for _, m := range dto.Members {
+			if !discovery.PathDefaultIgnored(m.WorktreePath) {
+				ignoredPath = false
+			}
+		}
+		finding := doctorFinding{
+			Level: lvlWarn,
+			Title: fmt.Sprintf("slice %q is named after a branch it no longer holds", dto.Name),
+			Detail: fmt.Sprintf("now on %s — the name came from a branch that is gone (merged or deleted). `slis forget %s` to drop the registry entry, then `slis import <path>` if you still want it managed.",
+				strings.Join(branches, ", "), dto.Name),
+		}
+		if ignoredPath {
+			name := dto.Name
+			finding.Detail += " Its worktree is an agent scratch directory slis ignores by default, so --fix drops the entry."
+			finding.fixDesc = "forget " + name
+			finding.fix = func() (string, error) { return forgetRegisteredSlice(registryPath, name) }
+		}
+		findings = append(findings, finding)
 	}
 	return findings
 }
@@ -183,12 +222,20 @@ func orphanWorktreeFindings(ws config.Workspace) []doctorFinding {
 		if err != nil {
 			continue
 		}
-		if len(repoEntries) == 0 {
-			findings = append(findings, orphanEmptyFinding(sliceDir))
+		if !hasNonHiddenEntry(repoEntries) {
+			// Only agent state (.claude, .serena) or nothing at all: no checkout is
+			// left here, so the slice directory itself is the leftover.
+			findings = append(findings, orphanEmptyFinding(sliceDir, len(repoEntries) > 0))
 			continue
 		}
 		for _, repoEntry := range repoEntries {
 			if !repoEntry.IsDir() {
+				continue
+			}
+			// Agents keep per-directory state next to the checkouts (.claude,
+			// .serena, …). Those are live tool data, not worktree litter — reporting
+			// them told the user to delete working state by hand.
+			if discovery.IsToolStateDir(repoEntry.Name()) {
 				continue
 			}
 			candidate := filepath.Join(sliceDir, repoEntry.Name())
@@ -201,12 +248,29 @@ func orphanWorktreeFindings(ws config.Workspace) []doctorFinding {
 	return findings
 }
 
-// orphanEmptyFinding reports a directory that is not a git worktree at all.
-func orphanEmptyFinding(dir string) doctorFinding {
+// hasNonHiddenEntry reports whether entries hold anything other than dot-prefixed
+// agent/tool state.
+func hasNonHiddenEntry(entries []os.DirEntry) bool {
+	for _, entry := range entries {
+		if !discovery.IsToolStateDir(entry.Name()) {
+			return true
+		}
+	}
+	return false
+}
+
+// orphanEmptyFinding reports a slice directory that holds no checkout. agentStateOnly
+// says its remaining contents are agent/tool state (.claude, .serena), which is the
+// usual reason an otherwise-empty slice directory survives.
+func orphanEmptyFinding(dir string, agentStateOnly bool) doctorFinding {
+	detail := dir + " — no repo checkout left here"
+	if agentStateOnly {
+		detail += " (only agent state such as .claude/.serena remains)"
+	}
 	return doctorFinding{
 		Level:  lvlWarn,
-		Title:  "orphaned worktree directory (not a git worktree)",
-		Detail: dir + " — leftover litter; remove it by hand once you're sure it holds no work.",
+		Title:  "orphaned worktree directory (no checkout)",
+		Detail: detail + "; remove it by hand once you're sure it holds no work.",
 	}
 }
 
@@ -216,7 +280,7 @@ func classifyOrphan(candidate string) doctorFinding {
 	gitFile := filepath.Join(candidate, ".git")
 	info, err := os.Stat(gitFile)
 	if err != nil || info.IsDir() {
-		return orphanEmptyFinding(candidate)
+		return orphanEmptyFinding(candidate, false)
 	}
 	return doctorFinding{
 		Level: lvlWarn,

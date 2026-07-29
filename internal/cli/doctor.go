@@ -306,6 +306,7 @@ func runDoctor() []doctorFinding {
 	worktreeIssues = append(worktreeIssues, skippedWorktreeFindings(rep.Skipped)...)
 	worktreeIssues = append(worktreeIssues, missingSliceFindings(rep.Missing)...)
 	worktreeIssues = append(worktreeIssues, orphanWorktreeFindings(ws)...)
+	worktreeIssues = append(worktreeIssues, staleNameFindings(ws, dtos, sp.Registry)...)
 	findings = append(findings, worktreeIssues...)
 
 	// Swap-journal health (drift, stale journal, orphaned live branch/detach).
@@ -442,10 +443,14 @@ func renderDoctor(findings []doctorFinding) {
 		default:
 			sym = "·"
 		}
+		suffix := ""
 		if f.fix != nil {
 			fixable++
+			// Say WHICH findings --fix covers: the summary count alone left the user
+			// guessing which of them it meant.
+			suffix = "  [--fix]"
 		}
-		fmt.Printf("%s %s\n", sym, f.Title)
+		fmt.Printf("%s %s%s\n", sym, f.Title, suffix)
 		if f.Detail != "" {
 			fmt.Printf("    %s\n", f.Detail)
 		}

@@ -253,3 +253,43 @@ func TestListSlicesJSON(t *testing.T) {
 		t.Error("JSON output does not contain a 'checkout' slice")
 	}
 }
+
+// `slis ls` is where the user actually looks, so name drift has to be visible
+// there — with a pointer at doctor, which explains and can fix it.
+func TestRenderSkippedNotice_NudgesToDoctorOnStaleNames(t *testing.T) {
+	res := LsResultDTO{Slices: []SliceDTO{
+		// Drifted: the branch this name came from is gone.
+		{Name: "unpaid-leave-f2-endpoint-guards", Members: []MemberDTO{
+			{Repo: "nory", Branch: "claude/wage-changes-proration-bffowg"},
+		}},
+		// Healthy: named after its own branch.
+		{Name: "sick-pay-not-syncing", Members: []MemberDTO{
+			{Repo: "nory", Branch: "jonny/sick-pay-not-syncing"},
+		}},
+	}}
+
+	var out strings.Builder
+	renderSkippedNotice(&out, res, "jonny/")
+
+	got := out.String()
+	if !strings.Contains(got, "unpaid-leave-f2-endpoint-guards") ||
+		!strings.Contains(got, "run slis doctor") {
+		t.Fatalf("expected a stale-name nudge naming the slice, got %q", got)
+	}
+	if strings.Contains(got, "sick-pay-not-syncing") {
+		t.Fatalf("healthy slices must not be named in the notice, got %q", got)
+	}
+}
+
+func TestRenderSkippedNotice_SilentWhenEverythingIsHealthy(t *testing.T) {
+	res := LsResultDTO{Slices: []SliceDTO{
+		{Name: "checkout", Members: []MemberDTO{{Repo: "web", Branch: "jonny/checkout"}}},
+	}}
+
+	var out strings.Builder
+	renderSkippedNotice(&out, res, "jonny/")
+
+	if out.String() != "" {
+		t.Fatalf("healthy workspace should print nothing, got %q", out.String())
+	}
+}

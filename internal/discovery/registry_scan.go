@@ -18,6 +18,52 @@ import (
 // under .claude/worktrees; ingesting them made slices "appear out of nowhere".
 var DefaultIgnoreGlobs = []string{"**/.claude/worktrees/**"}
 
+// grandfatherable reports whether a worktree present on the first (registry-less)
+// run should be registered.
+//
+// Everything is, except the one combination that is provably not the user's work:
+// a path the built-in globs exclude (an agent's worktree directory) holding a
+// branch in an agent's own namespace. Registering that pinned it as a slice for
+// ever, because registration outranks ignore.
+//
+// Anything else under those paths is grandfathered as before — a real checkout
+// that merely lives under .claude/worktrees is still work an upgrade must not
+// hide, whatever its branch is named.
+func grandfatherable(rec worktreeRec) bool {
+	if !matchesAnyGlob(rec.path, DefaultIgnoreGlobs) {
+		return true
+	}
+	return !agentOwnedCheckout(rec.path, rec.branch)
+}
+
+// agentOwnedCheckout reports whether a worktree is a coding agent's own scratch
+// work: it lives in that agent's worktree directory AND holds a branch in that
+// agent's namespace. Both halves come from the same convention — a tool keeps its
+// state in `.<tool>/` and names branches `<tool>/…` — so the agent's name is read
+// off the path rather than kept in a list here, and a new tool following the same
+// convention needs no change beyond its ignore glob.
+//
+//	<repo>/.claude/worktrees/x  +  claude/some-task   → the agent's own
+//	<repo>/.claude/worktrees/x  +  jonny/real-feature → the user's work
+func agentOwnedCheckout(path, branch string) bool {
+	segments := strings.Split(filepath.ToSlash(path), "/")
+	for i, segment := range segments {
+		// Only the `.<tool>/worktrees/…` shape names a tool; any other hidden
+		// directory in the path says nothing about who owns the branch.
+		if segment != "worktrees" || i == 0 {
+			continue
+		}
+		owner := segments[i-1]
+		if !strings.HasPrefix(owner, ".") || len(owner) < 2 {
+			continue
+		}
+		if strings.HasPrefix(branch, owner[1:]+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // ignoreGlobs returns the effective ignore list: the built-in defaults plus the
 // workspace's configured grouping.ignore.
 func ignoreGlobs(ws config.Workspace) []string {
@@ -43,11 +89,12 @@ func ignoreGlobs(ws config.Workspace) []string {
 // registered worktree is healthy: stacked-branch workflows do this routinely,
 // and the worktree remains owned by its registered slice.
 //
-// Grandfathering: when no registry file exists yet (first run on upgrade), EVERY
-// discovered worktree is grandfathered — pre-ignore, i.e. exactly the group-all
-// set the old behavior produced — and written to the registry (source
-// grandfathered), so an upgrade hides nothing. Ignore globs only filter unknown,
-// unregistered worktrees discovered AFTER grandfathering.
+// Grandfathering: when no registry file exists yet (first run on upgrade), every
+// discovered worktree is grandfathered and written to the registry (source
+// grandfathered) so an upgrade hides nothing — except paths matched by
+// DefaultIgnoreGlobs, which are never ingested at all. The user's configured
+// ignore list only filters unknown, unregistered worktrees discovered AFTER
+// grandfathering.
 //
 // Precedence: a registered (or managed-tree) worktree is always MANAGED, even
 // when its path matches an ignore glob. Ignore never hides registered work — it
@@ -89,10 +136,20 @@ func Report(ws config.Workspace, registryPath string) Result {
 		// Precedence (invariant 1): registered / managed-tree beats ignore.
 		case underManagedTree(r.path, ws.Root) || registered.has(r.repo, r.branch, r.path):
 			managed = append(managed, r)
-		// First run (invariant 2): grandfather the whole raw discovery, pre-ignore,
-		// so nothing that worked before upgrade disappears.
-		case !exists:
+		// First run (invariant 2): grandfather the raw discovery so nothing that
+		// worked before the upgrade disappears. The user's configured ignore list is
+		// deliberately not applied — it did not exist before the upgrade, so it says
+		// nothing about pre-upgrade work.
+		case !exists && grandfatherable(r):
 			managed = append(managed, r)
+		// An agent's throwaway worktree — its own branch namespace under its own
+		// ignored directory — is the one thing grandfathering must NOT register: registration outranks ignore for
+		// ever, so a `.claude/worktrees` checkout became a permanent slice — still
+		// named after a branch that later merged and was deleted while the directory
+		// was reused for unrelated work. The user's OWN branches under such a path
+		// are real work and are still grandfathered (see grandfatherable).
+		case !exists:
+			skipped = append(skipped, SkippedWorktree{Repo: r.repo, Path: r.path, Branch: r.branch, Reason: ReasonIgnored})
 		// Only unregistered, post-grandfather worktrees are filtered by ignore.
 		case matchesAnyGlob(r.path, globs):
 			skipped = append(skipped, SkippedWorktree{Repo: r.repo, Path: r.path, Branch: r.branch, Reason: ReasonIgnored})

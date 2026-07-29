@@ -326,6 +326,23 @@ Two things still run to completion, both by design because neither can run long:
 discovery's worktree scan (one `git worktree list` per repo) and the pure
 file-store reads (`comments`, `reviews`) — no subprocess involved.
 
+### Slice-name drift
+
+A registered worktree keeps its slice name across branch changes, so a stacked
+workflow never loses its slice. Once the branch the name came from is merged and
+deleted, and the worktree is reused for something else, the name stops describing
+what the slice holds. `slis ls` warns on stderr and `slis doctor` explains it:
+
+```
+⚠ 1 slice named after a branch it no longer holds (unpaid-leave-f2-endpoint-guards) — run slis doctor
+```
+
+doctor reports the slice, what it actually holds now, and the remedy (`slis forget`,
+then `slis import` if you still want it managed). `--fix` applies only when the
+worktree is an agent's own scratch directory that slis ignores by default — there,
+dropping the registry entry restores the ignore rule and touches no git state.
+Real work is reported, never un-managed for you.
+
 ## Session status
 
 The headline automation signal: *which slice's Claude is waiting for input.*

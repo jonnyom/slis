@@ -3,12 +3,14 @@ package discovery_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/git"
+	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/testutil"
 )
 
@@ -618,5 +620,110 @@ func TestReport_MissingWhenWorktreeDeleted(t *testing.T) {
 	m := res.Missing[0]
 	if m.Slice != "gone" || m.Repo != "web" || m.Branch != "jonny/gone" {
 		t.Fatalf("missing member fields wrong: %+v", m)
+	}
+}
+
+// Grandfathering exists so an upgrade hides nothing — but it must not ingest the
+// throwaway worktrees Claude Code creates under .claude/worktrees. Registration
+// beats ignore forever, so one grandfathered scratch worktree became a permanent
+// slice, still named after a branch that later merged and was deleted while the
+// directory was reused for unrelated work.
+func TestReport_DoesNotGrandfatherDefaultIgnoredWorktrees(t *testing.T) {
+	repo := testutil.NewRepo(t)
+
+	scratch := filepath.Join(repo, ".claude", "worktrees", "agent-scratch")
+	testutil.AddWorktree(t, repo, "claude/agent-scratch", scratch)
+	real := filepath.Join(t.TempDir(), "feature")
+	testutil.AddWorktree(t, repo, "jonny/feature", real)
+
+	rp := regPath(t) // no registry yet → this is the grandfathering run
+	res := discovery.Report(wsFor(map[string]string{"web": repo}), rp)
+
+	for _, slice := range res.Slices {
+		for _, member := range slice.Members {
+			if strings.Contains(member.WorktreePath, filepath.Join(".claude", "worktrees")) {
+				t.Fatalf("agent scratch worktree was grandfathered into slice %q", slice.Name)
+			}
+		}
+	}
+	if !hasSliceNamed(res.Slices, "feature") {
+		t.Fatalf("real work must still be grandfathered, got %v", sliceNames(res.Slices))
+	}
+
+	ignored := false
+	for _, sk := range res.Skipped {
+		if sk.Reason == discovery.ReasonIgnored &&
+			strings.Contains(sk.Path, filepath.Join(".claude", "worktrees")) {
+			ignored = true
+		}
+	}
+	if !ignored {
+		t.Fatalf("the scratch worktree should be reported as ignored, got %+v", res.Skipped)
+	}
+
+	// It must not reach the registry, or it would outrank the ignore rule forever.
+	reg, _, err := config.LoadRegistry(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, slice := range reg.Slices {
+		for _, member := range slice.Members {
+			if strings.Contains(member.WorktreePath, filepath.Join(".claude", "worktrees")) {
+				t.Fatalf("registry recorded the scratch worktree under %q", name)
+			}
+		}
+	}
+}
+
+func hasSliceNamed(slices []model.Slice, name string) bool {
+	for _, s := range slices {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// The narrow rule: only an agent's OWN branch under an agent's OWN directory is
+// withheld from grandfathering. A real checkout that merely happens to live under
+// .claude/worktrees is still work an upgrade must not hide, whatever its branch is
+// called — including branches outside the user's strip_prefix.
+func TestReport_GrandfathersNonAgentBranchUnderIgnoredPath(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(repo, ".claude", "worktrees", "real-work")
+	testutil.AddWorktree(t, repo, "feature/no-user-prefix", wt)
+
+	rp := regPath(t) // first run → grandfathering
+	res := discovery.Report(wsFor(map[string]string{"web": repo}), rp)
+
+	if !hasSliceNamed(res.Slices, "feature/no-user-prefix") {
+		t.Fatalf("a non-agent branch under an ignored path must still be grandfathered, got %v",
+			sliceNames(res.Slices))
+	}
+}
+
+// The rule reads the agent's name off its own directory, so any tool following the
+// `.<tool>/worktrees` + `<tool>/branch` convention is recognised without a list of
+// tool names in discovery.
+func TestReport_AgentConventionIsDerivedFromThePath(t *testing.T) {
+	repo := testutil.NewRepo(t)
+
+	// A hypothetical future agent: its own directory, its own branch namespace.
+	scratch := filepath.Join(repo, ".someagent", "worktrees", "task")
+	testutil.AddWorktree(t, repo, "someagent/task-1", scratch)
+	// Same directory, but the user's branch: real work, keep it.
+	mine := filepath.Join(repo, ".someagent", "worktrees", "mine")
+	testutil.AddWorktree(t, repo, "jonny/my-feature", mine)
+
+	ws := wsFor(map[string]string{"web": repo})
+	ws.Grouping.Ignore = []string{"**/.someagent/worktrees/**"}
+
+	res := discovery.Report(ws, regPath(t))
+
+	// The user's branch is grandfathered either way (configured ignores do not
+	// apply to grandfathering); the agent's own branch must not be registered as a
+	// slice once its directory is ignored.
+	if !hasSliceNamed(res.Slices, "my-feature") {
+		t.Fatalf("the user's branch must survive grandfathering, got %v", sliceNames(res.Slices))
 	}
 }
