@@ -1,0 +1,36 @@
+internal/subproc/group_other.go
+  s_d2f14f38e8a65f::t_ebb80f32dd399e 1-16
+internal/gt/track.go
+  s_d2f14f38e8a65f::t_b087128a892046 6-7,26
+internal/git/git.go
+  s_d2f14f38e8a65f::t_b087128a892046 12-13,73,90
+internal/gt/restack.go
+  s_d2f14f38e8a65f::t_b087128a892046 7-8,29
+internal/subproc/subproc_unix_test.go
+  s_d2f14f38e8a65f::t_2e767a3d60e1aa 1-127
+internal/subproc/group_unix.go
+  s_d2f14f38e8a65f::t_2c34df14e05c60 1-30
+internal/subproc/subproc.go
+  s_d2f14f38e8a65f::t_55b0fb74524ea7 1-46
+internal/gt/gt.go
+  s_d2f14f38e8a65f::t_b087128a892046 13-14,96
+internal/forge/forge.go
+  s_d2f14f38e8a65f::t_686e78af062a66 18
+  s_d2f14f38e8a65f::t_bc53278bc12c78 320,385,443,566,590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3c0a46c37d4a4f7624b81c02683d343f43b0de37",
+  "prompts": {},
+  "sessions": {
+    "s_d2f14f38e8a65f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5e7db72-ee53-427c-a710-66b42bbb8d97",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
