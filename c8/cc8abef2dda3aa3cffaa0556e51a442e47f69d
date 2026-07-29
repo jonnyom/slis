@@ -1,0 +1,60 @@
+internal/cli/ls_test.go
+  s_d2f14f38e8a65f::t_d48d86591d42cd 256-295
+internal/discovery/stalename.go
+  s_d2f14f38e8a65f::t_4fe0ac53324882 1-2,5,9-35,44-45,52
+  s_d2f14f38e8a65f::t_0891cc9fee9d19 3-4,6-8,36-43
+  s_d2f14f38e8a65f::t_4ea3a1e71b4c51 46-51
+internal/cli/doctor.go
+  s_d2f14f38e8a65f::t_073a0217485f68 446,449-451,453
+  s_d2f14f38e8a65f::t_03f1bf785e83bc 309
+internal/cli/ls.go
+  s_d2f14f38e8a65f::t_03f1bf785e83bc 128-133,147,152,154
+  s_d2f14f38e8a65f::t_4a687cabe4243b 13,88
+  s_d2f14f38e8a65f::t_980bedaa448da4 111-127,148-151,153
+CLAUDE.md
+  s_d2f14f38e8a65f::t_4540382bab0d92 99-100
+internal/discovery/stalename_test.go
+  s_d2f14f38e8a65f::t_4fe0ac53324882 1-31
+internal/discovery/registry_scan.go
+  s_d2f14f38e8a65f::t_d09a968e0aea3c 21,33-35,63,65-66,140-142,147-150
+  s_d2f14f38e8a65f::t_4ea3a1e71b4c51 22-32,37-38,61-62,64,143,145-146
+  s_d2f14f38e8a65f::t_dae35afaa167f4 92-97,139,151-152
+  s_d2f14f38e8a65f::t_886220e4b0cac2 36,39-48,54-55
+  s_d2f14f38e8a65f::t_5fbc74d54e7227 49-53,56-60
+internal/cli/doctor_stalename_test.go
+  s_d2f14f38e8a65f::t_9c38f4ee970bf9 1-88
+internal/cli/registry.go
+  s_d2f14f38e8a65f::t_03f1bf785e83bc 146-165,174,176,178
+internal/cli/doctor_worktrees.go
+  s_d2f14f38e8a65f::t_5a58ced545fe3d 226-228,262-269,272-273
+  s_d2f14f38e8a65f::t_03f1bf785e83bc 74-85,88-89,91-101,103-110,260
+  s_d2f14f38e8a65f::t_0891cc9fee9d19 238,255
+  s_d2f14f38e8a65f::t_1abc5063f78017 283
+  s_d2f14f38e8a65f::t_4ea3a1e71b4c51 90,102
+  s_d2f14f38e8a65f::t_a12c20ff610d9f 31-32,225,235-237,239-240,251-254,256-259
+  s_d2f14f38e8a65f::t_980bedaa448da4 86-87
+  s_d2f14f38e8a65f::t_cd200480694050 261
+internal/discovery/registry_scan_test.go
+  s_d2f14f38e8a65f::t_886220e4b0cac2 704-729
+  s_d2f14f38e8a65f::t_dae35afaa167f4 625-630,633-638,641,643,645-648,651-653,657-660,662-663,666-670,672-685
+  s_d2f14f38e8a65f::t_6239984b53b126 6,13,631-632,639-640,642,644,649-650,654-656,661,664-665,671
+  s_d2f14f38e8a65f::t_dc43d811dbe18d 686-703
+docs/AGENT.md
+  s_d2f14f38e8a65f::t_4540382bab0d92 329-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c8cc8abef2dda3aa3cffaa0556e51a442e47f69d",
+  "prompts": {},
+  "sessions": {
+    "s_d2f14f38e8a65f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5e7db72-ee53-427c-a710-66b42bbb8d97",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
