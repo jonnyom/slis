@@ -200,3 +200,212 @@ func TestSaveOverridesPreservesFolds(t *testing.T) {
 		t.Errorf("folds lost after SaveOverrides: %v", folded)
 	}
 }
+
+// A grouping override names a branch. When that branch disappears, slis assumes
+// the branch was renamed in place and re-points the override at whatever the same
+// worktree now holds, so a rename does not break your grouping.
+//
+// The failure this guards: a MERGED branch gets deleted by `gt sync`, its worktree
+// is then reused by something else (observed live: a Claude Code session checked
+// `claude/wage-changes-proration-bffowg` out into the worktree that used to hold
+// `jonny/unpaid-leave-f2-endpoint-guards`), and the override silently adopted a
+// different feature's branch into the slice. A rename is provable — `git branch -m`
+// records it in the new branch's reflog — so anything unprovable is left alone.
+func TestRetargetMovedOverrideMembers(t *testing.T) {
+	// The worktree keeps its durable slice identity (named after the branch the
+	// override still points at) while its branch has moved on — that pairing is
+	// what the retarget looks up.
+	renamedInPlace := func() []model.Slice {
+		return []model.Slice{{
+			Name: "feature-one",
+			Members: map[string]model.SliceMember{
+				"api": {Repo: "api", Branch: "jonny/feature-two", WorktreePath: "/wt/api"},
+			},
+		}}
+	}
+
+	t.Run("retargets a proven rename", func(t *testing.T) {
+		slices := renamedInPlace()
+		ov := Overrides{"group": {"api": "jonny/feature-one"}}
+		renamed := func(dir, newBranch, oldBranch string) bool {
+			return dir == "/wt/api" && newBranch == "jonny/feature-two" && oldBranch == "jonny/feature-one"
+		}
+
+		retargetMovedOverrideMembers(slices, ov, "jonny/", renamed)
+
+		if got := ov["group"]["api"]; got != "jonny/feature-two" {
+			t.Fatalf("override should follow the rename, got %q", got)
+		}
+	})
+
+	t.Run("leaves the override alone when no rename is recorded", func(t *testing.T) {
+		slices := []model.Slice{{
+			Name: "feature-one",
+			Members: map[string]model.SliceMember{
+				// Same worktree, unrelated branch: a takeover, not a rename.
+				"api": {Repo: "api", Branch: "claude/other-work", WorktreePath: "/wt/api"},
+			},
+		}}
+		ov := Overrides{"group": {"api": "jonny/feature-one"}}
+
+		retargetMovedOverrideMembers(slices, ov, "jonny/", func(string, string, string) bool { return false })
+
+		if got := ov["group"]["api"]; got != "jonny/feature-one" {
+			t.Fatalf("override must not adopt an unrelated branch, got %q", got)
+		}
+	})
+
+	t.Run("a takeover leaves the member out of the group entirely", func(t *testing.T) {
+		slices := []model.Slice{{
+			Name: "feature-one",
+			Members: map[string]model.SliceMember{
+				"api": {Repo: "api", Branch: "claude/other-work", WorktreePath: "/wt/api"},
+				"web": {Repo: "web", Branch: "jonny/feature-one", WorktreePath: "/wt/web"},
+			},
+		}}
+		ov := Overrides{"group": {"api": "jonny/feature-one", "web": "jonny/feature-one"}}
+
+		retargetMovedOverrideMembers(slices, ov, "jonny/", func(string, string, string) bool { return false })
+		out := Apply(slices, ov)
+
+		group := findSliceByName(t, out, "group")
+		if _, claimed := group.Members["api"]; claimed {
+			t.Fatalf("the taken-over worktree must not be grouped: %+v", group.Members)
+		}
+		if group.Members["web"].Branch != "jonny/feature-one" {
+			t.Fatalf("the untouched member should still be grouped, got %+v", group.Members)
+		}
+	})
+
+	t.Run("does nothing while the override's branch still exists", func(t *testing.T) {
+		slices := []model.Slice{{
+			Name: "feature-one",
+			Members: map[string]model.SliceMember{
+				"api": {Repo: "api", Branch: "jonny/feature-one", WorktreePath: "/wt/api"},
+			},
+		}}
+		ov := Overrides{"group": {"api": "jonny/feature-one"}}
+		renamed := func(string, string, string) bool {
+			t.Fatal("must not consult git while the branch is present")
+			return false
+		}
+
+		retargetMovedOverrideMembers(slices, ov, "jonny/", renamed)
+
+		if got := ov["group"]["api"]; got != "jonny/feature-one" {
+			t.Fatalf("override changed unexpectedly: %q", got)
+		}
+	})
+}
+
+func findSliceByName(t *testing.T, slices []model.Slice, name string) model.Slice {
+	t.Helper()
+	for _, s := range slices {
+		if s.Name == name {
+			return s
+		}
+	}
+	t.Fatalf("slice %q not found in %+v", name, slices)
+	return model.Slice{}
+}
+
+// The two live scenarios, side by side. Same worktree, same group, same mechanism —
+// the only difference is whether the branch that replaced the override's branch is
+// still that feature's work.
+func TestRetargetDistinguishesStackSwitchFromTakeover(t *testing.T) {
+	group := Overrides{"unpaid-leave": {"nory": "jonny/unpaid-leave-f2-endpoint-guards"}}
+	worktreeNowOn := func(branch string) []model.Slice {
+		return []model.Slice{{
+			// Durable identity: still named after the branch the override points at.
+			Name: "unpaid-leave-f2-endpoint-guards",
+			Members: map[string]model.SliceMember{
+				"nory": {Repo: "nory", Branch: branch, WorktreePath: "/wt/nory"},
+			},
+		}}
+	}
+	noRename := func(string, string, string) bool { return false }
+
+	t.Run("stacked switch inside the feature is followed", func(t *testing.T) {
+		ov := Overrides{"unpaid-leave": {"nory": group["unpaid-leave"]["nory"]}}
+		retargetMovedOverrideMembers(worktreeNowOn("jonny/unpaid-leave-e2a-creation-sync"), ov, "jonny/", noRename)
+		if got := ov["unpaid-leave"]["nory"]; got != "jonny/unpaid-leave-e2a-creation-sync" {
+			t.Fatalf("a stacked switch should keep the group together, got %q", got)
+		}
+	})
+
+	t.Run("an unrelated branch taking over the worktree is not adopted", func(t *testing.T) {
+		ov := Overrides{"unpaid-leave": {"nory": group["unpaid-leave"]["nory"]}}
+		retargetMovedOverrideMembers(worktreeNowOn("claude/wage-changes-proration-bffowg"), ov, "jonny/", noRename)
+		if got := ov["unpaid-leave"]["nory"]; got != "jonny/unpaid-leave-f2-endpoint-guards" {
+			t.Fatalf("a foreign branch must not be adopted into the group, got %q", got)
+		}
+	})
+}
+
+func TestBranchBelongsToGroup(t *testing.T) {
+	cases := []struct {
+		slice, branch string
+		want          bool
+	}{
+		{"unpaid-leave", "jonny/unpaid-leave", true},
+		{"unpaid-leave", "jonny/unpaid-leave-e2a-creation-sync", true},
+		{"unpaid-leave-e2a", "jonny/unpaid-leave", true}, // group narrower than the branch
+		{"unpaid-leave", "claude/wage-changes-proration-bffowg", false},
+		{"unpaid-leave", "jonny/unpaid-leaver-typo", false}, // prefix must end at a dash
+		// A single-token label is too generic to infer identity from: `api` must not
+		// swallow whatever `api-*` branch lands in its worktree.
+		{"api", "jonny/api", true},
+		{"api", "jonny/api-infra", false},
+		{"api", "jonny/api-v2", false},
+		{"unpaid-leave", "", false},
+		{"", "jonny/unpaid-leave", false},
+	}
+	for _, tc := range cases {
+		if got := branchBelongsToGroup(tc.slice, tc.branch, "jonny/"); got != tc.want {
+			t.Errorf("branchBelongsToGroup(%q, %q) = %v, want %v", tc.slice, tc.branch, got, tc.want)
+		}
+	}
+}
+
+// An auto-grouped worktree has no durable slice name: it is named after whatever
+// branch it currently holds. So after a rename the identity lookup misses — the
+// slice is called `feature-two`, while the override still says `jonny/feature-one`.
+// git is then the only thing that can connect them.
+func TestRetargetFollowsRenameWithoutDurableSliceName(t *testing.T) {
+	slices := []model.Slice{{
+		Name: "feature-two", // renamed: no trace of feature-one in the name
+		Members: map[string]model.SliceMember{
+			"api": {Repo: "api", Branch: "jonny/feature-two", WorktreePath: "/wt/api"},
+		},
+	}}
+	ov := Overrides{"group": {"api": "jonny/feature-one"}}
+	renamed := func(dir, newBranch, oldBranch string) bool {
+		return dir == "/wt/api" && newBranch == "jonny/feature-two" && oldBranch == "jonny/feature-one"
+	}
+
+	retargetMovedOverrideMembers(slices, ov, "jonny/", renamed)
+
+	if got := ov["group"]["api"]; got != "jonny/feature-two" {
+		t.Fatalf("a git-proven rename should be followed even with no durable name, got %q", got)
+	}
+}
+
+// The same shape, but nothing was renamed — the worktree simply holds unrelated
+// work now. The git fallback must not turn into "adopt any branch in this repo".
+func TestRetargetFallbackDoesNotAdoptUnprovenBranches(t *testing.T) {
+	slices := []model.Slice{
+		{Name: "claude/other-work", Members: map[string]model.SliceMember{
+			"api": {Repo: "api", Branch: "claude/other-work", WorktreePath: "/wt/api"},
+		}},
+		{Name: "unrelated", Members: map[string]model.SliceMember{
+			"api": {Repo: "api", Branch: "jonny/unrelated", WorktreePath: "/wt/other"},
+		}},
+	}
+	ov := Overrides{"group": {"api": "jonny/feature-one"}}
+
+	retargetMovedOverrideMembers(slices, ov, "jonny/", func(string, string, string) bool { return false })
+
+	if got := ov["group"]["api"]; got != "jonny/feature-one" {
+		t.Fatalf("override must stay put when no rename is provable, got %q", got)
+	}
+}

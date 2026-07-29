@@ -4,10 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/jonnyom/slis/internal/config"
+	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/model"
 )
 
@@ -145,11 +147,66 @@ func Apply(slices []model.Slice, ov Overrides) []model.Slice {
 func Resolve(slices []model.Slice, overridesPath, stripPrefix string) []model.Slice {
 	ov, _ := LoadOverrides(overridesPath)
 	folded, _ := LoadFolded(overridesPath)
-	retargetMovedOverrideMembers(slices, ov, stripPrefix)
+	retargetMovedOverrideMembers(slices, ov, stripPrefix, git.BranchRenamedFrom)
 	return ApplyFolds(Apply(slices, ov), folded)
 }
 
-func retargetMovedOverrideMembers(slices []model.Slice, overrides Overrides, stripPrefix string) {
+// branchBelongsToGroup reports whether branch still reads as work on the group's
+// feature: its slice name is the group's name, or one is a dash-separated prefix
+// of the other. The group name is the label the user chose for the work, so it is
+// the anchor — `unpaid-leave` claims `jonny/unpaid-leave-e2a-creation-sync`, and
+// does not claim `claude/wage-changes-proration-bffowg`.
+//
+// A single-token label (`api`, `payroll`) is too generic to infer identity from —
+// `api-infra` may be somebody else's work entirely — so those groups demand an
+// exact match and rely on the rename proof for anything else. This is a name
+// heuristic either way: it is deliberately biased towards keeping a stacked
+// workflow's grouping intact, and the cost of being wrong is a member grouped
+// under a label whose stem it shares, not the previous behaviour of adopting an
+// arbitrary branch.
+func branchBelongsToGroup(sliceName, branch, stripPrefix string) bool {
+	derived := config.SliceNameFromBranch(branch, stripPrefix)
+	if derived == "" || sliceName == "" {
+		return false
+	}
+	if derived == sliceName {
+		return true
+	}
+	if !strings.Contains(sliceName, "-") {
+		return false
+	}
+	return strings.HasPrefix(derived, sliceName+"-") ||
+		strings.HasPrefix(sliceName, derived+"-")
+}
+
+// BranchRenameChecker proves that a worktree's current branch came from renaming
+// the branch an override names. git.BranchRenamedFrom satisfies it; tests inject a
+// fake so the regrouping logic runs without git.
+type BranchRenameChecker func(worktreeDir, newBranch, oldBranch string) bool
+
+// retargetMovedOverrideMembers keeps a grouping override working across an
+// in-place branch rename: the override names a branch, so renaming it would
+// otherwise silently drop that repo out of the group.
+//
+// It follows the worktree in two provable-enough situations: the new branch still
+// belongs to the same feature by name (a stacked workflow switching between
+// branches of one stack — `unpaid-leave` grouping a worktree that moved from
+// `jonny/unpaid-leave-f2-endpoint-guards` to `jonny/unpaid-leave-e2a-creation-sync`),
+// or git records an in-place rename.
+//
+// It only follows a rename it can PROVE (renamed). A branch can also vanish
+// because it was merged and cleaned up, and the worktree then reused for
+// unrelated work — seen live, where a merged `jonny/unpaid-leave-f2-endpoint-guards`
+// was deleted and a Claude Code session checked `claude/wage-changes-proration-bffowg`
+// out into its worktree. Retargeting on worktree identity alone adopted that
+// stranger's branch into the slice. Unproven means leave the override alone: the
+// group loses that repo until the user regroups, which is the honest outcome.
+func retargetMovedOverrideMembers(
+	slices []model.Slice,
+	overrides Overrides,
+	stripPrefix string,
+	renamed BranchRenameChecker,
+) {
 	branches := make(map[string]map[string]bool)
 	byName := make(map[string]model.Slice)
 	for _, slice := range slices {
@@ -161,21 +218,54 @@ func retargetMovedOverrideMembers(slices []model.Slice, overrides Overrides, str
 			branches[member.Repo][member.Branch] = true
 		}
 	}
-	for _, repoBranches := range overrides {
+	for sliceName, repoBranches := range overrides {
 		for repo, branch := range repoBranches {
 			if branches[repo][branch] {
 				continue
 			}
-			source, ok := byName[config.SliceNameFromBranch(branch, stripPrefix)]
-			if !ok {
-				continue
-			}
-			member, ok := source.Members[repo]
-			if ok {
-				repoBranches[repo] = member.Branch
+			if target, ok := movedOverrideTarget(
+				slices, byName, sliceName, repo, branch, stripPrefix, renamed,
+			); ok {
+				repoBranches[repo] = target
 			}
 		}
 	}
+}
+
+// movedOverrideTarget finds the branch an override should follow, or reports false
+// to leave it alone.
+//
+// First it looks for the slice still carrying the vanished branch's identity: a
+// registered or managed worktree keeps its durable slice name across a branch
+// change, so that slice's member for this repo is the same checkout the override
+// was pointing at. It is followed only when the new branch is the same feature by
+// name, or git proves a rename.
+//
+// A worktree that is only auto-grouped has no durable name — it is named after
+// whatever branch it currently holds — so the identity lookup misses exactly when a
+// rename happened. Hence the second pass: ask git which of this repo's branches
+// records a rename from the branch the override names.
+func movedOverrideTarget(
+	slices []model.Slice,
+	byName map[string]model.Slice,
+	sliceName, repo, branch, stripPrefix string,
+	renamed BranchRenameChecker,
+) (string, bool) {
+	if source, ok := byName[config.SliceNameFromBranch(branch, stripPrefix)]; ok {
+		if member, ok := source.Members[repo]; ok {
+			if branchBelongsToGroup(sliceName, member.Branch, stripPrefix) ||
+				renamed(member.WorktreePath, member.Branch, branch) {
+				return member.Branch, true
+			}
+		}
+	}
+	for _, slice := range slices {
+		member, ok := slice.Members[repo]
+		if ok && renamed(member.WorktreePath, member.Branch, branch) {
+			return member.Branch, true
+		}
+	}
+	return "", false
 }
 
 // SaveOverrides writes ov to the file at path as YAML, preserving any existing
