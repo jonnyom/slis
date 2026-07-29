@@ -309,6 +309,42 @@ export function CiRerunOverlay({ slice }: { slice: string }): ReactNode {
   );
 }
 
+export function AgentBusyOverlay({
+  slice,
+  session,
+  path,
+}: {
+  slice: string;
+  session: string;
+  path: string;
+}): ReactNode {
+  return (
+    <Card
+      title="An agent is already working here"
+      width={72}
+      hints={[
+        { key: "a", label: "attach to it" },
+        { key: "n", label: "launch another anyway" },
+        { key: "esc", label: "cancel" },
+      ]}
+    >
+      <text wrapMode="none">
+        <span fg={theme.textBright} attributes={BOLD}>
+          {session}
+        </span>
+        <span fg={theme.text}> has a live agent in </span>
+        <span fg={theme.focus}>{path}</span>
+      </text>
+      <text fg={theme.textDim} wrapMode="none">
+        {`That worktree belongs to ${slice}. Two agents share one git checkout and can`}
+      </text>
+      <text fg={theme.textDim} wrapMode="none">
+        overwrite each other&apos;s edits — attaching keeps it to one.
+      </text>
+    </Card>
+  );
+}
+
 export function RemoveOverlay({ slices }: { slices: string[] }): ReactNode {
   return (
     <Card

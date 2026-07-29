@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   parseTmuxSessions,
   agentLaunchLine,
+  liveForeignAgentInMembers,
   preferredRunningAgentSession,
   sessionHasPaneOutsideMembers,
   sessionName,
@@ -221,6 +222,76 @@ describe("preferredRunningAgentSession ownership", () => {
       preferredRunningAgentSession([agentSession("slis/unpaid-leave", "zsh")], members, "unpaid-leave", [
         "unpaid-leave",
       ]),
+    ).toBeUndefined();
+  });
+});
+
+// Two agents in one worktree can clobber each other's edits in a single git
+// checkout. Before launching a new agent for a slice, slis looks for one already
+// working in that slice's worktrees from a session the slice does not own.
+describe("liveForeignAgentInMembers", () => {
+  const members: TermMember[] = [
+    { repo: "nory", branch: "b", worktreePath: "/wt/nory" },
+    { repo: "web", branch: "b", worktreePath: "/wt/web" },
+  ];
+  const session = (name: string, path: string, command: string, kind: "agent" | "shell" = "agent"): TmuxSessionInfo => ({
+    name,
+    kind,
+    panes: [{ target: name + ":0.0", path, command }],
+  });
+
+  test("finds another session's live agent inside our worktree", () => {
+    const found = liveForeignAgentInMembers(
+      [session("slis/wage-proration", "/wt/nory", "claude")],
+      members,
+      "unpaid-leave",
+      ["unpaid-leave", "wage-proration"],
+    );
+    expect(found?.session.name).toBe("slis/wage-proration");
+    expect(found?.pane.path).toBe("/wt/nory");
+  });
+
+  test("ignores our own session — the existing attach preference covers it", () => {
+    expect(
+      liveForeignAgentInMembers(
+        [session("slis/unpaid-leave", "/wt/nory", "claude")],
+        members,
+        "unpaid-leave",
+        ["unpaid-leave"],
+      ),
+    ).toBeUndefined();
+  });
+
+  test("ignores a foreign session that is only sitting at a shell", () => {
+    expect(
+      liveForeignAgentInMembers(
+        [session("slis/wage-proration", "/wt/nory", "zsh")],
+        members,
+        "unpaid-leave",
+        ["unpaid-leave", "wage-proration"],
+      ),
+    ).toBeUndefined();
+  });
+
+  test("ignores a foreign agent working outside our worktrees", () => {
+    expect(
+      liveForeignAgentInMembers(
+        [session("slis/wage-proration", "/wt/elsewhere", "claude")],
+        members,
+        "unpaid-leave",
+        ["unpaid-leave", "wage-proration"],
+      ),
+    ).toBeUndefined();
+  });
+
+  test("ignores shell-namespace sessions entirely", () => {
+    expect(
+      liveForeignAgentInMembers(
+        [session("slis-shell/wage-proration", "/wt/nory", "claude", "shell")],
+        members,
+        "unpaid-leave",
+        ["unpaid-leave", "wage-proration"],
+      ),
     ).toBeUndefined();
   });
 });

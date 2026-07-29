@@ -34,7 +34,13 @@ import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { DIM } from "./components/ui";
 import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
-import { resumeClaudeSession, tmuxAvailable, type TermMember } from "./term/tmux";
+import {
+  liveForeignAgentInMembers,
+  listTmuxSessions,
+  resumeClaudeSession,
+  tmuxAvailable,
+  type TermMember,
+} from "./term/tmux";
 import type { OpenTermMode, TermSessionOpts } from "./term/session";
 import { availableAgents, findSavedAgent, pickableAgents, agentCmdline } from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
@@ -620,6 +626,51 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [buildTermOpts, openExistingSession, overlays],
   );
 
+  // Guard against a second agent in a worktree that already has one. Two agents
+  // share a single git checkout and can overwrite each other's edits, so when
+  // another session's agent is live inside this slice's worktrees we offer to
+  // attach to it instead of starting a rival. Shell tabs are exempt — they are not
+  // agents — and the slice's OWN sessions are handled by the existing reuse
+  // preference in the cockpit.
+  const openTermGuarded = useCallback(
+    (slice: string, mode: OpenTermMode) => {
+      if (mode === "shell") {
+        openTerm(slice, mode);
+        return;
+      }
+      const view = views.find((candidate) => candidate.slice.name === slice);
+      if (!view) {
+        openTerm(slice, mode);
+        return;
+      }
+      const members: TermMember[] = view.slice.members.map((member) => ({
+        repo: member.repo,
+        branch: member.branch,
+        worktreePath: member.worktree_path,
+      }));
+      const knownSlices = views.map((candidate) => candidate.slice.name);
+      listTmuxSessions().then(
+        (sessions) => {
+          const busy = liveForeignAgentInMembers(sessions, members, slice, knownSlices);
+          if (!busy) {
+            openTerm(slice, mode);
+            return;
+          }
+          overlays.agentBusy(
+            slice,
+            busy.session.name,
+            busy.pane.path,
+            () => openExistingSession(slice, busy.session.name),
+            () => openTerm(slice, mode),
+          );
+        },
+        // tmux unreachable: fall through rather than block the user.
+        () => openTerm(slice, mode),
+      );
+    },
+    [openTerm, openExistingSession, overlays, views],
+  );
+
   // Remove a tab and re-point the active tab / term mode. When a *command* tab
   // closes, run the post-mutation refresh — the same resync the captured path
   // does after a mutation completes.
@@ -699,7 +750,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           agents={agentList}
           preferredAgent={preferredAgent?.name}
           onEnter={onEnter}
-          onOpenTerm={openTerm}
+          onOpenTerm={openTermGuarded}
           onConfigureAgents={configureAgents}
           onFocusSlice={onFocusSlice}
           initialFocusSlice={browserFocusRef.current}
@@ -730,7 +781,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onDiffModeChange={(mode) => persistUiPrefs({ split_diff: mode === "split" })}
           onDiffScopeChange={(scope) => persistUiPrefs({ diff_scope: scope })}
           onBack={() => setView("browser")}
-          onOpenTerm={openTerm}
+          onOpenTerm={openTermGuarded}
           onOpenExistingSession={openExistingSession}
           onConfigureAgents={configureAgents}
           onToggleProcs={() => setProcsOpen(true)}

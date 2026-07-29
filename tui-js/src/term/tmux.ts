@@ -176,6 +176,40 @@ export function tmuxSessionClaimableBySlice(
   return tmuxSessionRelatedToMembers(session, members);
 }
 
+/** A live agent pane found in a slice's worktrees, and the session running it. */
+export interface LiveAgentPane {
+  session: TmuxSessionInfo;
+  pane: TmuxPane;
+}
+
+/**
+ * The first live agent working inside this slice's worktrees from a session the
+ * slice does NOT own. Two agents in one worktree share a single git checkout and
+ * can overwrite each other's edits, so this is what slis checks before launching
+ * another agent — the answer is "attach to that one", not "start a second".
+ *
+ * The slice's own sessions are skipped: preferredRunningAgentSession already
+ * prefers reusing them. Panes sitting at a shell prompt are not agents.
+ */
+export function liveForeignAgentInMembers(
+  sessions: TmuxSessionInfo[],
+  members: TermMember[],
+  slice: string,
+  knownSlices: string[],
+): LiveAgentPane | undefined {
+  for (const session of sessions) {
+    if (session.kind !== "agent") continue;
+    if (tmuxSessionClaimableBySlice(session, members, slice, knownSlices)) continue;
+    for (const pane of session.panes) {
+      if (isShellCmd(pane.command)) continue;
+      if (members.some((member) => pathIsWithin(pane.path, member.worktreePath))) {
+        return { session, pane };
+      }
+    }
+  }
+  return undefined;
+}
+
 export function preferredRunningAgentSession(
   sessions: TmuxSessionInfo[],
   members: TermMember[],

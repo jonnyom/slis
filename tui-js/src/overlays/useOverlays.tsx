@@ -63,6 +63,7 @@ import {
   CreateOverlay,
   EditorPickerOverlay,
   GroupOverlay,
+  AgentBusyOverlay,
   RemoveOverlay,
   ResultOverlay,
   ReviewListOverlay,
@@ -84,6 +85,14 @@ type Overlay =
   | { kind: "stack"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "stackHelp"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "remove"; slices: string[] }
+  | {
+      kind: "agentBusy";
+      slice: string;
+      session: string;
+      path: string;
+      onAttach: () => void;
+      onLaunch: () => void;
+    }
   | { kind: "ciRerun"; slice: string }
   | { kind: "create"; text: string }
   | { kind: "adopt"; text: string }
@@ -134,6 +143,15 @@ export interface OverlayApi {
   swap(slice: string, active: boolean): void;
   stack(slices: string[], conflictWith: string[], gatherable: boolean): void;
   remove(slices: string[]): void;
+  // A live agent from another session is already working in this slice's
+  // worktrees: attach to it, or launch a second one deliberately.
+  agentBusy(
+    slice: string,
+    session: string,
+    path: string,
+    onAttach: () => void,
+    onLaunch: () => void,
+  ): void;
   ciRerun(slice: string): void;
   fixCi(slice: string): void;
   create(): void;
@@ -457,6 +475,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     stack: (slices, conflictWith, gatherable) =>
       setOverlay({ kind: "stack", slices, conflictWith, gatherable }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
+    agentBusy: (slice, session, path, onAttach, onLaunch) =>
+      setOverlay({ kind: "agentBusy", slice, session, path, onAttach, onLaunch }),
     ciRerun: (slice) => setOverlay({ kind: "ciRerun", slice }),
     fixCi: (slice) =>
       runMutationRouted("Fix CI " + slice, "fix-ci", [slice], () => fixCiSlice(slice)),
@@ -557,6 +577,17 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         if (name === "?" || name === "q" || isCancel)
           setOverlay({ ...overlay, kind: "stack" });
         return;
+      case "agentBusy": {
+        const { onAttach, onLaunch } = overlay;
+        if (name === "a" || isEnter) {
+          close();
+          onAttach();
+        } else if (name === "n") {
+          close();
+          onLaunch();
+        } else if (isCancel) close();
+        return;
+      }
       case "remove":
         if (name === "y")
           runMutation("Clear " + overlay.slices.join(", "), () =>
@@ -869,6 +900,10 @@ function renderOverlay(
       );
     case "remove":
       return <RemoveOverlay slices={overlay.slices} />;
+    case "agentBusy":
+      return (
+        <AgentBusyOverlay slice={overlay.slice} session={overlay.session} path={overlay.path} />
+      );
     case "ciRerun":
       return <CiRerunOverlay slice={overlay.slice} />;
     case "create":
