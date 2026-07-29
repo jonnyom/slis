@@ -1,0 +1,32 @@
+tui-js/src/components/sessionoverlay.tsx
+  s_d2f14f38e8a65f::t_2d1913f8a01047 9-10,12,39-57,71,74,80-82,86
+tui-js/src/app.tsx
+  s_d2f14f38e8a65f::t_a3b5ed34922bb9 723
+tui-js/src/term/tmux.test.ts
+  s_d2f14f38e8a65f::t_b41445de1f54f3 10,13,141,149-150,152,156,159-160,166-173,184-185,188,190-195,201,209-211,217-219,225-226
+  s_d2f14f38e8a65f::t_32491232d7f05b 9,107-110,142-148,151,153-155,157-158,161-165,174-183,186-187,189,196-200,202-208,212-216,220-224
+tui-js/src/term/tmux.ts
+  s_d2f14f38e8a65f::t_19fb9bf0d38e8f 118-124,134,137-141,182
+  s_d2f14f38e8a65f::t_32491232d7f05b 135-136,142-178,183,188
+tui-js/src/views/cockpit.tsx
+  s_d2f14f38e8a65f::t_4577268c5a0b5c 781
+  s_d2f14f38e8a65f::t_a3b5ed34922bb9 69-70,155-157,731,739,753,757-769,779-780,782,1032-1033,1038-1039,1041,1044-1045,1979
+tui-js/src/components/sessionoverlay.test.ts
+  s_d2f14f38e8a65f::t_0a19519709f2e2 80-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d54e0fee6f982906fbe7092ac9dc2f7dc1ab7c8c",
+  "prompts": {},
+  "sessions": {
+    "s_d2f14f38e8a65f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5e7db72-ee53-427c-a710-66b42bbb8d97",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
