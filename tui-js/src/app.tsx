@@ -720,6 +720,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           width={width}
           height={height}
           gatherable={isGatherableStackSlice(views, currentView.slice.name)}
+          knownSlices={views.map((entry) => entry.slice.name)}
           agents={agentList}
           preferredAgent={preferredAgent?.name}
           initialPanel={cockpitEntry?.panel}

@@ -115,6 +115,13 @@ export function sessionHasPaneOutsideMembers(paths: string[], members: TermMembe
   return paths.some((path) => !members.some((member) => pathIsWithin(path, member.worktreePath)));
 }
 
+/**
+ * True when a session's PANES currently sit inside this slice's worktrees. This
+ * is a proximity signal, NOT ownership: pane cwds are frozen when the session is
+ * created, so a worktree later regrouped into another slice leaves the original
+ * slice's session pointing into it. Use tmuxSessionOwnedBySlice to decide whose
+ * session it is; use this only to explain a session's relationship to a slice.
+ */
 export function tmuxSessionRelatedToMembers(
   session: TmuxSessionInfo,
   members: TermMember[],
@@ -124,14 +131,61 @@ export function tmuxSessionRelatedToMembers(
   );
 }
 
+/**
+ * True when the session IS this slice's session — it carries the name this slice
+ * would create (`sessionName`), which is the authoritative owner.
+ */
+export function tmuxSessionOwnedBySlice(session: TmuxSessionInfo, slice: string): boolean {
+  return session.name === sessionName(slice, session.kind);
+}
+
+/** True when the session is named after some OTHER slice that still exists. */
+export function tmuxSessionOwnedByAnotherSlice(
+  session: TmuxSessionInfo,
+  slice: string,
+  knownSlices: string[],
+): boolean {
+  return knownSlices.some(
+    (candidate) => candidate !== slice && tmuxSessionOwnedBySlice(session, candidate),
+  );
+}
+
+/**
+ * True when this slice may treat the session as its own — for labelling, and for
+ * attaching to a running agent.
+ *
+ * Ownership by name comes first. A session named after no current slice is still
+ * claimable by pane location: renaming a slice leaves its old session behind, and
+ * that session holds the agent you were talking to.
+ *
+ * The case this exists to exclude: a session belonging to ANOTHER live slice whose
+ * panes happen to sit in our worktrees. Pane cwds are frozen at session creation,
+ * so a worktree regrouped into a different slice leaves the original slice's
+ * session pointing into it — observed live, where `slis/wage-proration` held a
+ * pane in unpaid-leave's nory worktree. Claiming it would label it as this
+ * slice's and attach `a` to another slice's Claude.
+ */
+export function tmuxSessionClaimableBySlice(
+  session: TmuxSessionInfo,
+  members: TermMember[],
+  slice: string,
+  knownSlices: string[],
+): boolean {
+  if (tmuxSessionOwnedBySlice(session, slice)) return true;
+  if (tmuxSessionOwnedByAnotherSlice(session, slice, knownSlices)) return false;
+  return tmuxSessionRelatedToMembers(session, members);
+}
+
 export function preferredRunningAgentSession(
   sessions: TmuxSessionInfo[],
   members: TermMember[],
+  slice: string,
+  knownSlices: string[],
 ): TmuxSessionInfo | undefined {
   return sessions.find(
     (session) =>
       session.kind === "agent" &&
-      tmuxSessionRelatedToMembers(session, members) &&
+      tmuxSessionClaimableBySlice(session, members, slice, knownSlices) &&
       session.panes.some((pane) => !isShellCmd(pane.command)),
   );
 }

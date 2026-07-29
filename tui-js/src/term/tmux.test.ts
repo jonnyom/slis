@@ -6,8 +6,11 @@ import {
   sessionHasPaneOutsideMembers,
   sessionName,
   sessionWindows,
+  tmuxSessionClaimableBySlice,
+  tmuxSessionOwnedBySlice,
   tmuxSessionRelatedToMembers,
   type TermMember,
+  type TmuxSessionInfo,
 } from "./tmux";
 
 describe("sessionName", () => {
@@ -101,7 +104,10 @@ describe("tmux session inventory", () => {
   });
 
   test("prefers the related session with a running agent", () => {
-    expect(preferredRunningAgentSession(sessions, members)?.name).toBe("slis/old-name");
+    // "current" is the live slice; slis/old-name is its pre-rename orphan session.
+    expect(preferredRunningAgentSession(sessions, members, "current", ["current"])?.name).toBe(
+      "slis/old-name",
+    );
   });
 });
 
@@ -131,4 +137,90 @@ test("agent launch starts from the shared slice root", () => {
     wsRoot: "/workspace",
   });
   expect(line).toStartWith("cd '/workspace/.slis/worktrees/test' && ");
+});
+
+// A tmux session's OWNER is its name (`slis/<slice>`). Pane cwds are frozen at
+// session creation, so a worktree later regrouped into another slice leaves the
+// original slice's session pointing into it. Observed live: `slis/wage-proration`
+// held a pane in unpaid-leave's nory worktree, so the unpaid-leave cockpit both
+// labelled it "‹this slice›" and would attach `a` to it.
+describe("session ownership vs claimability", () => {
+  const agentSession = (name: string, path: string, command = "claude"): TmuxSessionInfo => ({
+    name,
+    kind: "agent",
+    panes: [{ target: name + ":0.0", path, command }],
+  });
+  const noryMembers: TermMember[] = [
+    { repo: "nory", branch: "claude/x", worktreePath: "/wt/nory" },
+  ];
+
+  test("a slice owns the session named after it", () => {
+    expect(tmuxSessionOwnedBySlice(agentSession("slis/unpaid-leave", "/wt/nory"), "unpaid-leave")).toBe(true);
+  });
+
+  test("ownership applies the same name sanitising as sessionName", () => {
+    expect(tmuxSessionOwnedBySlice(agentSession("slis/feature-one", "/wt"), "feature.one")).toBe(true);
+  });
+
+  test("shell sessions are owned through their own namespace", () => {
+    const shell: TmuxSessionInfo = {
+      name: "slis-shell/unpaid-leave",
+      kind: "shell",
+      panes: [{ target: "slis-shell/unpaid-leave:0.0", path: "/wt/nory", command: "zsh" }],
+    };
+    expect(tmuxSessionOwnedBySlice(shell, "unpaid-leave")).toBe(true);
+  });
+
+  test("another live slice's session is NOT claimable, even with a pane in our worktree", () => {
+    const foreign = agentSession("slis/wage-proration", "/wt/nory");
+    // The pane-location heuristic alone says yes — that was the bug.
+    expect(tmuxSessionRelatedToMembers(foreign, noryMembers)).toBe(true);
+    expect(
+      tmuxSessionClaimableBySlice(foreign, noryMembers, "unpaid-leave", [
+        "unpaid-leave",
+        "wage-proration",
+      ]),
+    ).toBe(false);
+  });
+
+  test("an orphan session (no slice owns its name) stays claimable by pane location", () => {
+    const renamed = agentSession("slis/old-name", "/wt/nory");
+    expect(
+      tmuxSessionClaimableBySlice(renamed, noryMembers, "unpaid-leave", ["unpaid-leave"]),
+    ).toBe(true);
+  });
+});
+
+describe("preferredRunningAgentSession ownership", () => {
+  const members: TermMember[] = [{ repo: "nory", branch: "claude/x", worktreePath: "/wt/nory" }];
+  const agentSession = (name: string, command: string): TmuxSessionInfo => ({
+    name,
+    kind: "agent",
+    panes: [{ target: name + ":0.0", path: "/wt/nory", command }],
+  });
+
+  test("never attaches to another live slice's agent", () => {
+    expect(
+      preferredRunningAgentSession([agentSession("slis/wage-proration", "claude")], members, "unpaid-leave", [
+        "unpaid-leave",
+        "wage-proration",
+      ]),
+    ).toBeUndefined();
+  });
+
+  test("still finds the slice's own running agent", () => {
+    expect(
+      preferredRunningAgentSession([agentSession("slis/unpaid-leave", "claude")], members, "unpaid-leave", [
+        "unpaid-leave",
+      ])?.name,
+    ).toBe("slis/unpaid-leave");
+  });
+
+  test("ignores the slice's own session when it is only a shell prompt", () => {
+    expect(
+      preferredRunningAgentSession([agentSession("slis/unpaid-leave", "zsh")], members, "unpaid-leave", [
+        "unpaid-leave",
+      ]),
+    ).toBeUndefined();
+  });
 });

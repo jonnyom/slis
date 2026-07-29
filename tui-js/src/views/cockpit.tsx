@@ -66,6 +66,8 @@ import {
   isShellCmd,
   listTmuxSessions,
   preferredRunningAgentSession,
+  tmuxSessionClaimableBySlice,
+  tmuxSessionOwnedByAnotherSlice,
   sessionHasPaneOutsideMembers,
   sessionName,
   tmuxSessionRelatedToMembers,
@@ -150,6 +152,9 @@ export interface CockpitProps {
   width: number;
   height: number;
   gatherable: boolean;
+  // Every slice name in the workspace. Needed to tell one slice's tmux session
+  // apart from an orphan left behind by a rename — see tmuxSessionClaimableBySlice.
+  knownSlices: string[];
   agents: AgentSpec[];
   preferredAgent?: string;
   // Entry focus when opened from the browser (M4): which panel to land on and
@@ -723,6 +728,7 @@ function SessionRight({
   view,
   lines,
   sessions,
+  knownSlices,
   selected,
   pendingKill,
   killStatus,
@@ -730,6 +736,7 @@ function SessionRight({
   view: SliceView;
   lines: string[];
   sessions: TmuxSessionInfo[];
+  knownSlices: string[];
   selected: number;
   pendingKill: string | null;
   killStatus: string | null;
@@ -743,11 +750,23 @@ function SessionRight({
           : `${sessions.length} running sessions  ·  enter attach  ·  x close`}
       </text>
       {sessions.map((session, index) => {
-        const related = tmuxSessionRelatedToMembers(session, members.map((member) => ({
+        const termMembers = members.map((member) => ({
           repo: member.repo,
           branch: member.branch,
           worktreePath: member.worktree_path,
-        })));
+        }));
+        const claimable = tmuxSessionClaimableBySlice(
+          session,
+          termMembers,
+          view.slice.name,
+          knownSlices,
+        );
+        // Another slice's session can still hold a pane in one of our worktrees
+        // (a worktree that moved between slices). Say so rather than claim it.
+        const foreignHere =
+          !claimable &&
+          tmuxSessionOwnedByAnotherSlice(session, view.slice.name, knownSlices) &&
+          tmuxSessionRelatedToMembers(session, termMembers);
         const running = session.panes.some((pane) => !isShellCmd(pane.command));
         return (
           <box key={session.name} flexDirection="column">
@@ -757,7 +776,10 @@ function SessionRight({
               </span>
               <span fg={running ? theme.good : color.dim}>{running ? glyph.live : "·"}</span>
               <span fg={session.kind === "agent" ? color.fg : color.dim}> {session.name}</span>
-              {related ? <span fg={theme.focus}>  ‹this slice›</span> : null}
+              {claimable ? <span fg={theme.focus}>  ‹this slice›</span> : null}
+              {foreignHere ? (
+                <span fg={theme.attn}>  ‹other slice, in our worktree›</span>
+              ) : null}
             </text>
             {session.panes.map((pane, paneIndex) => (
               <text key={`${pane.path}-${paneIndex}`} fg={color.dim} attributes={DIM} wrapMode="none">
@@ -1007,17 +1029,20 @@ export function Cockpit(props: CockpitProps): ReactNode {
       })),
     [view.slice.members],
   );
+  // Attach targets must be sessions this slice may claim: attaching to another
+  // live slice's agent would send this slice's prompts to the wrong Claude.
   const relatedAgentSessions = useMemo(
     () =>
       tmuxSessions.filter(
         (session) =>
-          session.kind === "agent" && tmuxSessionRelatedToMembers(session, sessionMembers),
+          session.kind === "agent" &&
+          tmuxSessionClaimableBySlice(session, sessionMembers, slice, props.knownSlices),
       ),
-    [tmuxSessions, sessionMembers],
+    [tmuxSessions, sessionMembers, slice, props.knownSlices],
   );
   const runningAgentSession = useMemo(
-    () => preferredRunningAgentSession(tmuxSessions, sessionMembers),
-    [tmuxSessions, sessionMembers],
+    () => preferredRunningAgentSession(tmuxSessions, sessionMembers, slice, props.knownSlices),
+    [tmuxSessions, sessionMembers, slice, props.knownSlices],
   );
   const selectedTmuxSession = tmuxSessions[sessionSel];
 
@@ -1951,6 +1976,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
                   view={view}
                   lines={captureLines}
                   sessions={tmuxSessions}
+                  knownSlices={props.knownSlices}
                   selected={sessionSel}
                   pendingKill={pendingSessionKill}
                   killStatus={sessionKillStatus}
