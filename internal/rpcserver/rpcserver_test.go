@@ -342,7 +342,7 @@ func TestDiffCachesUntilRepositoryContentChanges(t *testing.T) {
 	ws := makeWorkspace(t)
 	h := newHarness(t, ws)
 	builds := 0
-	h.srv.diffBuild = func(sl model.Slice, scope, format string) (report.DiffResult, error) {
+	h.srv.diffBuild = func(_ context.Context, sl model.Slice, scope, format string) (report.DiffResult, error) {
 		builds++
 		return report.SliceDiffScoped(sl, scope, format)
 	}

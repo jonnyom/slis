@@ -3,6 +3,7 @@ package diff
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,8 +24,8 @@ const maxUntrackedPatchLines = 1000
 // worktree's untracked (non-ignored) files. `git diff` omits untracked files, so
 // an agent's brand-new, not-yet-`git add`-ed files would otherwise read as "no
 // changes". This reads them directly (read-only — it never stages anything).
-func untrackedDiff(worktree string) ([]FileStat, string) {
-	out, err := git.Run(worktree, "ls-files", "--others", "--exclude-standard", "-z")
+func untrackedDiff(ctx context.Context, worktree string) ([]FileStat, string) {
+	out, err := git.RunCtx(ctx, worktree, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil || out == "" {
 		return nil, ""
 	}
@@ -63,8 +64,8 @@ func untrackedDiff(worktree string) ([]FileStat, string) {
 
 // addUntracked appends the worktree's untracked files to rd's Files (and, when
 // withPatch, its Patch).
-func addUntracked(rd *RepoDiff, worktree string, withPatch bool) {
-	uStats, uPatch := untrackedDiff(worktree)
+func addUntracked(ctx context.Context, rd *RepoDiff, worktree string, withPatch bool) {
+	uStats, uPatch := untrackedDiff(ctx, worktree)
 	rd.Files = append(rd.Files, uStats...)
 	if withPatch && uPatch != "" {
 		if rd.Patch != "" && !strings.HasSuffix(rd.Patch, "\n") {
@@ -137,6 +138,12 @@ func (d RepoDiff) TotalDeleted() int {
 // independently (git.DetectBase) — required for slices spanning repos with
 // different trunks. A non-empty base is used verbatim for every member.
 func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
+	return SliceDiffCtx(context.Background(), sl, base)
+}
+
+// SliceDiffCtx is SliceDiff with a caller-supplied context: cancelling it kills
+// the in-flight git processes instead of letting them run to completion.
+func SliceDiffCtx(ctx context.Context, sl model.Slice, base string) ([]RepoDiff, error) {
 	if sl.Members == nil {
 		return nil, fmt.Errorf("diff: slice has nil Members map")
 	}
@@ -150,11 +157,11 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 
 		b := base
 		if b == "" {
-			b = git.DetectBase(m.WorktreePath)
+			b = git.DetectBaseCtx(ctx, m.WorktreePath)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
+		numstat, err := git.RunCtx(ctx, m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
@@ -164,11 +171,11 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 		rd.Files = parseNumstat(numstat)
 
 		// Best-effort full patch; ignore error (already have numstat).
-		patch, _ := git.Run(m.WorktreePath, "diff", "--merge-base", "--end-of-options", b)
+		patch, _ := git.RunCtx(ctx, m.WorktreePath, "diff", "--merge-base", "--end-of-options", b)
 		// Patch contains repo file contents (and filenames) which can embed
 		// terminal escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
-		addUntracked(&rd, m.WorktreePath, true)
+		addUntracked(ctx, &rd, m.WorktreePath, true)
 
 		results = append(results, rd)
 	}
@@ -181,6 +188,11 @@ func SliceDiff(sl model.Slice, base string) ([]RepoDiff, error) {
 // how the cockpit diffs a stacked branch against its Graphite parent (so it
 // shows only that branch's changes, not the whole downstack).
 func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error) {
+	return SliceDiffBasesCtx(context.Background(), sl, bases)
+}
+
+// SliceDiffBasesCtx is SliceDiffBases with a caller-supplied context.
+func SliceDiffBasesCtx(ctx context.Context, sl model.Slice, bases map[string]string) ([]RepoDiff, error) {
 	if sl.Members == nil {
 		return nil, fmt.Errorf("diff: slice has nil Members map")
 	}
@@ -192,22 +204,22 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 
 		b := bases[repo]
 		if b == "" {
-			b = git.DetectBase(m.WorktreePath)
+			b = git.DetectBaseCtx(ctx, m.WorktreePath)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
+		numstat, err := git.RunCtx(ctx, m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
 			continue
 		}
 		rd.Files = parseNumstat(numstat)
-		patch, _ := git.Run(m.WorktreePath, "diff", "--merge-base", "--end-of-options", b)
+		patch, _ := git.RunCtx(ctx, m.WorktreePath, "diff", "--merge-base", "--end-of-options", b)
 		// Patch contains repo file contents (and filenames) which can embed
 		// terminal escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
-		addUntracked(&rd, m.WorktreePath, true)
+		addUntracked(ctx, &rd, m.WorktreePath, true)
 		results = append(results, rd)
 	}
 	return results, nil
@@ -222,16 +234,21 @@ func SliceDiffBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 // there regardless of which worktree has it checked out. A git failure is
 // captured in RepoDiff.Err (not returned) so a caller can render it per-repo.
 func BranchAgainstParent(repoDir, parent, branch string, withPatch bool) (RepoDiff, error) {
+	return BranchAgainstParentCtx(context.Background(), repoDir, parent, branch, withPatch)
+}
+
+// BranchAgainstParentCtx is BranchAgainstParent with a caller-supplied context.
+func BranchAgainstParentCtx(ctx context.Context, repoDir, parent, branch string, withPatch bool) (RepoDiff, error) {
 	rd := RepoDiff{Base: parent}
 	spec := parent + "..." + branch
-	numstat, err := git.Run(repoDir, "diff", "--numstat", spec)
+	numstat, err := git.RunCtx(ctx, repoDir, "diff", "--numstat", spec)
 	if err != nil {
 		rd.Err = err.Error()
 		return rd, nil
 	}
 	rd.Files = parseNumstat(numstat)
 	if withPatch {
-		patch, _ := git.Run(repoDir, "diff", spec)
+		patch, _ := git.RunCtx(ctx, repoDir, "diff", spec)
 		// Patch embeds repo file contents (and filenames) which can carry terminal
 		// escapes; strip them before this string is rendered.
 		rd.Patch = safeterm.Strip(patch)
@@ -246,17 +263,27 @@ func BranchAgainstParent(repoDir, parent, branch string, withPatch bool) (RepoDi
 // diff scope: "what have I changed but not yet committed", not the full
 // committed branch diff. Per-repo errors are captured in RepoDiff.Err.
 func SliceDirtyDiff(sl model.Slice) ([]RepoDiff, error) {
-	return sliceDirty(sl, true)
+	return sliceDirty(context.Background(), sl, true)
+}
+
+// SliceDirtyDiffCtx is SliceDirtyDiff with a caller-supplied context.
+func SliceDirtyDiffCtx(ctx context.Context, sl model.Slice) ([]RepoDiff, error) {
+	return sliceDirty(ctx, sl, true)
 }
 
 // SliceDirtyStat is SliceDirtyDiff without the full patch (numstat only) — the
 // lightweight variant for the browser cards.
 func SliceDirtyStat(sl model.Slice) ([]RepoDiff, error) {
-	return sliceDirty(sl, false)
+	return sliceDirty(context.Background(), sl, false)
+}
+
+// SliceDirtyStatCtx is SliceDirtyStat with a caller-supplied context.
+func SliceDirtyStatCtx(ctx context.Context, sl model.Slice) ([]RepoDiff, error) {
+	return sliceDirty(ctx, sl, false)
 }
 
 // sliceDirty is the shared implementation of SliceDirtyDiff / SliceDirtyStat.
-func sliceDirty(sl model.Slice, withPatch bool) ([]RepoDiff, error) {
+func sliceDirty(ctx context.Context, sl model.Slice, withPatch bool) ([]RepoDiff, error) {
 	if sl.Members == nil {
 		return nil, fmt.Errorf("diff: slice has nil Members map")
 	}
@@ -266,7 +293,7 @@ func sliceDirty(sl model.Slice, withPatch bool) ([]RepoDiff, error) {
 		m := sl.Members[repo]
 		rd := RepoDiff{Repo: repo, Base: "HEAD"}
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "HEAD")
+		numstat, err := git.RunCtx(ctx, m.WorktreePath, "diff", "--numstat", "HEAD")
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
@@ -274,12 +301,12 @@ func sliceDirty(sl model.Slice, withPatch bool) ([]RepoDiff, error) {
 		}
 		rd.Files = parseNumstat(numstat)
 		if withPatch {
-			patch, _ := git.Run(m.WorktreePath, "diff", "HEAD")
+			patch, _ := git.RunCtx(ctx, m.WorktreePath, "diff", "HEAD")
 			// Patch contains repo file contents (and filenames) which can embed
 			// terminal escapes; strip them before this string is rendered.
 			rd.Patch = safeterm.Strip(patch)
 		}
-		addUntracked(&rd, m.WorktreePath, withPatch)
+		addUntracked(ctx, &rd, m.WorktreePath, withPatch)
 		results = append(results, rd)
 	}
 	return results, nil
@@ -290,17 +317,27 @@ func sliceDirty(sl model.Slice, withPatch bool) ([]RepoDiff, error) {
 // cards, where loading every repo's full diff would be wasteful. base follows
 // the same "" = auto-detect-per-repo rule as SliceDiff.
 func SliceStat(sl model.Slice, base string) ([]RepoDiff, error) {
+	return SliceStatCtx(context.Background(), sl, base)
+}
+
+// SliceStatCtx is SliceStat with a caller-supplied context.
+func SliceStatCtx(ctx context.Context, sl model.Slice, base string) ([]RepoDiff, error) {
 	bases := make(map[string]string, len(sl.Members))
 	for repo := range sl.Members {
 		bases[repo] = base
 	}
-	return SliceStatBases(sl, bases)
+	return SliceStatBasesCtx(ctx, sl, bases)
 }
 
 // SliceStatBases is SliceStat with a per-repo base (bases[repo]); a repo with no
 // entry (or "") auto-detects its trunk. Used by the browser cards to stat a
 // stacked branch against its Graphite parent.
 func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error) {
+	return SliceStatBasesCtx(context.Background(), sl, bases)
+}
+
+// SliceStatBasesCtx is SliceStatBases with a caller-supplied context.
+func SliceStatBasesCtx(ctx context.Context, sl model.Slice, bases map[string]string) ([]RepoDiff, error) {
 	if sl.Members == nil {
 		return nil, fmt.Errorf("diff: slice has nil Members map")
 	}
@@ -312,18 +349,18 @@ func SliceStatBases(sl model.Slice, bases map[string]string) ([]RepoDiff, error)
 
 		b := bases[repo]
 		if b == "" {
-			b = git.DetectBase(m.WorktreePath)
+			b = git.DetectBaseCtx(ctx, m.WorktreePath)
 		}
 		rd.Base = b
 
-		numstat, err := git.Run(m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
+		numstat, err := git.RunCtx(ctx, m.WorktreePath, "diff", "--numstat", "--merge-base", "--end-of-options", b)
 		if err != nil {
 			rd.Err = err.Error()
 			results = append(results, rd)
 			continue
 		}
 		rd.Files = parseNumstat(numstat)
-		addUntracked(&rd, m.WorktreePath, false)
+		addUntracked(ctx, &rd, m.WorktreePath, false)
 		results = append(results, rd)
 	}
 	return results, nil

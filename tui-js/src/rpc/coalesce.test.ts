@@ -75,3 +75,22 @@ test("a settled read does not serve the next call from cache", async () => {
 
   expect(requestCount("conflicts")).toBe(2);
 });
+
+test("a client-side timeout withdraws the request from the sidecar", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "slis-rpc-cancel-"));
+  const script = join(dir, "fake-sidecar");
+  logPath = join(dir, "requests.log");
+  writeFileSync(script, sidecarScript(logPath));
+  chmodSync(script, 0o755);
+  writeFileSync(logPath, "");
+  // The fake answers after 120ms; give up after 20ms so the timeout path runs.
+  client = new SlisRpcClient({ bin: script, requestTimeoutMs: 20 });
+
+  await expect(client.conflicts()).rejects.toThrow(/rpc timeout: conflicts/);
+
+  // The fake reads the next line only after answering the first, so poll for the
+  // cancel rather than guessing a sleep.
+  const deadline = Date.now() + 3_000;
+  while (requestCount("cancel") === 0 && Date.now() < deadline) await Bun.sleep(20);
+  expect(requestCount("cancel")).toBe(1);
+});

@@ -83,14 +83,27 @@ func ParseState(data []byte) (State, error) {
 // installed, it returns an empty State and a nil error so callers can degrade
 // gracefully.
 func ReadState(repoDir string) (State, error) {
+	return ReadStateCtx(context.Background(), repoDir)
+}
+
+// ReadStateCtx is ReadState bounded by a caller-supplied context as well as
+// stateTimeout, so a withdrawn request kills the gt process (and its git
+// children) instead of leaving it to run out its own deadline.
+func ReadStateCtx(parent context.Context, repoDir string) (State, error) {
 	if _, err := exec.LookPath("gt"); err != nil {
 		// gt not installed — return gracefully rather than erroring.
 		return State{}, nil
 	}
 
-	defer acquireSpawnSlot()()
+	// Acquire the spawn slot first: queue time is not the process's own deadline,
+	// but a cancelled caller must not wait for a slot it no longer needs.
+	release, ok := acquireSpawnSlotCtx(parent)
+	if !ok {
+		return State{}, parent.Err()
+	}
+	defer release()
 
-	ctx, cancel := context.WithTimeout(context.Background(), stateTimeout)
+	ctx, cancel := context.WithTimeout(parent, stateTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gt", "state", "--no-interactive")
 	subproc.Configure(cmd)

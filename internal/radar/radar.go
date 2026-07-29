@@ -15,6 +15,7 @@
 package radar
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"sync"
@@ -145,7 +146,7 @@ func (idx *Index) OverlapsFor(slice string) []Overlap {
 // StackReader reads a Graphite stack for a worktree. gt.ReadStack satisfies it;
 // tests inject a fake so the fan-out logic runs without the gt binary. A nil
 // reader means "no Graphite data", and every slice falls back to trunk bases.
-type StackReader func(worktreePath string) (gt.State, error)
+type StackReader func(ctx context.Context, worktreePath string) (gt.State, error)
 
 // MaxConcurrentSlices caps how many slices the radar measures at once. Each
 // slice costs a git numstat per repo (and, on a cache miss, a gt read), so an
@@ -175,7 +176,7 @@ func newStackCache(read StackReader) *stackCache {
 // state returns repo's Graphite stack, reading it through the injected reader at
 // most once. Concurrent callers for the same repo wait on that single read;
 // callers for different repos proceed in parallel.
-func (c *stackCache) state(repo, worktreePath string) gt.State {
+func (c *stackCache) state(ctx context.Context, repo, worktreePath string) gt.State {
 	if c.read == nil {
 		return nil
 	}
@@ -189,7 +190,7 @@ func (c *stackCache) state(repo, worktreePath string) gt.State {
 	c.mu.Unlock()
 
 	entry.once.Do(func() {
-		st, err := c.read(worktreePath)
+		st, err := c.read(ctx, worktreePath)
 		if err != nil {
 			return
 		}
@@ -203,14 +204,14 @@ func (c *stackCache) state(repo, worktreePath string) gt.State {
 // whole downstack), falling back to "" (auto-detect trunk) when gt has no data.
 // Mirrors the browser card's base computation (slicelist.go) so the radar
 // measures the SAME file set the UI shows.
-func parentBases(sl model.Slice, stacks *stackCache) map[string]string {
+func parentBases(ctx context.Context, sl model.Slice, stacks *stackCache) map[string]string {
 	bases := make(map[string]string, len(sl.Members))
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
 		if m.WorktreePath == "" {
 			continue
 		}
-		st := stacks.state(repo, m.WorktreePath)
+		st := stacks.state(ctx, repo, m.WorktreePath)
 		if len(st) == 0 {
 			continue
 		}
@@ -225,7 +226,7 @@ func parentBases(sl model.Slice, stacks *stackCache) map[string]string {
 // slice's Graphite-parent bases, at most MaxConcurrentSlices slices at a time and
 // with one gt read per repo. Result is keyed by slice name and ready for Build.
 // Used by the CLI twin, which has no TUI card cache to reuse.
-func CollectStats(slices []model.Slice, read StackReader) map[string][]diff.RepoDiff {
+func CollectStats(ctx context.Context, slices []model.Slice, read StackReader) map[string][]diff.RepoDiff {
 	out := make(map[string][]diff.RepoDiff, len(slices))
 	stacks := newStackCache(read)
 
@@ -237,10 +238,20 @@ func CollectStats(slices []model.Slice, read StackReader) map[string][]diff.Repo
 		wg.Add(1)
 		go func(sl model.Slice) {
 			defer wg.Done()
-			slots <- struct{}{}
+			// Check first: with a free slot and a cancelled context, select would
+			// pick either case at random and could still start subprocesses.
+			if ctx.Err() != nil {
+				return
+			}
+			select {
+			case slots <- struct{}{}:
+			case <-ctx.Done():
+				// Cancelled while queued: never start this slice's subprocesses.
+				return
+			}
 			defer func() { <-slots }()
 
-			stats, _ := diff.SliceStatBases(sl, parentBases(sl, stacks))
+			stats, _ := diff.SliceStatBasesCtx(ctx, sl, parentBases(ctx, sl, stacks))
 			mu.Lock()
 			out[sl.Name] = stats
 			mu.Unlock()

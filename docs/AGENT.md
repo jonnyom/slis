@@ -298,6 +298,34 @@ and object params, returning the shapes above:
 Errors carry `data.kind`: `slice-not-found`, `branch-not-found`, `path-not-found`,
 `file-too-large`, `repo-not-configured` (non-member repo → invalid-params).
 
+#### Cancelling a request (`cancel`)
+Every read is cancellable. A client that gives up on a request — its own timeout
+fired, the user navigated away, the front-end is quitting — MUST withdraw it:
+
+```jsonc
+{ "jsonrpc": "2.0", "method": "cancel", "params": { "id": 42 } }
+```
+
+Use **session-unique request ids** (slis's own client just increments forever).
+`cancel` names a request by id and applies to whatever is live under that id, so a
+client that both recycles ids and withdraws requests it has already been answered
+can cancel the wrong one. Reusing an id after its answer is otherwise safe.
+
+A notification (no `id` of its own), so there is no reply. The named request stops:
+queued work behind the concurrency gate is never started, running work has its
+context cancelled, and its git / gt / gh subprocess trees are killed. The request
+itself is answered with error code `-32800` and `data.kind: "cancelled"`. Cancelling
+an id that already finished is a no-op, not an error. Sidecar shutdown cancels
+everything still in flight, so quitting never leaves subprocesses behind.
+
+A cancelled request NEVER returns partial data: work that was killed mid-flight
+(e.g. a half-read conflict radar, which would otherwise look like "no conflicts")
+is reported as the cancellation instead.
+
+Two things still run to completion, both by design because neither can run long:
+discovery's worktree scan (one `git worktree list` per repo) and the pure
+file-store reads (`comments`, `reviews`) — no subprocess involved.
+
 ## Session status
 
 The headline automation signal: *which slice's Claude is waiting for input.*

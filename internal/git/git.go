@@ -81,10 +81,16 @@ func RunCtx(ctx context.Context, dir string, args ...string) (string, error) {
 
 // RunRaw executes `git -C dir <args...>` and returns stdout as raw, untrimmed
 // bytes. Unlike Run it neither trims trailing newlines nor coerces to a string,
-// so it is safe for binary blob content (e.g. `git show <rev>:<path>`).
+// so it is safe for binary blob content (e.g. `git show <rev>:<path>`). It
+// applies DefaultTimeout; callers with their own deadline use RunRawCtx.
 func RunRaw(dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
+	return RunRawCtx(ctx, dir, args...)
+}
+
+// RunRawCtx is like RunRaw but accepts a context for cancellation / timeouts.
+func RunRawCtx(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	subproc.Configure(cmd)

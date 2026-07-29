@@ -1,6 +1,7 @@
 package radar_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,7 +60,7 @@ func TestRadar_Integration_DetectsSharedFile(t *testing.T) {
 	}
 	slices := []model.Slice{mk("feat-a", wtA), mk("feat-b", wtB)}
 
-	idx := radar.Build(radar.CollectStats(slices, gt.ReadStack))
+	idx := radar.Build(radar.CollectStats(context.Background(), slices, gt.ReadStackCtx))
 
 	found := false
 	for _, o := range idx.Overlaps {

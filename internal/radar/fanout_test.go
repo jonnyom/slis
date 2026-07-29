@@ -1,6 +1,7 @@
 package radar_test
 
 import (
+	"context"
 	"runtime"
 	"strconv"
 	"sync"
@@ -28,7 +29,7 @@ func newCountingReader() *countingReader {
 	return &countingReader{byPath: map[string]int{}}
 }
 
-func (c *countingReader) read(worktreePath string) (gt.State, error) {
+func (c *countingReader) read(_ context.Context, worktreePath string) (gt.State, error) {
 	now := atomic.AddInt64(&c.live, 1)
 	for {
 		old := atomic.LoadInt64(&c.peak)
@@ -89,7 +90,7 @@ func TestCollectStatsReadsGraphiteStateOncePerRepo(t *testing.T) {
 	slices := sharedRepoSlices(6, "web", "api", "worker")
 	reader := newCountingReader()
 
-	radar.CollectStats(slices, reader.read)
+	radar.CollectStats(context.Background(), slices, reader.read)
 
 	reader.mu.Lock()
 	defer reader.mu.Unlock()
@@ -113,7 +114,7 @@ func TestCollectStatsBoundsConcurrency(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		radar.CollectStats(slices, reader.read)
+		radar.CollectStats(context.Background(), slices, reader.read)
 	}()
 
 	// Reads block, so live reads settle at the cap. Wait for saturation rather
@@ -138,8 +139,29 @@ func TestCollectStatsBoundsConcurrency(t *testing.T) {
 // reader every slice falls back to trunk auto-detection rather than panicking.
 func TestCollectStatsNilReaderDegrades(t *testing.T) {
 	slices := sharedRepoSlices(2, "web")
-	stats := radar.CollectStats(slices, nil)
+	stats := radar.CollectStats(context.Background(), slices, nil)
 	if len(stats) != 2 {
 		t.Fatalf("want stats for 2 slices, got %d", len(stats))
+	}
+}
+
+// TestCollectStatsCancelledBeforeStartDoesNoWork closes the loop with the RPC
+// layer: a withdrawn `conflicts` request must not spawn a single subprocess.
+func TestCollectStatsCancelledBeforeStartDoesNoWork(t *testing.T) {
+	slices := sharedRepoSlices(6, "web", "api", "worker")
+	reader := newCountingReader()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	stats := radar.CollectStats(ctx, slices, reader.read)
+
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	if len(reader.byPath) != 0 {
+		t.Fatalf("cancelled radar still read Graphite state: %v", reader.byPath)
+	}
+	if len(stats) != 0 {
+		t.Fatalf("cancelled radar still produced stats for %d slices", len(stats))
 	}
 }

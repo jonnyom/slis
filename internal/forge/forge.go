@@ -310,11 +310,17 @@ const jsonFields = "number,url,state,title,headRefName,headRefOid,statusCheckRol
 //
 // Returns (nil, err) for any other gh failure.
 func PRForBranch(repoDir, branch string) (*PR, error) {
+	return PRForBranchCtx(context.Background(), repoDir, branch)
+}
+
+// PRForBranchCtx is PRForBranch bounded by a caller-supplied context as well as
+// ghTimeout, so a withdrawn request kills the gh process tree.
+func PRForBranchCtx(parent context.Context, repoDir, branch string) (*PR, error) {
 	if !Available() {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	ctx, cancel := context.WithTimeout(parent, ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", jsonFields)
 	subproc.Configure(cmd)
@@ -579,6 +585,13 @@ func RerunFailedChecks(repoDir string, pr *PR) (int, error) {
 // FailedLog returns the failed-step logs for pr's first failing check's run
 // (`gh run view <id> --log-failed`, run in repoDir), for display inside slis.
 func FailedLog(repoDir string, pr *PR) (string, error) {
+	return FailedLogCtx(context.Background(), repoDir, pr)
+}
+
+// FailedLogCtx is FailedLog with a caller-supplied context: downloading a CI log
+// is the slowest read in the sidecar, so a client that navigates away must be
+// able to stop it.
+func FailedLogCtx(ctx context.Context, repoDir string, pr *PR) (string, error) {
 	if !Available() {
 		return "", fmt.Errorf("gh not found on PATH")
 	}
@@ -586,7 +599,7 @@ func FailedLog(repoDir string, pr *PR) (string, error) {
 	if len(ids) == 0 {
 		return "", fmt.Errorf("no failing CI run found")
 	}
-	cmd := exec.Command("gh", "run", "view", ids[0], "--log-failed")
+	cmd := exec.CommandContext(ctx, "gh", "run", "view", ids[0], "--log-failed")
 	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 	out, err := cmd.Output()

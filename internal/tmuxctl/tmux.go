@@ -4,6 +4,7 @@
 package tmuxctl
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 var sanitiser = strings.NewReplacer(":", "-", ".", "-")
@@ -31,8 +33,15 @@ func Available() bool {
 
 // SessionExists reports whether the slice's tmux session exists.
 func SessionExists(slice string) bool {
-	err := exec.Command("tmux", "has-session", "-t", SessionName(slice)).Run()
-	return err == nil
+	return SessionExistsCtx(context.Background(), slice)
+}
+
+// SessionExistsCtx is SessionExists with a caller-supplied context, so a
+// cancelled status poll stops probing tmux for the remaining slices.
+func SessionExistsCtx(ctx context.Context, slice string) bool {
+	cmd := exec.CommandContext(ctx, "tmux", "has-session", "-t", SessionName(slice))
+	subproc.Configure(cmd)
+	return cmd.Run() == nil
 }
 
 // SessionOpts controls the window layout of a slice's tmux session.
@@ -183,8 +192,16 @@ func EnsureSession(slice string, members []model.SliceMember, opts SessionOpts) 
 // what is running (e.g. a Claude session) without attaching. Returns an error
 // if the session does not exist.
 func CapturePane(slice string) (string, error) {
+	return CapturePaneCtx(context.Background(), slice)
+}
+
+// CapturePaneCtx is CapturePane with a caller-supplied context: it runs one tmux
+// capture per window, so a withdrawn request must be able to stop between them.
+func CapturePaneCtx(ctx context.Context, slice string) (string, error) {
 	name := SessionName(slice)
-	out, err := exec.Command("tmux", "list-windows", "-t", name, "-F", "#{window_index}\t#{window_name}").Output()
+	listCmd := exec.CommandContext(ctx, "tmux", "list-windows", "-t", name, "-F", "#{window_index}\t#{window_name}")
+	subproc.Configure(listCmd)
+	out, err := listCmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("tmux list-windows: %w", err)
 	}
@@ -194,9 +211,14 @@ func CapturePane(slice string) (string, error) {
 		if line == "" {
 			continue
 		}
+		if ctx.Err() != nil {
+			return sb.String(), ctx.Err()
+		}
 		idx, wname, _ := strings.Cut(line, "\t")
 		// -e preserves the pane's colour escapes (slis keeps SGR, strips the rest).
-		captured, _ := exec.Command("tmux", "capture-pane", "-p", "-e", "-t", name+":"+idx).Output()
+		captureCmd := exec.CommandContext(ctx, "tmux", "capture-pane", "-p", "-e", "-t", name+":"+idx)
+		subproc.Configure(captureCmd)
+		captured, _ := captureCmd.Output()
 		sb.WriteString("── " + wname + " ──\n")
 		sb.Write(captured)
 		if !strings.HasSuffix(string(captured), "\n") {
@@ -426,8 +448,15 @@ func StartWindow(slice, window, cwd, command string) error {
 
 // PanePIDs returns the pane PIDs across all windows of the slice's session.
 func PanePIDs(slice string) ([]int, error) {
+	return PanePIDsCtx(context.Background(), slice)
+}
+
+// PanePIDsCtx is PanePIDs with a caller-supplied context.
+func PanePIDsCtx(ctx context.Context, slice string) ([]int, error) {
 	name := SessionName(slice)
-	out, err := exec.Command("tmux", "list-panes", "-s", "-t", name, "-F", "#{pane_pid}").Output()
+	cmd := exec.CommandContext(ctx, "tmux", "list-panes", "-s", "-t", name, "-F", "#{pane_pid}")
+	subproc.Configure(cmd)
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("tmux list-panes: %w", err)
 	}

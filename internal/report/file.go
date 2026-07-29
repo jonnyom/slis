@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	"github.com/jonnyom/slis/internal/git"
@@ -41,11 +42,16 @@ func (e *FileError) Error() string { return e.Err.Error() }
 // size (maxBytes, or DefaultFileCap when ≤ 0), and flags binary content (with
 // content omitted). Text content is safeterm-stripped.
 func FileAtRevision(repoDir, repo, branch, path string, maxBytes int) (FileContent, *FileError) {
+	return FileAtRevisionCtx(context.Background(), repoDir, repo, branch, path, maxBytes)
+}
+
+// FileAtRevisionCtx is FileAtRevision with a caller-supplied context.
+func FileAtRevisionCtx(ctx context.Context, repoDir, repo, branch, path string, maxBytes int) (FileContent, *FileError) {
 	if maxBytes <= 0 {
 		maxBytes = DefaultFileCap
 	}
 
-	typ, err := git.ObjectType(repoDir, branch, path)
+	typ, err := git.ObjectTypeCtx(ctx, repoDir, branch, path)
 	if err != nil {
 		return FileContent{}, &FileError{Kind: "path-not-found", Err: fmt.Errorf("path %q not found in %s", path, branch)}
 	}
@@ -53,7 +59,7 @@ func FileAtRevision(repoDir, repo, branch, path string, maxBytes int) (FileConte
 		return FileContent{}, &FileError{Kind: "not-a-file", Err: fmt.Errorf("path %q is a %s, not a file", path, typ)}
 	}
 
-	size, err := git.ObjectSize(repoDir, branch, path)
+	size, err := git.ObjectSizeCtx(ctx, repoDir, branch, path)
 	if err != nil {
 		return FileContent{}, &FileError{Err: err}
 	}
@@ -61,7 +67,7 @@ func FileAtRevision(repoDir, repo, branch, path string, maxBytes int) (FileConte
 		return FileContent{}, &FileError{Kind: "file-too-large", Err: fmt.Errorf("file is %d bytes, over the %d-byte cap", size, maxBytes)}
 	}
 
-	data, err := git.ShowFile(repoDir, branch, path)
+	data, err := git.ShowFileCtx(ctx, repoDir, branch, path)
 	if err != nil {
 		return FileContent{}, &FileError{Err: err}
 	}

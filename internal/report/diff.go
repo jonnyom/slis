@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -16,7 +17,12 @@ import (
 )
 
 func DiffFingerprint(sl model.Slice, scope string) (string, error) {
-	bases := scopeBases(sl, scope)
+	return DiffFingerprintCtx(context.Background(), sl, scope)
+}
+
+// DiffFingerprintCtx is DiffFingerprint with a caller-supplied context.
+func DiffFingerprintCtx(ctx context.Context, sl model.Slice, scope string) (string, error) {
+	bases := scopeBasesCtx(ctx, sl, scope)
 	fingerprint := sha256.New()
 	writePart := func(value []byte) {
 		_, _ = fmt.Fprintf(fingerprint, "%d:", len(value))
@@ -26,11 +32,12 @@ func DiffFingerprint(sl model.Slice, scope string) (string, error) {
 	for _, repo := range sl.Repos() {
 		member := sl.Members[repo]
 		base := bases[repo]
-		baseSHA, err := git.RevParse(member.WorktreePath, base)
+		baseSHA, err := git.RevParseCtx(ctx, member.WorktreePath, base)
 		if err != nil {
 			return "", err
 		}
-		trackedPaths, err := git.RunRaw(
+		trackedPaths, err := git.RunRawCtx(
+			ctx,
 			member.WorktreePath,
 			"diff",
 			"--name-only",
@@ -42,7 +49,8 @@ func DiffFingerprint(sl model.Slice, scope string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		untrackedPaths, err := git.RunRaw(
+		untrackedPaths, err := git.RunRawCtx(
+			ctx,
 			member.WorktreePath,
 			"ls-files",
 			"--others",
@@ -146,24 +154,29 @@ type DiffResult struct {
 // format selects what each repo entry carries: "stat" (numstat only, cheapest),
 // "patch" (the unified diff text only), or "both".
 func SliceDiffScoped(sl model.Slice, scope, format string) (DiffResult, error) {
+	return SliceDiffScopedCtx(context.Background(), sl, scope, format)
+}
+
+// SliceDiffScopedCtx is SliceDiffScoped with a caller-supplied context.
+func SliceDiffScopedCtx(ctx context.Context, sl model.Slice, scope, format string) (DiffResult, error) {
 	statOnly := format == "stat"
 
 	var repoDiffs []diff.RepoDiff
 	var err error
 	switch scope {
 	case "working":
-		bases := scopeBases(sl, "parent")
+		bases := scopeBasesCtx(ctx, sl, "parent")
 		if statOnly {
-			repoDiffs, err = diff.SliceStatBases(sl, bases)
+			repoDiffs, err = diff.SliceStatBasesCtx(ctx, sl, bases)
 		} else {
-			repoDiffs, err = diff.SliceDiffBases(sl, bases)
+			repoDiffs, err = diff.SliceDiffBasesCtx(ctx, sl, bases)
 		}
 	default:
-		bases := scopeBases(sl, scope)
+		bases := scopeBasesCtx(ctx, sl, scope)
 		if statOnly {
-			repoDiffs, err = diff.SliceStatBases(sl, bases)
+			repoDiffs, err = diff.SliceStatBasesCtx(ctx, sl, bases)
 		} else {
-			repoDiffs, err = diff.SliceDiffBases(sl, bases)
+			repoDiffs, err = diff.SliceDiffBasesCtx(ctx, sl, bases)
 		}
 	}
 	if err != nil {
@@ -211,12 +224,17 @@ type BranchDiffResult struct {
 // format selects the payload: "stat" (numstat only), "patch" (patch only), or
 // "both".
 func BranchDiff(repoDir, repo, branch, format string) (BranchDiffResult, error) {
-	parent := gtParent(repoDir, branch)
-	if parent == "" || !git.RefExists(repoDir, parent) {
-		parent = git.DetectBase(repoDir)
+	return BranchDiffCtx(context.Background(), repoDir, repo, branch, format)
+}
+
+// BranchDiffCtx is BranchDiff with a caller-supplied context.
+func BranchDiffCtx(ctx context.Context, repoDir, repo, branch, format string) (BranchDiffResult, error) {
+	parent := gtParent(ctx, repoDir, branch)
+	if parent == "" || !git.RefExistsCtx(ctx, repoDir, parent) {
+		parent = git.DetectBaseCtx(ctx, repoDir)
 	}
 
-	rd, err := diff.BranchAgainstParent(repoDir, parent, branch, format != "stat")
+	rd, err := diff.BranchAgainstParentCtx(ctx, repoDir, parent, branch, format != "stat")
 	if err != nil {
 		return BranchDiffResult{}, err
 	}
@@ -244,8 +262,8 @@ func statDTO(rd diff.RepoDiff) *DiffStatDTO {
 }
 
 // gtParent returns the Graphite parent branch of branch in dir's repo, or "".
-func gtParent(dir, branch string) string {
-	st, err := gt.ReadStack(dir)
+func gtParent(ctx context.Context, dir, branch string) string {
+	st, err := gt.ReadStackCtx(ctx, dir)
 	if err != nil {
 		return ""
 	}
@@ -254,7 +272,7 @@ func gtParent(dir, branch string) string {
 		return ""
 	}
 	parent := bs.Parents[0].Ref
-	trunk := git.DetectBase(dir)
+	trunk := git.DetectBaseCtx(ctx, dir)
 	if sameBranchRef(parent, trunk) {
 		return trunk
 	}
@@ -273,20 +291,20 @@ func sameBranchRef(left, right string) bool {
 // the cockpit diff pane: an explicit slice Base override wins; "parent" uses the
 // branch's Graphite parent (falling back to the detected trunk when the branch
 // is not stacked); "trunk" (and anything else) uses the detected trunk.
-func scopeBases(sl model.Slice, scope string) map[string]string {
+func scopeBasesCtx(ctx context.Context, sl model.Slice, scope string) map[string]string {
 	bases := make(map[string]string, len(sl.Members))
 	for repo, mem := range sl.Members {
 		switch {
 		case sl.Base != "":
 			bases[repo] = sl.Base
 		case scope == "parent":
-			if p := gtParent(mem.WorktreePath, mem.Branch); p != "" {
+			if p := gtParent(ctx, mem.WorktreePath, mem.Branch); p != "" {
 				bases[repo] = p
 			} else {
-				bases[repo] = git.DetectBase(mem.WorktreePath)
+				bases[repo] = git.DetectBaseCtx(ctx, mem.WorktreePath)
 			}
 		default:
-			bases[repo] = git.DetectBase(mem.WorktreePath)
+			bases[repo] = git.DetectBaseCtx(ctx, mem.WorktreePath)
 		}
 	}
 	return bases

@@ -1,5 +1,7 @@
 package gt
 
+import "context"
+
 // maxConcurrentSpawns caps how many `gt` processes slis may run at once, across
 // every caller in the binary. gt is expensive — a Graphite CLI invocation is a
 // process that runs its own git children — and an unbounded fan-out over a
@@ -20,4 +22,21 @@ var spawnSlots = make(chan struct{}, maxConcurrentSpawns)
 func acquireSpawnSlot() (release func()) {
 	spawnSlots <- struct{}{}
 	return func() { <-spawnSlots }
+}
+
+// acquireSpawnSlotCtx is acquireSpawnSlot that gives up when ctx is done, so a
+// cancelled read waiting in the queue never starts a gt process at all. ok is
+// false when the context ended first (no slot held, nothing to release).
+func acquireSpawnSlotCtx(ctx context.Context) (release func(), ok bool) {
+	// Check first: with a free slot AND a cancelled context, select would pick
+	// either case at random and could start work for a caller that is already gone.
+	if ctx.Err() != nil {
+		return func() {}, false
+	}
+	select {
+	case spawnSlots <- struct{}{}:
+		return func() { <-spawnSlots }, true
+	case <-ctx.Done():
+		return func() {}, false
+	}
 }

@@ -1,6 +1,8 @@
 package gt
 
 import (
+	"context"
+	"os/exec"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -56,5 +58,27 @@ func TestSpawnSlotCapsConcurrency(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(&live); got != 0 {
 		t.Fatalf("slots leaked: %d callers still holding", got)
+	}
+}
+
+// TestReadStateCtxCancelledSpawnsNothing proves the request context reaches the
+// spawn decision: a withdrawn read must not start a gt process at all.
+func TestReadStateCtxCancelledSpawnsNothing(t *testing.T) {
+	if _, err := exec.LookPath("gt"); err != nil {
+		t.Skip("gt not installed")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	st, err := ReadStateCtx(ctx, t.TempDir())
+	if err == nil {
+		t.Fatal("want the context error, got nil")
+	}
+	if len(st) != 0 {
+		t.Fatalf("want empty state, got %d branches", len(st))
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("cancelled read took %s — it spawned gt anyway", elapsed)
 	}
 }

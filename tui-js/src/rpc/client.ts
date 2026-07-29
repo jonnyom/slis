@@ -92,11 +92,14 @@ export interface SidecarOptions {
   bin?: string;
   /** Extra args after "rpc". */
   args?: string[];
+  /** Per-request ceiling before the client gives up. Defaults to 30s. */
+  requestTimeoutMs?: number;
 }
 
 export class SlisRpcClient implements RpcClient {
   private readonly bin: string;
   private readonly args: string[];
+  private readonly requestTimeoutMs: number;
 
   private proc: Bun.Subprocess<"pipe", "pipe", "inherit"> | null = null;
   private nextId = 1;
@@ -119,6 +122,7 @@ export class SlisRpcClient implements RpcClient {
   constructor(opts: SidecarOptions = {}) {
     this.bin = opts.bin ?? process.env["SLIS_BIN"] ?? "slis";
     this.args = opts.args ?? [];
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
     this.spawn();
   }
 
@@ -228,8 +232,9 @@ export class SlisRpcClient implements RpcClient {
   close(): void {
     this.closed = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
-    for (const [, pending] of this.pending) {
+    for (const [id, pending] of this.pending) {
       clearTimeout(pending.timer);
+      this.withdraw(id);
       pending.reject(new Error("client closed"));
     }
     this.pending.clear();
@@ -264,8 +269,11 @@ export class SlisRpcClient implements RpcClient {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        // Giving up locally is not enough: without this the sidecar keeps fanning
+        // out subprocesses for an answer nobody will read.
+        this.withdraw(id);
         reject(new Error(`rpc timeout: ${method}`));
-      }, REQUEST_TIMEOUT_MS);
+      }, this.requestTimeoutMs);
       this.pending.set(id, {
         resolve: resolve as (v: unknown) => void,
         reject,
@@ -280,6 +288,20 @@ export class SlisRpcClient implements RpcClient {
         reject(err);
       }
     });
+  }
+
+  // withdraw tells the sidecar to abandon a request we no longer want, so its
+  // in-flight git / gt / gh work is cancelled instead of running to completion.
+  // Best-effort: a dead transport means the sidecar (and its children) are gone.
+  private withdraw(id: number): void {
+    const proc = this.proc;
+    if (!proc) return;
+    try {
+      proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "cancel", params: { id } }) + "\n");
+      proc.stdin.flush();
+    } catch {
+      // Transport already down — nothing left to cancel.
+    }
   }
 
   // ── typed method wrappers ─────────────────────────────────────────────────

@@ -1,13 +1,15 @@
 package discovery
 
 import (
+	"context"
+
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 )
 
 // StackReader reads a Graphite stack for a worktree. gt.ReadStack satisfies it;
 // tests inject a fake so the annotation logic runs without the gt binary.
-type StackReader func(worktreePath string) (gt.State, error)
+type StackReader func(ctx context.Context, worktreePath string) (gt.State, error)
 
 // AnnotateStacks fills each slice's StackID/StackOrder from Graphite metadata so
 // the UI can cluster stack-sibling slices together. For every slice it inspects
@@ -19,7 +21,7 @@ type StackReader func(worktreePath string) (gt.State, error)
 //
 // It mutates and returns slices in place. Slice identity and grouping are never
 // changed — this is annotation only.
-func AnnotateStacks(slices []model.Slice, read StackReader) []model.Slice {
+func AnnotateStacks(ctx context.Context, slices []model.Slice, read StackReader) []model.Slice {
 	if read == nil {
 		return slices
 	}
@@ -35,7 +37,7 @@ func AnnotateStacks(slices []model.Slice, read StackReader) []model.Slice {
 			st, cached := stateByRepo[repo]
 			if !cached {
 				var err error
-				st, err = read(m.WorktreePath)
+				st, err = read(ctx, m.WorktreePath)
 				if err != nil {
 					st = nil
 				}

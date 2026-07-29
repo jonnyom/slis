@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,11 +24,16 @@ type TreeEntry struct {
 // the repo's primary checkout — this is a pure, ref-scoped read that never
 // touches a working tree.
 func LsTree(dir, rev, path string) ([]TreeEntry, error) {
+	return LsTreeCtx(context.Background(), dir, rev, path)
+}
+
+// LsTreeCtx is LsTree with a caller-supplied context.
+func LsTreeCtx(ctx context.Context, dir, rev, path string) ([]TreeEntry, error) {
 	treeish := rev
 	if path != "" {
 		treeish = rev + ":" + path
 	}
-	out, err := Run(dir, "ls-tree", "-l", "-z", treeish)
+	out, err := RunCtx(ctx, dir, "ls-tree", "-l", "-z", treeish)
 	if err != nil {
 		return nil, err
 	}
