@@ -1,0 +1,29 @@
+tui-js/src/term/tmux.test.ts
+  s_d2f14f38e8a65f::t_04078a95f79b82 5,228-296
+  s_d2f14f38e8a65f::t_936c7dd7ff87e4 297
+tui-js/src/overlays/useOverlays.tsx
+  s_d2f14f38e8a65f::t_453ee0908a8517 66,88-95,146-154,478-479,580-590,903-906
+tui-js/src/app.tsx
+  s_d2f14f38e8a65f::t_525ed8feb9ba11 37-43
+  s_d2f14f38e8a65f::t_42ba48f24c724e 629-673,753,784
+tui-js/src/term/tmux.ts
+  s_d2f14f38e8a65f::t_03dbee62a80f6c 179-212
+tui-js/src/overlays/overlays.tsx
+  s_d2f14f38e8a65f::t_453ee0908a8517 312-347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "93bdf6b278763faa335f4822e098850971813456",
+  "prompts": {},
+  "sessions": {
+    "s_d2f14f38e8a65f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5e7db72-ee53-427c-a710-66b42bbb8d97",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
