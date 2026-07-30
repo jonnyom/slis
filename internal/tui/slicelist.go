@@ -245,9 +245,9 @@ func loadCardCmd(sl model.Slice) tea.Cmd {
 			if bs, ok := st[member.Branch]; ok && len(bs.Parents) > 0 {
 				bases[repo] = strings.TrimSpace(bs.Parents[0].Ref)
 			}
-			if lineage := st.Lineage(member.Branch); len(lineage) > 0 {
+			if stack := st.Stack(member.Branch); len(stack) > 0 {
 				card.stackKnown = true
-				for _, b := range lineage {
+				for _, b := range stack {
 					if b.NeedsRestack {
 						card.restack++
 					}

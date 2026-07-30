@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	gitutil "github.com/jonnyom/slis/internal/git"
@@ -316,6 +317,10 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 // PRForBranchCtx is PRForBranch bounded by a caller-supplied context as well as
 // ghTimeout, so a withdrawn request kills the gh process tree.
 func PRForBranchCtx(parent context.Context, repoDir, branch string) (*PR, error) {
+	return prForBranchCtx(parent, repoDir, branch, true)
+}
+
+func prForBranchCtx(parent context.Context, repoDir, branch string, includeInlineComments bool) (*PR, error) {
 	if !Available() {
 		return nil, nil
 	}
@@ -353,6 +358,9 @@ func PRForBranchCtx(parent context.Context, repoDir, branch string) (*PR, error)
 	if historicalPRIsStale(repoDir, branch, pr) {
 		return nil, nil
 	}
+	if !includeInlineComments {
+		return pr, nil
+	}
 
 	// Inline review comments (e.g. Cubic) are not exposed by `gh pr view`; fetch
 	// them via the REST API and merge. A failure here is non-fatal — the PR still
@@ -365,6 +373,62 @@ func PRForBranchCtx(parent context.Context, repoDir, branch string) (*PR, error)
 		return pr, fmt.Errorf("forge: inline comments: %w", ierr)
 	}
 	return pr, nil
+}
+
+func PRsForBranchesCtx(parent context.Context, repoDir string, branches []string) (map[string]*PR, error) {
+	return prsForBranchesCtx(parent, repoDir, branches, func(ctx context.Context, repoDir, branch string) (*PR, error) {
+		return prForBranchCtx(ctx, repoDir, branch, false)
+	})
+}
+
+func prsForBranchesCtx(
+	parent context.Context,
+	repoDir string,
+	branches []string,
+	lookup func(context.Context, string, string) (*PR, error),
+) (map[string]*PR, error) {
+	const maxConcurrentLookups = 4
+	type result struct {
+		branch string
+		pr     *PR
+		err    error
+	}
+
+	prs := make(map[string]*PR, len(branches))
+	if len(branches) == 0 {
+		return prs, nil
+	}
+	workerCount := min(maxConcurrentLookups, len(branches))
+	jobs := make(chan string, len(branches))
+	results := make(chan result, len(branches))
+	var workers sync.WaitGroup
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for branch := range jobs {
+				pr, err := lookup(parent, repoDir, branch)
+				results <- result{branch: branch, pr: pr, err: err}
+			}
+		}()
+	}
+	for _, branch := range branches {
+		jobs <- branch
+	}
+	close(jobs)
+	workers.Wait()
+	close(results)
+
+	var firstErr error
+	for result := range results {
+		if result.pr != nil {
+			prs[result.branch] = result.pr
+		}
+		if result.err != nil && firstErr == nil {
+			firstErr = result.err
+		}
+	}
+	return prs, firstErr
 }
 
 func parsePRList(branch string, data []byte) (*PR, error) {

@@ -362,10 +362,7 @@ func BuildDetailCtx(ctx context.Context, dto SliceDTO) SliceDetailDTO {
 			st, err := gt.ReadStackCtx(ctx, m.WorktreePath)
 			if err == nil {
 				dirtyAdded, dirtyDeleted, dirtyOK := memberDirtyCounts(ctx, m)
-				// A slice owns the branch checked out in this worktree. Include only
-				// its downstack ancestry for context; siblings and upstack branches
-				// belong to other worktrees/slices and must never leak into this view.
-				ordered := st.Lineage(m.Branch)
+				ordered := st.Stack(m.Branch)
 				stack := make([]OrderedBranchDTO, 0, len(ordered)+1)
 				sawCurrent := false
 				sawTrunk := false
@@ -392,8 +389,8 @@ func BuildDetailCtx(ctx context.Context, dto SliceDTO) SliceDetailDTO {
 					case ob.Name == m.Branch && dirtyOK:
 						node.Added, node.Deleted = intPtr(dirtyAdded), intPtr(dirtyDeleted)
 					default:
-						if bd, err := BranchDiffCtx(ctx, m.WorktreePath, m.Repo, ob.Name, "stat"); err == nil && bd.Err == "" && bd.Stat != nil {
-							node.Added, node.Deleted = intPtr(bd.Stat.Added), intPtr(bd.Stat.Deleted)
+						if stat := branchStatFromState(ctx, m.WorktreePath, st, ob.Name); stat != nil {
+							node.Added, node.Deleted = intPtr(stat.Added), intPtr(stat.Deleted)
 						}
 					}
 					stack = append(stack, node)
@@ -468,6 +465,21 @@ func memberDirtyCounts(ctx context.Context, m MemberDTO) (added, deleted int, ok
 		return 0, 0, false
 	}
 	return diffs[0].TotalAdded(), diffs[0].TotalDeleted(), true
+}
+
+func branchStatFromState(ctx context.Context, repoDir string, state gt.State, branch string) *DiffStatDTO {
+	parent := ""
+	if branchState, ok := state[branch]; ok && len(branchState.Parents) > 0 {
+		parent = branchState.Parents[0].Ref
+	}
+	if parent == "" || !git.RefExistsCtx(ctx, repoDir, parent) {
+		parent = git.DetectBaseCtx(ctx, repoDir)
+	}
+	result, err := diffpkg.BranchAgainstParentCtx(ctx, repoDir, parent, branch, false)
+	if err != nil || result.Err != "" {
+		return nil
+	}
+	return statDTO(result)
 }
 
 // SliceStatuses returns the session status for every slice in the workspace,
@@ -573,26 +585,69 @@ func OrderReposByStack(sl model.Slice, depths map[string]int, anyStack bool) []s
 	return repos
 }
 
-// PRStackRows builds the `slis pr-stack --json` rows for a slice: one row per
-// member repo, trunk-first by Graphite depth, each carrying the repo's PR (when
-// one exists). Per-repo PR lookups that fail or find no PR leave the PR fields
-// empty rather than aborting the whole slice.
 func PRStackRows(sl model.Slice) []PRStackRowDTO {
 	return PRStackRowsCtx(context.Background(), sl)
 }
 
-// PRStackRowsCtx is PRStackRows with a caller-supplied context, covering both the
-// gt stack reads and the per-repo gh PR lookups.
 func PRStackRowsCtx(ctx context.Context, sl model.Slice) []PRStackRowDTO {
-	depths, anyStack := StackDepthsCtx(ctx, sl)
+	return buildPRStackRowsCtx(ctx, sl, gt.ReadStackCtx, forge.PRsForBranchesCtx)
+}
+
+func buildPRStackRowsCtx(
+	ctx context.Context,
+	sl model.Slice,
+	readStack func(context.Context, string) (gt.State, error),
+	findPRs func(context.Context, string, []string) (map[string]*forge.PR, error),
+) []PRStackRowDTO {
+	depths := make(map[string]int, len(sl.Members))
+	stacks := make(map[string][]gt.OrderedBranch, len(sl.Members))
+	anyStack := false
+	for _, repo := range sl.Repos() {
+		member := sl.Members[repo]
+		if member.WorktreePath == "" {
+			continue
+		}
+		state, err := readStack(ctx, member.WorktreePath)
+		if err != nil {
+			continue
+		}
+		stack := state.Stack(member.Branch)
+		if len(stack) == 0 {
+			continue
+		}
+		stacks[repo] = stack
+		for _, branch := range stack {
+			if branch.Name == member.Branch {
+				depths[repo] = branch.Depth
+				anyStack = true
+				break
+			}
+		}
+	}
+
 	repos := OrderReposByStack(sl, depths, anyStack)
-	rows := make([]PRStackRowDTO, 0, len(repos))
+	rows := make([]PRStackRowDTO, 0)
 	for _, repo := range repos {
-		m := sl.Members[repo]
-		row := PRStackRowDTO{Repo: repo, Branch: m.Branch, StackOrder: depths[repo]}
-		pr, _ := forge.PRForBranchCtx(ctx, m.WorktreePath, m.Branch)
-		row.SetPR(pr)
-		rows = append(rows, row)
+		member := sl.Members[repo]
+		branches := stacks[repo]
+		if len(branches) == 0 {
+			branches = []gt.OrderedBranch{{Name: member.Branch, Depth: depths[repo]}}
+		}
+		branchNames := make([]string, 0, len(branches))
+		for _, branch := range branches {
+			if !branch.Trunk {
+				branchNames = append(branchNames, branch.Name)
+			}
+		}
+		prs, _ := findPRs(ctx, member.WorktreePath, branchNames)
+		for _, branch := range branches {
+			if branch.Trunk {
+				continue
+			}
+			row := PRStackRowDTO{Repo: repo, Branch: branch.Name, StackOrder: branch.Depth}
+			row.SetPR(prs[branch.Name])
+			rows = append(rows, row)
+		}
 	}
 	return rows
 }

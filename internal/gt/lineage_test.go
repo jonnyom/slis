@@ -1,6 +1,7 @@
 package gt_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/gt"
@@ -82,5 +83,15 @@ func TestLineageAbsentBranch(t *testing.T) {
 	s := buildState()
 	if got := s.Lineage("ghost"); got != nil {
 		t.Errorf("Lineage(ghost) = %v, want nil", got)
+	}
+}
+
+func TestStackIncludesUpstackBranchesWithoutUnrelatedStacks(t *testing.T) {
+	s := buildState()
+
+	got := names(s.Stack("a"))
+	want := []string{"main", "a", "b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Stack(a) = %v, want %v", got, want)
 	}
 }

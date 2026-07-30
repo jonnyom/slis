@@ -239,6 +239,32 @@ func (s State) Lineage(branch string) []OrderedBranch {
 	return out
 }
 
+func (s State) Stack(branch string) []OrderedBranch {
+	root, _, ok := s.StackRoot(branch)
+	if !ok {
+		return nil
+	}
+
+	inStack := map[string]bool{}
+	for _, ancestor := range s.Lineage(root) {
+		inStack[ancestor.Name] = true
+	}
+	for candidate := range s {
+		candidateRoot, _, candidateInStack := s.StackRoot(candidate)
+		if candidateInStack && candidateRoot == root {
+			inStack[candidate] = true
+		}
+	}
+
+	out := make([]OrderedBranch, 0, len(inStack))
+	for _, candidate := range s.Ordered() {
+		if inStack[candidate.Name] {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
 // StackRoot identifies the stack a branch belongs to: it walks first-parent
 // links up from branch until it reaches the branch whose parent is the trunk
 // (or a branch with no recorded parent). That branch — the deepest non-trunk

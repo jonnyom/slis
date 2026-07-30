@@ -1,9 +1,13 @@
 package report
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/forge"
+	"github.com/jonnyom/slis/internal/gt"
+	"github.com/jonnyom/slis/internal/model"
 )
 
 // TestSetPRPopulatesCIRollup: SetPR copies identity/review fields and derives the
@@ -42,5 +46,56 @@ func TestSetPRNilLeavesBareRow(t *testing.T) {
 	row.SetPR(nil)
 	if row.Number != 0 || row.CI != "" || row.CIFail != 0 {
 		t.Errorf("nil PR should leave a bare row, got %+v", row)
+	}
+}
+
+func TestBuildPRStackRowsIncludesFullGraphiteStack(t *testing.T) {
+	sl := model.Slice{
+		Members: map[string]model.SliceMember{
+			"nory": {
+				Repo:         "nory",
+				Branch:       "stack-2",
+				WorktreePath: "/worktree/nory",
+			},
+		},
+	}
+	state := gt.State{
+		"main":    {Trunk: true},
+		"stack-1": {Parents: []gt.Parent{{Ref: "main"}}},
+		"stack-2": {Parents: []gt.Parent{{Ref: "stack-1"}}},
+		"stack-3": {Parents: []gt.Parent{{Ref: "stack-2"}}},
+		"other":   {Parents: []gt.Parent{{Ref: "main"}}},
+	}
+	prNumbers := map[string]int{"stack-1": 101, "stack-2": 102, "stack-3": 103}
+	prLookupCalls := 0
+
+	rows := buildPRStackRowsCtx(
+		context.Background(),
+		sl,
+		func(context.Context, string) (gt.State, error) { return state, nil },
+		func(_ context.Context, _ string, branches []string) (map[string]*forge.PR, error) {
+			prLookupCalls++
+			prs := make(map[string]*forge.PR, len(branches))
+			for _, branch := range branches {
+				prs[branch] = &forge.PR{Branch: branch, Number: prNumbers[branch], State: "OPEN"}
+			}
+			return prs, nil
+		},
+	)
+
+	branches := make([]string, 0, len(rows))
+	numbers := make([]int, 0, len(rows))
+	for _, row := range rows {
+		branches = append(branches, row.Branch)
+		numbers = append(numbers, row.Number)
+	}
+	if !reflect.DeepEqual(branches, []string{"stack-1", "stack-2", "stack-3"}) {
+		t.Errorf("branches = %v, want the complete stack", branches)
+	}
+	if !reflect.DeepEqual(numbers, []int{101, 102, 103}) {
+		t.Errorf("PR numbers = %v, want every stack PR", numbers)
+	}
+	if prLookupCalls != 1 {
+		t.Errorf("PR lookup calls = %d, want one batched lookup per repo", prLookupCalls)
 	}
 }

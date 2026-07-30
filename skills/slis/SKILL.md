@@ -60,7 +60,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done), plus optional Claude `session_id`/`cwd` for recovery |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
-| `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
+| `slis pr-stack <slice>` | read | **yes** | Shareable full PR stack (markdown; `--copy` to clipboard; `--json` emits every non-trunk Graphite branch with `stack_order`, ordered trunk-first) |
 | `slis share <slice>` | clipboard | no | Copy every PR across every repo stack with parent-relative `+added` / `-deleted` totals as Markdown (`--stdout` prints it instead) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis review list [slice]` | read | **yes** | List pending inline-review comments awaiting delivery to a slice's agent |

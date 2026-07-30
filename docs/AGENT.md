@@ -121,10 +121,13 @@ per-check counts. `number` is omitted when the branch has no PR.
    "review_decision": "APPROVED", "stack_order": 1,
    "ci": "fail", "ci_pass": 5, "ci_fail": 2, "ci_pending": 0 }]
 ```
+The array contains one row for every non-trunk branch in each member repo's
+full Graphite stack. When Graphite data is unavailable, that repo contributes
+one row for the slice member branch.
 
 ### `slis share <slice>` → clipboard Markdown
 
-Copies every PR in every repo's Graphite lineage as a linked title with its
+Copies every PR in every repo's full Graphite stack as a linked title with its
 parent-relative `+added` / `-deleted` totals. Use `--stdout` to print the
 identical raw Markdown instead of copying it. The TUI's `Y` shortcut runs this
 for the focused slice.

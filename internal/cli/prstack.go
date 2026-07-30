@@ -15,8 +15,6 @@ import (
 	"github.com/jonnyom/slis/internal/report"
 )
 
-type PRStackRowDTO = report.PRStackRowDTO
-
 var (
 	stackDepths       = report.StackDepths
 	orderReposByStack = report.OrderReposByStack
@@ -74,17 +72,21 @@ var prStackCmd = &cobra.Command{
 			return err
 		}
 
+		if useJSON {
+			rows := report.PRStackRows(sl)
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(rows)
+		}
+
 		// Gather PRs trunk-first by Graphite depth when stack data exists, else
 		// alphabetical (the historical order).
 		depths, anyStack := stackDepths(sl)
 		repos := orderReposByStack(sl, depths, anyStack)
 		prs := make([]*forge.PR, 0, len(repos))
-		rows := make([]PRStackRowDTO, 0, len(repos))
 		for _, repo := range repos {
 			m := sl.Members[repo]
 			pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
-			row := PRStackRowDTO{Repo: repo, Branch: m.Branch, StackOrder: depths[repo]}
-			row.SetPR(pr)
 			if pr != nil {
 				// Prefix branch with repo name so each markdown line is clearly scoped.
 				labeled := *pr
@@ -93,13 +95,6 @@ var prStackCmd = &cobra.Command{
 			} else {
 				prs = append(prs, nil)
 			}
-			rows = append(rows, row)
-		}
-
-		if useJSON {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(rows)
 		}
 
 		md := forge.StackMarkdown(sl.Name, prs)
