@@ -56,6 +56,18 @@ export function findSavedAgent(
   return undefined;
 }
 
+export function findPreferredAgent(
+  agents: AgentSpec[],
+  liveName?: string,
+  configuredName?: string,
+  legacyName?: string,
+): AgentSpec | undefined {
+  return (
+    findSavedAgent(agents, liveName) ??
+    findSavedAgent(agents, configuredName, legacyName)
+  );
+}
+
 const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
 
 // shellQuote single-quotes a token that contains shell-special characters,

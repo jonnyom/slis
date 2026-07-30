@@ -700,7 +700,6 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           const selected = agents[sel]!;
           close();
           overlay.onDefault(selected);
-          toast(`Default agent: ${selected.name}`, "ci-pass");
         }
         return;
       }
