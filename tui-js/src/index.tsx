@@ -5,6 +5,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
 import { ErrorBoundary } from "./components/errorboundary";
+import { SelectionClipboard } from "./components/selection-clipboard";
 import { setTheme } from "./theme";
 import { loadPrefs, normalizeThemePreference } from "./prefs";
 
@@ -42,6 +43,9 @@ const quitAfterCrash = () => {
 
 createRoot(renderer).render(
   <ErrorBoundary onQuit={quitAfterCrash}>
-    <App initialPrefs={initialPrefs} initialThemeMode={initialThemeMode} />
+    <>
+      <SelectionClipboard />
+      <App initialPrefs={initialPrefs} initialThemeMode={initialThemeMode} />
+    </>
   </ErrorBoundary>,
 );

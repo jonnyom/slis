@@ -117,6 +117,30 @@ async function main() {
   await sleep(700);
   const ctrlCReachedTerminal = vt.getText().includes(afterInterruptMarker);
 
+  const streamPrefix = "SLIS_STREAM_";
+  pty.write(
+    `i=1; while [ "$i" -le 90 ]; do if [ "$i" -gt 1 ]; then printf '\\033[12A'; fi; j=1; while [ "$j" -le 12 ]; do printf '\\r\\033[2K\\033[36m${streamPrefix}%03d_%02d payload\\033[0m\\n' "$i" "$j"; j=$((j+1)); done; sleep 0.05; i=$((i+1)); done\r`,
+  );
+  const malformedStreamFrames: string[] = [];
+  for (let sample = 0; sample < 76; sample++) {
+    await sleep(100);
+    const frameLines = vt
+      .getText()
+      .split("\n")
+      .filter((line) => new RegExp(`${streamPrefix}\\d{3}_\\d{2}`).test(line));
+    malformedStreamFrames.push(
+      ...frameLines.filter((line) => !new RegExp(`^${streamPrefix}\\d{3}_\\d{2} payload\\s*$`).test(line)),
+    );
+  }
+  const streamedLines = vt
+    .getText()
+    .split("\n")
+    .filter((line) => new RegExp(`${streamPrefix}\\d{3}_\\d{2}`).test(line));
+  const sustainedOutputClean =
+    streamedLines.length > 5 &&
+    streamedLines.every((line) => new RegExp(`^${streamPrefix}\\d{3}_\\d{2} payload\\s*$`).test(line)) &&
+    malformedStreamFrames.length === 0;
+
   // ctrl+q must return to the browser (and NOT reach the shell).
   pty.write("\x11");
   await sleep(900);
@@ -168,6 +192,7 @@ async function main() {
     terminal_surface_hides_browser: browserHidden,
     keystrokes_reach_embedded_shell: sawMarker,
     ctrl_c_reaches_embedded_terminal: ctrlCReachedTerminal,
+    sustained_terminal_output_stays_clean: sustainedOutputClean,
     ctrl_q_returns_to_browser: backToBrowser,
     shell_tab_is_separate: sawShellTab && bothSessionsAlive,
     c_opens_create_overlay: createOverlayOpen,
