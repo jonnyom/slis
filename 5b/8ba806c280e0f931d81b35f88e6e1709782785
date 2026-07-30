@@ -1,0 +1,85 @@
+tui-js/src/components/selection-clipboard.tsx
+  s_76ab0cb27b9ae1::t_0e6a1b6fcbece5 2,5,15-17,38-43
+  s_76ab0cb27b9ae1::t_195a287677d46c 21
+  s_76ab0cb27b9ae1::t_ba50659534dae6 1,3-4,6-14,18-20,22-37
+tui-js/src/term/repaint.test.ts
+  s_76ab0cb27b9ae1::t_ec7e178dd05bd4 1-16
+tui-js/src/term/input.test.ts
+  s_76ab0cb27b9ae1::t_31723c70a7cfd6 1-9
+tui-js/src/term/e2e.ts
+  s_76ab0cb27b9ae1::t_f38f829f04a3fb 122,130,132,138,140-141
+  s_76ab0cb27b9ae1::t_141e38f1d2b87e 124-129,131,133-134,142
+  s_76ab0cb27b9ae1::t_6952036a2e2ece 120-121,123,135-137,139,143,195
+tui-js/src/term/scroll.test.ts
+  s_326d4c650f9adf::t_bf0768111fbd3a 13
+  s_326d4c650f9adf::t_98835a0a287a4c 3,32
+  s_326d4c650f9adf::t_3e1874ab2f477b 29,47-48,50,53
+  s_76ab0cb27b9ae1::t_5a2b10806ce114 1-2,4-12,30-31,33-46,49,51-52,54-55
+  s_326d4c650f9adf::t_f324363f9145c8 14-28
+tui-js/src/term/links.ts
+  s_76ab0cb27b9ae1::t_8b9ff9e0ffbd73 1-20
+  s_76ab0cb27b9ae1::t_25db04adf5c209 21-32
+tui-js/src/term/feed.ts
+  s_76ab0cb27b9ae1::t_beb1aaf45443ce 1-3,6-8,11-15,24-26,31-35,40-52
+  s_76ab0cb27b9ae1::t_f62fc26cce977f 4-5,9-10,16-23,27-30,36-39
+tui-js/src/term/tabs.selection.test.ts
+  s_76ab0cb27b9ae1::t_5e9943176e266f 40
+  s_76ab0cb27b9ae1::t_ee3b88d1758f62 17,27-30
+  s_76ab0cb27b9ae1::t_8530a42e3656b6 4-7,31-39,41-42
+tui-js/src/components/terminal-link.test.tsx
+  s_76ab0cb27b9ae1::t_1b6e5414c9a861 1-3,7-23,28-35
+  s_76ab0cb27b9ae1::t_3a0ebc6044f420 4,24-27,44-47
+  s_76ab0cb27b9ae1::t_1ac39ee83e39a4 36-43,48-55
+tui-js/src/index.tsx
+  s_76ab0cb27b9ae1::t_77d17f99f82b0e 8,46-49
+tui-js/src/term/repaint.ts
+  s_76ab0cb27b9ae1::t_8ed01b4892efab 1-6
+tui-js/src/term/links.test.ts
+  s_76ab0cb27b9ae1::t_0fded2804680bd 1,6-22,37
+  s_76ab0cb27b9ae1::t_de681d4265f2ae 2-5,23-36
+tui-js/src/term/feed.test.ts
+  s_76ab0cb27b9ae1::t_925833df26e867 1-7,9,13-15,20-21,24,43
+  s_76ab0cb27b9ae1::t_ea9bae5a50a4f3 25-42
+  s_76ab0cb27b9ae1::t_d0acb5dba4fa10 8,10-12,16-19,22-23
+tui-js/src/term/input.ts
+  s_76ab0cb27b9ae1::t_258ca3181aa306 1-5
+tui-js/src/term/embedded.ts
+  s_326d4c650f9adf::t_98835a0a287a4c 6-7,13-14
+  s_326d4c650f9adf::t_f324363f9145c8 1-5,8-12
+tui-js/src/term/tabs.tsx
+  s_76ab0cb27b9ae1::t_258ca3181aa306 17,303
+  s_326d4c650f9adf::t_98835a0a287a4c 19,22,25,91
+  s_76ab0cb27b9ae1::t_beb1aaf45443ce 16,103,106,118,138
+  s_326d4c650f9adf::t_3184f7bbe2d555 107-108
+  s_76ab0cb27b9ae1::t_9bc418faaa30ab 33
+  s_76ab0cb27b9ae1::t_2a9f5ca208ab65 18,105
+  s_76ab0cb27b9ae1::t_8530a42e3656b6 34,169
+tui-js/src/components/selection-clipboard.test.tsx
+  s_76ab0cb27b9ae1::t_e341477483249f 1-3,5-38
+  s_76ab0cb27b9ae1::t_47f4a409e278d7 4,55-79
+  s_76ab0cb27b9ae1::t_1811f55b07bf6b 39-54,80-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "5b8ba806c280e0f931d81b35f88e6e1709782785",
+  "prompts": {},
+  "sessions": {
+    "s_326d4c650f9adf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb393-91a9-7e92-82bc-9615f6c0879b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_76ab0cb27b9ae1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb203-09bd-71e0-a42f-a165b4a6da45",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
