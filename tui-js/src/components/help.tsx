@@ -72,7 +72,7 @@ const COCKPIT_GROUPS: BindingGroup[] = [
     label: "navigate",
     bindings: [
       ["tab", "next panel"],
-      ["1–4", "Repos&Stack / PRs / Session / Processes"],
+        ["1–5", "Stack / PRs / Reviews / Session / Processes"],
       ["j / k", "move selection (Stack: any branch in the stack)"],
       ["enter / l", "open rich diff (Stack panel)"],
       ["enter", "zoom right pane full-width (other panels)"],

@@ -66,8 +66,12 @@ updates slis's registry — it never touches git.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		all, _ := cmd.Flags().GetBool("all")
+		allowFromSlice, _ := cmd.Flags().GetBool("allow-from-slice")
 		if all == (len(args) == 1) {
 			return fmt.Errorf("give a worktree path OR --all (not both, not neither)")
+		}
+		if err := managedSliceMutationGuard(allowFromSlice, "import a worktree as a managed slice"); err != nil {
+			return err
 		}
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
@@ -183,6 +187,7 @@ missing slice whose worktree is gone, or to un-manage a slice.`,
 func init() {
 	candidatesCmd.Flags().Bool("json", false, "Output as JSON")
 	importCmd.Flags().Bool("all", false, "Import every candidate worktree")
+	importCmd.Flags().Bool("allow-from-slice", false, "Allow importing a separate managed slice from inside another slice")
 	rootCmd.AddCommand(candidatesCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(ignoreCmd)

@@ -390,6 +390,32 @@ export function CreateOverlay({ text }: { text: string }): ReactNode {
   );
 }
 
+export function ReviewMessageOverlay({
+  agent,
+  text,
+}: {
+  agent: string;
+  text: string;
+}): ReactNode {
+  return (
+    <Card
+      title={`Message ${agent}`}
+      width={72}
+      hints={[
+        { key: "enter", label: "send" },
+        { key: "esc", label: "cancel" },
+      ]}
+    >
+      <TextField
+        id="review-message"
+        label="Follow-up"
+        lines={visibleTextLines(text, 58, 5)}
+        description="The reviewer receives this conversation's full history."
+      />
+    </Card>
+  );
+}
+
 export function GroupOverlay({
   slices,
   text,

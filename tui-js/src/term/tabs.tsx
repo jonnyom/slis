@@ -5,7 +5,7 @@
 // Raw input: while the terminal is focused, every key except the reserved back
 // key (ctrl+q) is forwarded to the active PTY untouched.
 
-import { extend, useRenderer } from "@opentui/react";
+import { extend, usePaste, useRenderer } from "@opentui/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import type { SessionStatus } from "../rpc/types";
 import { color, sessionBadge, theme } from "../theme";
@@ -14,7 +14,10 @@ import { TermManager } from "./manager";
 import { tmuxWheelSequence } from "./mouse";
 import type { TermSessionOpts } from "./session";
 import { TerminalFeedBuffer } from "./feed";
-import { embeddedTerminalInputSequence } from "./input";
+import {
+  embeddedTerminalInputSequence,
+  embeddedTerminalPasteSequence,
+} from "./input";
 import { requestTerminalFullRepaint } from "./repaint";
 import { EmbeddedTerminalRenderable } from "./embedded";
 
@@ -291,6 +294,18 @@ export function TerminalLayer({
   managerRef.current = manager;
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
+
+  usePaste((event) => {
+    if (!focusedRef.current) return;
+    const key = activeRef.current;
+    if (key) {
+      managerRef.current
+        .get(key)
+        ?.write(embeddedTerminalPasteSequence(event.bytes));
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  });
 
   useEffect(() => {
     const handler = (seq: string): boolean => {

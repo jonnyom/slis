@@ -4,6 +4,8 @@ import {
   mutationArgv,
   mutationRoute,
   reviewAgentArgs,
+  reviewAttachArgv,
+  reviewMessageArgs,
   shareMarkdownArgs,
   spawnCapture,
   swapArgs,
@@ -57,6 +59,22 @@ describe("reviewAgentArgs", () => {
       "--agent",
       "Codex",
     ]);
+  });
+});
+
+describe("review conversation args", () => {
+  test("sends follow-up messages through the persistent run", () => {
+    expect(reviewMessageArgs("run-123", "Look again at the locking.")).toEqual([
+      "review",
+      "message",
+      "run-123",
+      "--body",
+      "Look again at the locking.",
+    ]);
+  });
+
+  test("attaches to the exact review run", () => {
+    expect(reviewAttachArgv("run-123")).toEqual(["slis", "review", "attach", "run-123"]);
   });
 });
 

@@ -150,6 +150,18 @@ func (s TmuxSession) SendPrompt(slice, prompt string) error {
 	return tmuxctl.SendPrompt(slice, prompt)
 }
 
+func (s TmuxSession) SendPromptOnce(slice, prompt, deliveryID string) error {
+	if !s.HasAgent(slice) {
+		return ErrNoAgent
+	}
+	if pane, err := tmuxctl.CaptureActivePane(slice); err == nil {
+		if blocker := agentInputBlocker(pane); blocker != "" {
+			return fmt.Errorf("%w: %s", ErrAgentNotReady, blocker)
+		}
+	}
+	return tmuxctl.SendPromptOnce(slice, prompt, deliveryID)
+}
+
 // agentInputBlocker recognizes agent setup screens that require a human choice.
 // Sending a review into one can either lose the prompt or accidentally answer a
 // security question, so delivery must stop and preserve the pending batch.

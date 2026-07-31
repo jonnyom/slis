@@ -1,10 +1,12 @@
 package tmuxctl_test
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/tmuxctl"
@@ -62,6 +64,150 @@ func TestAttachArgv(t *testing.T) {
 	}
 	if args[len(args)-1] != want {
 		t.Errorf("outside-tmux: expected target %q, got %q", want, args[len(args)-1])
+	}
+}
+
+func TestAttachWindowArgv(t *testing.T) {
+	name, args := tmuxctl.AttachWindowArgv("payroll-fix", "review-codex", false)
+	if name != "tmux" || strings.Join(args, " ") != "attach -t slis/payroll-fix:review-codex" {
+		t.Fatalf("outside tmux = %q %#v", name, args)
+	}
+
+	name, args = tmuxctl.AttachWindowArgv("payroll-fix", "review-codex", true)
+	if name != "tmux" || strings.Join(args, " ") != "switch-client -t slis/payroll-fix:review-codex" {
+		t.Fatalf("inside tmux = %q %#v", name, args)
+	}
+}
+
+func TestStartOrRespawnWindowPreservesCompletedReview(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on PATH")
+	}
+	slice := fmt.Sprintf("slistest-review-%d", time.Now().UnixNano())
+	_ = tmuxctl.KillSession(slice)
+	t.Cleanup(func() { _ = tmuxctl.KillSession(slice) })
+	member := model.SliceMember{Repo: "api", WorktreePath: t.TempDir()}
+	if err := tmuxctl.EnsureSession(slice, []model.SliceMember{member}, tmuxctl.SessionOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := tmuxctl.StartOrRespawnWindow(slice, "review-codex", member.WorktreePath, "printf 'first\\n'"); err != nil {
+		t.Fatal(err)
+	}
+	target := tmuxctl.WindowTarget(slice, "review-codex")
+	waitForOutput := func(want string) {
+		t.Helper()
+		for range 100 {
+			output, err := exec.Command("tmux", "capture-pane", "-p", "-S", "-", "-t", target).Output()
+			if err == nil && strings.Contains(string(output), want) {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("window did not contain %q", want)
+	}
+	waitForOutput("first")
+	if err := tmuxctl.StartOrRespawnWindow(slice, "review-codex", member.WorktreePath, "printf 'second\\n'"); err != nil {
+		t.Fatal(err)
+	}
+	waitForOutput("second")
+	if running, err := tmuxctl.WindowRunning(slice, "review-codex"); err != nil || running {
+		t.Fatalf("completed window running = %v, err = %v", running, err)
+	}
+	if err := tmuxctl.StartOrRespawnWindow(slice, "review-codex", member.WorktreePath, "sleep 30"); err != nil {
+		t.Fatal(err)
+	}
+	if running, err := tmuxctl.WindowRunning(slice, "review-codex"); err != nil || !running {
+		t.Fatalf("active window running = %v, err = %v", running, err)
+	}
+	if err := tmuxctl.StartOrRespawnWindow(slice, "review-codex", member.WorktreePath, "printf blocked"); !errors.Is(err, tmuxctl.ErrWindowBusy) {
+		t.Fatalf("busy window error = %v", err)
+	}
+}
+
+func TestSendPromptOnceSkipsACompletedDelivery(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on PATH")
+	}
+	slice := fmt.Sprintf("slistest-delivery-%d", time.Now().UnixNano())
+	_ = tmuxctl.KillSession(slice)
+	t.Cleanup(func() { _ = tmuxctl.KillSession(slice) })
+	member := model.SliceMember{Repo: "api", WorktreePath: t.TempDir()}
+	if err := tmuxctl.EnsureSession(slice, []model.SliceMember{member}, tmuxctl.SessionOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("tmux", "send-keys", "-t", tmuxctl.SessionName(slice), "cat", "Enter").Run(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	prompt := "slis-once-delivery-marker"
+	if err := tmuxctl.SendPromptOnce(slice, prompt, "run-1:request-1"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	first, err := tmuxctl.CaptureActivePane(slice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstCount := strings.Count(first, prompt)
+	if firstCount == 0 {
+		t.Fatalf("first delivery missing from pane: %q", first)
+	}
+
+	if err := tmuxctl.SendPromptOnce(slice, prompt, "run-1:request-1"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	second, err := tmuxctl.CaptureActivePane(slice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondCount := strings.Count(second, prompt); secondCount != firstCount {
+		t.Fatalf("delivery count = %d, want %d; pane: %q", secondCount, firstCount, second)
+	}
+}
+
+func TestSendPromptOnceSerializesConcurrentDelivery(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on PATH")
+	}
+	slice := fmt.Sprintf("slistest-concurrent-delivery-%d", time.Now().UnixNano())
+	_ = tmuxctl.KillSession(slice)
+	t.Cleanup(func() { _ = tmuxctl.KillSession(slice) })
+	member := model.SliceMember{Repo: "api", WorktreePath: t.TempDir()}
+	if err := tmuxctl.EnsureSession(slice, []model.SliceMember{member}, tmuxctl.SessionOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("tmux", "send-keys", "-t", tmuxctl.SessionName(slice), "cat", "Enter").Run(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	const senders = 8
+	prompt := "slis-concurrent-delivery-marker"
+	start := make(chan struct{})
+	errs := make(chan error, senders)
+	for range senders {
+		go func() {
+			<-start
+			errs <- tmuxctl.SendPromptOnce(slice, prompt, "run-1:request-1")
+		}()
+	}
+	close(start)
+	for range senders {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	pane, err := tmuxctl.CaptureActivePane(slice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(pane, prompt); count != 1 {
+		t.Fatalf("delivery count = %d, want 1; pane: %q", count, pane)
 	}
 }
 

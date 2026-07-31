@@ -59,6 +59,7 @@ CI (`.github/workflows/ci.yml`) runs build + test + lint on ubuntu & macos. **Gr
 | `proc` | process tree sampler (gopsutil) + kill |
 | `hooks` | Claude Code hook handler (`slis hook`) + `init-hooks` installer |
 | `notify` | per-slice status event store + desktop notification + fsnotify watch |
+| `reviewrun` | persistent agent-review conversations: status, messages, findings, and tmux-window identity |
 | `summary` | commit summary + `claude -p` AI summary (glamour render) |
 | `forge` | **read-only** `gh` wrapper: PR info, CI status, comments, stack markdown |
 | `diff` | combined per-slice diff (numstat + patch); `SliceDiff`/`SliceStat`/`CommitSummary` take `base=""` to auto-detect each repo's trunk |

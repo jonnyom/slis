@@ -179,6 +179,13 @@ var createCmd = &cobra.Command{
 		rawName := args[0]
 		noWorktrees, _ := cmd.Flags().GetBool("no-worktrees")
 		noFetch, _ := cmd.Flags().GetBool("no-fetch")
+		allowFromSlice, _ := cmd.Flags().GetBool("allow-from-slice")
+
+		if !noWorktrees {
+			if err := managedSliceMutationGuard(allowFromSlice, "create a managed slice"); err != nil {
+				return err
+			}
+		}
 
 		if err := validateSliceName(rawName); err != nil {
 			return err
@@ -279,5 +286,6 @@ var createCmd = &cobra.Command{
 func init() {
 	createCmd.Flags().Bool("no-worktrees", false, "Print what would be created without running git")
 	createCmd.Flags().Bool("no-fetch", false, "Skip fetching origin trunk before forking new worktrees")
+	createCmd.Flags().Bool("allow-from-slice", false, "Allow creating a separate managed slice from inside another slice")
 	rootCmd.AddCommand(createCmd)
 }

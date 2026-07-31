@@ -14,9 +14,10 @@ import (
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
-const Schema = `{"type":"object","additionalProperties":false,"properties":{"comments":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"repo":{"type":"string"},"file":{"type":"string"},"line":{"type":"integer","minimum":1},"end_line":{"type":"integer","minimum":0},"side":{"type":"string","enum":["new","old"]},"body":{"type":"string"}},"required":["repo","file","line","end_line","side","body"]}}},"required":["comments"]}`
+const Schema = `{"type":"object","additionalProperties":false,"properties":{"summary":{"type":"string"},"comments":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"repo":{"type":"string"},"file":{"type":"string"},"line":{"type":"integer","minimum":1},"end_line":{"type":"integer","minimum":0},"side":{"type":"string","enum":["new","old"]},"body":{"type":"string"}},"required":["repo","file","line","end_line","side","body"]}}},"required":["summary","comments"]}`
 
 type Finding struct {
 	Repo    string `json:"repo"`
@@ -27,7 +28,13 @@ type Finding struct {
 	Body    string `json:"body"`
 }
 
+type Result struct {
+	Summary  string    `json:"summary"`
+	Findings []Finding `json:"comments"`
+}
+
 type output struct {
+	Summary          string    `json:"summary"`
 	Comments         []Finding `json:"comments"`
 	StructuredOutput *output   `json:"structured_output"`
 }
@@ -69,47 +76,63 @@ func ResolveAgent(sessions config.Sessions, name string, lookPath LookPath) (con
 }
 
 func Run(ctx context.Context, cwd string, slice model.Slice, agent config.AgentSpec, execute Execute) ([]Finding, error) {
-	temporaryDirectory, err := os.MkdirTemp("", "slis-agent-review-")
+	result, err := RunResult(ctx, cwd, slice, agent, Prompt(slice), execute)
 	if err != nil {
 		return nil, err
+	}
+	return result.Findings, nil
+}
+
+func RunResult(ctx context.Context, cwd string, slice model.Slice, agent config.AgentSpec, prompt string, execute Execute) (Result, error) {
+	temporaryDirectory, err := os.MkdirTemp("", "slis-agent-review-")
+	if err != nil {
+		return Result{}, err
 	}
 	defer os.RemoveAll(temporaryDirectory)
 
 	schemaPath := filepath.Join(temporaryDirectory, "schema.json")
 	resultPath := filepath.Join(temporaryDirectory, "result.json")
 	if err := os.WriteFile(schemaPath, []byte(Schema), 0o600); err != nil {
-		return nil, err
+		return Result{}, err
 	}
-	command, err := Command(agent, Prompt(slice), schemaPath, resultPath)
+	command, err := Command(agent, prompt, schemaPath, resultPath)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 	stdout, err := execute(ctx, cwd, command)
 	if err != nil {
 		message := strings.TrimSpace(string(stdout))
 		if message == "" {
-			return nil, fmt.Errorf("reviewer agent %q failed: %w", agent.Name, err)
+			return Result{}, fmt.Errorf("reviewer agent %q failed: %w", agent.Name, err)
 		}
-		return nil, fmt.Errorf("reviewer agent %q failed: %w: %s", agent.Name, err, message)
+		return Result{}, fmt.Errorf("reviewer agent %q failed: %w: %s", agent.Name, err, message)
 	}
 	result, readErr := os.ReadFile(resultPath)
 	if readErr == nil && len(bytes.TrimSpace(result)) > 0 {
 		stdout = result
 	} else if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return nil, readErr
+		return Result{}, readErr
 	}
-	findings, err := ParseOutput(stdout)
+	reviewResult, err := ParseResult(stdout)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s review: %w", agent.Name, err)
+		return Result{}, fmt.Errorf("parse %s review: %w", agent.Name, err)
 	}
-	if err := ValidateFindings(slice, findings); err != nil {
-		return nil, fmt.Errorf("validate %s review: %w", agent.Name, err)
+	if err := ValidateFindings(slice, reviewResult.Findings); err != nil {
+		return Result{}, fmt.Errorf("validate %s review: %w", agent.Name, err)
 	}
-	return findings, nil
+	if strings.TrimSpace(reviewResult.Summary) == "" {
+		if len(reviewResult.Findings) == 0 {
+			reviewResult.Summary = "Review completed with no findings."
+		} else {
+			reviewResult.Summary = fmt.Sprintf("Review completed with %d finding(s).", len(reviewResult.Findings))
+		}
+	}
+	return reviewResult, nil
 }
 
 func ExecuteCommand(ctx context.Context, cwd string, command []string) ([]byte, error) {
 	process := exec.CommandContext(ctx, command[0], command[1:]...)
+	subproc.Configure(process)
 	process.Dir = cwd
 	return process.CombinedOutput()
 }
@@ -139,14 +162,25 @@ func Command(agent config.AgentSpec, prompt, schemaPath, resultPath string) ([]s
 }
 
 func ParseOutput(raw []byte) ([]Finding, error) {
+	result, err := ParseResult(raw)
+	if err != nil {
+		return nil, err
+	}
+	return result.Findings, nil
+}
+
+func ParseResult(raw []byte) (Result, error) {
 	for start := bytes.IndexByte(raw, '{'); start >= 0; {
 		var decoded output
 		if err := json.NewDecoder(bytes.NewReader(raw[start:])).Decode(&decoded); err == nil {
 			if decoded.StructuredOutput != nil {
-				return decoded.StructuredOutput.Comments, nil
+				return Result{
+					Summary:  decoded.StructuredOutput.Summary,
+					Findings: decoded.StructuredOutput.Comments,
+				}, nil
 			}
 			if decoded.Comments != nil {
-				return decoded.Comments, nil
+				return Result{Summary: decoded.Summary, Findings: decoded.Comments}, nil
 			}
 		}
 		next := bytes.IndexByte(raw[start+1:], '{')
@@ -155,7 +189,7 @@ func ParseOutput(raw []byte) ([]Finding, error) {
 		}
 		start += next + 1
 	}
-	return nil, fmt.Errorf("reviewer agent did not return the required JSON object")
+	return Result{}, fmt.Errorf("reviewer agent did not return the required JSON object")
 }
 
 func ValidateFindings(slice model.Slice, findings []Finding) error {

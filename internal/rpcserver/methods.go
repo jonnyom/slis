@@ -11,6 +11,7 @@ import (
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/jonnyom/slis/internal/review"
+	"github.com/jonnyom/slis/internal/reviewrun"
 	"github.com/jonnyom/slis/internal/safeterm"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
@@ -115,6 +116,26 @@ func (s *Server) comments(raw json.RawMessage) (interface{}, *rpcError) {
 		return nil, serverErr(err.Error(), "")
 	}
 	return store, nil
+}
+
+func (s *Server) reviewRuns(raw json.RawMessage) (interface{}, *rpcError) {
+	var params reviewRunsParams
+	if responseError := decodeParams(raw, &params); responseError != nil {
+		return nil, responseError
+	}
+	store := reviewrun.Open(s.sp.StateDir)
+	if !params.IncludeMessages {
+		runs, err := store.List(params.Slice)
+		if err != nil {
+			return nil, serverErr(err.Error(), "")
+		}
+		return runs, nil
+	}
+	details, err := store.ListDetails(params.Slice)
+	if err != nil {
+		return nil, serverErr(err.Error(), "")
+	}
+	return details, nil
 }
 
 // conflicts returns the same payload as `slis conflicts --json`.

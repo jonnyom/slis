@@ -134,6 +134,11 @@ type optionalSliceParams struct {
 }
 
 // diffParams selects the diff scope and format for the `diff` method.
+type reviewRunsParams struct {
+	Slice           string `json:"slice"`
+	IncludeMessages bool   `json:"include_messages"`
+}
+
 type diffParams struct {
 	Slice  string `json:"slice"`
 	Scope  string `json:"scope"`

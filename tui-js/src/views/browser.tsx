@@ -9,6 +9,7 @@ import type {
   DiffResult,
   LsResult,
   PrStackEntry,
+  ReviewRun,
   RpcClient,
 } from "../rpc/types";
 import {
@@ -35,6 +36,7 @@ import {
   type StackLeader,
 } from "../state/cluster";
 import type { CockpitEntry } from "./cockpit.hints";
+import { isMethodNotFound } from "../rpc/client";
 import { listHints } from "./browser.hints";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
@@ -104,12 +106,14 @@ const SliceRow = memo(function SliceRow({
   focused,
   listFocused,
   selected,
+  reviewRun,
   themeVersion: _themeVersion,
 }: {
   view: SliceView;
   focused: boolean;
   listFocused: boolean;
   selected: boolean;
+  reviewRun?: ReviewRun;
   themeVersion: string;
 }): ReactNode {
   const a = attention(view);
@@ -142,6 +146,21 @@ const SliceRow = memo(function SliceRow({
         </span>
         {view.slice.active ? <span fg={theme.good}> {glyph.live}</span> : null}
         {view.slice.stale ? <span fg={theme.attn}> {glyph.stale}</span> : null}
+        {reviewRun ? (
+          <span
+            fg={
+              reviewRun.status === "failed"
+                ? theme.bad
+                : reviewRun.status === "findings"
+                  ? theme.attn
+                  : reviewRun.status === "running" || reviewRun.status === "queued"
+                    ? theme.focus
+                    : theme.good
+            }
+          >
+            {`  review:${reviewRun.status}${reviewRun.finding_count ? `(${reviewRun.finding_count})` : ""}`}
+          </span>
+        ) : null}
       </text>
     </box>
   );
@@ -564,6 +583,44 @@ export function Browser(props: BrowserProps): ReactNode {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [search, setSearch] = useState("");
+  const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
+  const [reviewRunsSupported, setReviewRunsSupported] = useState(true);
+
+  useEffect(() => {
+    if (!reviewRunsSupported) return;
+    let live = true;
+    const load = () =>
+      props.client.reviewRuns().then(
+        (runs) => {
+          if (live) setReviewRuns(runs);
+        },
+        (error) => {
+          if (!live) return;
+          if (isMethodNotFound(error)) {
+            setReviewRunsSupported(false);
+            return;
+          }
+          props.overlays.error(
+            "Review status unavailable",
+            error instanceof Error ? error.message : String(error),
+          );
+        },
+      );
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [props.client, reviewRunsSupported]);
+
+  const latestReviewBySlice = useMemo(() => {
+    const latest = new Map<string, ReviewRun>();
+    for (const run of reviewRuns) {
+      if (!latest.has(run.slice)) latest.set(run.slice, run);
+    }
+    return latest;
+  }, [reviewRuns]);
 
   const filter = FILTERS[filterIndex]!;
   const filtered = useMemo(() => {
@@ -869,6 +926,7 @@ export function Browser(props: BrowserProps): ReactNode {
                       focused={i === focusIndex}
                       listFocused={hubFocus === "list"}
                       selected={selected.has(row.view.slice.name)}
+                      reviewRun={latestReviewBySlice.get(row.view.slice.name)}
                       themeVersion={props.themeVersion}
                     />
                   </box>

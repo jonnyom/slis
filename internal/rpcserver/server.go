@@ -293,6 +293,8 @@ func (s *Server) dispatch(ctx context.Context, req request) (interface{}, *rpcEr
 		return s.comments(req.Params)
 	case "reviews":
 		return s.reviews(req.Params)
+	case "reviewRuns":
+		return s.reviewRuns(req.Params)
 	case "conflicts":
 		return s.gated(ctx, func() (interface{}, *rpcError) { return s.conflicts(ctx) })
 	case "diff":

@@ -108,6 +108,13 @@ async function main() {
   await sleep(1200);
   const sawMarker = vt.getText().includes(marker);
 
+  const pastedMarker = "SLIS_PASTE_" + Date.now();
+  pty.write(`\x1b[200~printf '${pastedMarker}\\n'\x1b[201~`);
+  await sleep(200);
+  pty.write("\r");
+  await sleep(1200);
+  const pasteReachedTerminal = vt.getText().includes(pastedMarker);
+
   // ctrl+c belongs to the embedded terminal while it has focus. Prove the app
   // survives it and the PTY still accepts a subsequent command.
   pty.write("\x03");
@@ -191,6 +198,7 @@ async function main() {
     key_a_opens_terminal_tab: sawTabBar,
     terminal_surface_hides_browser: browserHidden,
     keystrokes_reach_embedded_shell: sawMarker,
+    paste_reaches_embedded_shell: pasteReachedTerminal,
     ctrl_c_reaches_embedded_terminal: ctrlCReachedTerminal,
     sustained_terminal_output_stays_clean: sustainedOutputClean,
     ctrl_q_returns_to_browser: backToBrowser,

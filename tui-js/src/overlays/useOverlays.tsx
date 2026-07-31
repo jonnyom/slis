@@ -43,6 +43,8 @@ import {
   restackSlice,
   reviewAdd,
   reviewAgent,
+  reviewAttachArgv,
+  reviewMessage as sendReviewMessage,
   reviewRm,
   reviewSend,
   scatterStack,
@@ -66,6 +68,7 @@ import {
   AgentBusyOverlay,
   RemoveOverlay,
   ResultOverlay,
+  ReviewMessageOverlay,
   ReviewListOverlay,
   StackActionsHelpOverlay,
   StackActionsOverlay,
@@ -120,6 +123,7 @@ type Overlay =
   | { kind: "conflicts"; scroll: number }
   | { kind: "summary"; slice: string; ai: boolean; loading: boolean; text: string; scroll: number }
   | { kind: "comment"; ctx: CommentContext; text: string; onAdded: () => void }
+  | { kind: "reviewMessage"; runId: string; agent: string; text: string; onSent: () => void }
   | {
       kind: "review";
       slice: string;
@@ -163,6 +167,14 @@ export interface OverlayApi {
   // F2 inline review: comment composer + pending-review overlay.
   comment(ctx: CommentContext, onAdded: () => void): void;
   review(slice: string, onChanged: () => void, agents: AgentSpec[], preferredAgent?: string): void;
+  reviewStart(
+    slice: string,
+    agents: AgentSpec[],
+    preferredAgent: string | undefined,
+    onStarted: () => void,
+  ): void;
+  reviewMessage(runId: string, agent: string, onSent: () => void): void;
+  reviewAttach(runId: string, agent: string): void;
   editor(slice: string, repo?: string, path?: string, line?: number): void;
   agentPicker(
     slice: string,
@@ -255,7 +267,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
       overlay?.kind !== "create" &&
       overlay?.kind !== "adopt" &&
       overlay?.kind !== "group" &&
-      overlay?.kind !== "comment"
+      overlay?.kind !== "comment" &&
+      overlay?.kind !== "reviewMessage"
     ) {
       return;
     }
@@ -488,6 +501,50 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     summary: openSummary,
     comment: (ctx, onAdded) => setOverlay({ kind: "comment", ctx, text: "", onAdded }),
     review: openReview,
+    reviewStart: (slice, agents, preferredAgent, onStarted) => {
+      const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
+      setOverlay({
+        kind: "agentPicker",
+        purpose: "review",
+        slice,
+        agents,
+        sel: preferred >= 0 ? preferred : 0,
+        preferredAgent,
+        onPick: (agent) => {
+          setOverlay({ kind: "working", text: `${agent.name} is reviewing ${slice}…` });
+          reviewAgent(slice, agent.name).then(
+            (result) => {
+              if (result.code === 0) {
+                onStarted();
+                refresh();
+                toast(`${agent.name} review started for ${slice}`, "ci-pass");
+                close();
+              } else {
+                setOverlay({
+                  kind: "result",
+                  title: `${agent.name} review — failed`,
+                  body:
+                    (result.stdout + (result.stderr ? `\n${result.stderr}` : "")).trim() ||
+                    "(no output)",
+                  status: "failure",
+                });
+              }
+            },
+            (error) =>
+              setOverlay({
+                kind: "result",
+                title: `${agent.name} review — failed`,
+                body: String(error),
+                status: "failure",
+              }),
+          );
+        },
+      });
+    },
+    reviewMessage: (runId, agent, onSent) =>
+      setOverlay({ kind: "reviewMessage", runId, agent, text: "", onSent }),
+    reviewAttach: (runId, agent) =>
+      runInteractive(reviewAttachArgv(runId), `${agent} review`),
     editor: openEditor,
     agentPicker: (slice, agents, onPick, preferredAgent) => {
       const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
@@ -763,6 +820,43 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           );
         } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
         return;
+      case "reviewMessage":
+        if (isCancel) close();
+        else if (isEnter) {
+          const body = overlay.text;
+          if (!body.trim()) {
+            close();
+            return;
+          }
+          const { runId, agent, onSent } = overlay;
+          setOverlay({ kind: "working", text: `Messaging ${agent}…` });
+          sendReviewMessage(runId, body).then(
+            (result) => {
+              if (result.code === 0) {
+                onSent();
+                toast(`Message sent to ${agent}`, "ci-pass");
+                close();
+              } else {
+                setOverlay({
+                  kind: "result",
+                  title: `Message ${agent} — failed`,
+                  body:
+                    (result.stdout + (result.stderr ? `\n${result.stderr}` : "")).trim() ||
+                    "(no output)",
+                  status: "failure",
+                });
+              }
+            },
+            (error) =>
+              setOverlay({
+                kind: "result",
+                title: `Message ${agent} — failed`,
+                body: String(error),
+                status: "failure",
+              }),
+          );
+        } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
+        return;
       case "review": {
         const { slice, comments, sel, confirmSend, onChanged, agents, preferredAgent } = overlay;
         if (confirmSend) {
@@ -951,6 +1045,8 @@ function renderOverlay(
       );
     case "comment":
       return <CommentComposerOverlay ctx={overlay.ctx} text={overlay.text} />;
+    case "reviewMessage":
+      return <ReviewMessageOverlay agent={overlay.agent} text={overlay.text} />;
     case "review":
       return (
         <ReviewListOverlay

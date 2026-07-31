@@ -24,6 +24,7 @@ import type {
   StatusEntry,
   PrStackEntry,
   ReviewComment,
+  ReviewRun,
   TreeResult,
 } from "./types";
 
@@ -370,6 +371,12 @@ export class SlisRpcClient implements RpcClient {
   }
   reviews(params?: { slice?: string }): Promise<ReviewComment[]> {
     return this.call<ReviewComment[]>("reviews", params?.slice ? { slice: params.slice } : {});
+  }
+  reviewRuns(params?: { slice?: string; includeMessages?: boolean }): Promise<ReviewRun[]> {
+    return this.call<ReviewRun[]>("reviewRuns", {
+      ...(params?.slice ? { slice: params.slice } : {}),
+      ...(params?.includeMessages ? { include_messages: true } : {}),
+    });
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────

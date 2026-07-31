@@ -330,6 +330,11 @@ spans every repo. strip_prefix is applied exactly once.`,
 		noSession, _ := cmd.Flags().GetBool("no-session")
 		move, _ := cmd.Flags().GetBool("move")
 		createMissing, _ := cmd.Flags().GetBool("create-missing")
+		allowFromSlice, _ := cmd.Flags().GetBool("allow-from-slice")
+
+		if err := managedSliceMutationGuard(allowFromSlice, "adopt a branch as a managed slice"); err != nil {
+			return err
+		}
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
@@ -371,5 +376,6 @@ func init() {
 	adoptCmd.Flags().Bool("no-session", false, "Do not create a tmux session for the adopted slice")
 	adoptCmd.Flags().Bool("move", false, "Detach the primary holding the branch (stashing any uncommitted work) so it can move into the worktree")
 	adoptCmd.Flags().Bool("create-missing", false, "In repos that don't have the branch, create it off trunk so the slice spans every repo")
+	adoptCmd.Flags().Bool("allow-from-slice", false, "Allow adopting a separate managed slice from inside another slice")
 	rootCmd.AddCommand(adoptCmd)
 }

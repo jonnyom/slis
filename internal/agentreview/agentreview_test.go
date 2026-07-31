@@ -16,6 +16,18 @@ func TestSchemaRequiresEveryObjectProperty(t *testing.T) {
 	if err := json.Unmarshal([]byte(Schema), &schema); err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := schema["properties"].(map[string]any)["summary"]; !ok {
+		t.Fatal("schema does not include summary")
+	}
+	rootRequired := make(map[string]bool)
+	for _, name := range schema["required"].([]any) {
+		rootRequired[name.(string)] = true
+	}
+	for name := range schema["properties"].(map[string]any) {
+		if !rootRequired[name] {
+			t.Errorf("root property %q is not required", name)
+		}
+	}
 	comments := schema["properties"].(map[string]any)["comments"].(map[string]any)
 	item := comments["items"].(map[string]any)
 	required := make(map[string]bool)
@@ -103,6 +115,21 @@ func TestParseOutput(t *testing.T) {
 	}
 }
 
+func TestParseResultIncludesAReadableReview(t *testing.T) {
+	raw := []byte(`{"summary":"The stack needs two changes.","comments":[{"repo":"api","file":"payroll/run.go","line":42,"end_line":44,"side":"new","body":"This can lose updates."}]}`)
+
+	result, err := ParseResult(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary != "The stack needs two changes." {
+		t.Fatalf("summary = %q", result.Summary)
+	}
+	if len(result.Findings) != 1 || result.Findings[0].Body != "This can lose updates." {
+		t.Fatalf("findings = %#v", result.Findings)
+	}
+}
+
 func TestValidateFindings(t *testing.T) {
 	slice := model.Slice{Name: "feature", Members: map[string]model.SliceMember{
 		"api": {Repo: "api", Branch: "feature", WorktreePath: "/tmp/api"},
@@ -154,5 +181,26 @@ func TestRunParsesAndValidatesAgentOutput(t *testing.T) {
 	}
 	if len(findings) != 1 || findings[0].Body != "Race on shared state." {
 		t.Fatalf("findings = %#v", findings)
+	}
+}
+
+func TestRunResultReturnsTheReadableReview(t *testing.T) {
+	slice := model.Slice{Name: "feature", Members: map[string]model.SliceMember{
+		"api": {Repo: "api", Branch: "feature", WorktreePath: "/work/api"},
+	}}
+	agent := config.AgentSpec{Name: "Claude Code", Cmd: []string{"claude"}}
+	execute := func(_ context.Context, _ string, _ []string) ([]byte, error) {
+		return []byte(`{"summary":"No correctness issues found.","comments":[]}`), nil
+	}
+
+	result, err := RunResult(context.Background(), "/workspace", slice, agent, "follow-up prompt", execute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary != "No correctness issues found." {
+		t.Fatalf("summary = %q", result.Summary)
+	}
+	if len(result.Findings) != 0 {
+		t.Fatalf("findings = %#v", result.Findings)
 	}
 }

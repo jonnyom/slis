@@ -37,6 +37,7 @@ import type {
   PrStackEntry,
   ProcsResult,
   ReviewComment,
+  ReviewRun,
   RpcClient,
 } from "../rpc/types";
 import { isMethodNotFound } from "../rpc/client";
@@ -85,6 +86,7 @@ import { DiffView, type DiffMode } from "../components/diffview";
 import { FileTree } from "../components/filetree";
 import { FileView, contentLines } from "../components/fileview";
 import { SessionCloseConfirmation } from "../components/sessionoverlay";
+import { ReviewsRight, ReviewsSection } from "../components/reviewruns";
 import { TerminalLink } from "../components/terminal-link";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
@@ -942,6 +944,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [reviews, setReviews] = useState<ReviewComment[]>([]);
   const [reviewsNonce, setReviewsNonce] = useState(0);
   const [reviewsSupported, setReviewsSupported] = useState(true);
+  const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
+  const [reviewRunSel, setReviewRunSel] = useState(0);
+  const [reviewRunsNonce, setReviewRunsNonce] = useState(0);
+  const [reviewRunsSupported, setReviewRunsSupported] = useState(true);
   const [fileCursor, setFileCursor] = useState(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const richDiffRequestRef = useRef(0);
@@ -1140,6 +1146,27 @@ export function Cockpit(props: CockpitProps): ReactNode {
   }, [client, slice, reviewsNonce, reviewsSupported]);
 
   const bumpReviews = () => setReviewsNonce((n) => n + 1);
+  const refreshReviewRuns = () => setReviewRunsNonce((nonce) => nonce + 1);
+
+  useEffect(() => {
+    if (!reviewRunsSupported) return;
+    let live = true;
+    const load = () =>
+      client.reviewRuns({ slice, includeMessages: true }).then(
+        (runs) => {
+          if (live) setReviewRuns(runs);
+        },
+        (error) => {
+          if (live && isMethodNotFound(error)) setReviewRunsSupported(false);
+        },
+      );
+    load();
+    const timer = setInterval(load, panel === "reviews" ? 1000 : 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [client, slice, panel, reviewRunsNonce, reviewRunsSupported]);
 
   // Leaving the Stack panel (or changing slice) drops back to its summary.
   useEffect(() => {
@@ -1178,6 +1205,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (row) setStackSelKey(`${row.repo}\t${row.branch}`);
     } else if (panel === "prs")
       setPrSel((i) => Math.max(0, Math.min((view.prs?.length ?? 1) - 1, i + delta)));
+    else if (panel === "reviews")
+      setReviewRunSel((i) => clampSel(i + delta, reviewRuns.length));
     else if (panel === "procs")
       setProcSel((i) => Math.max(0, Math.min(procRows.length - 1, i + delta)));
     else if (panel === "session")
@@ -1608,6 +1637,19 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (selectedTmuxSession) props.onOpenExistingSession(slice, selectedTmuxSession.name);
       return;
     }
+    if (panel === "reviews") {
+      const run = reviewRuns[reviewRunSel];
+      if (name === "n")
+        return overlays.reviewStart(
+          slice,
+          props.agents,
+          props.preferredAgent,
+          refreshReviewRuns,
+        );
+      if (name === "m" && run)
+        return overlays.reviewMessage(run.id, run.agent, refreshReviewRuns);
+      if (name === "a" && run) return overlays.reviewAttach(run.id, run.agent);
+    }
     // Enter on any other panel zooms the right pane full-width (enter/esc restores).
     if (name === "return" || name === "enter") {
       setZoomed((z) => !z);
@@ -1622,7 +1664,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       setPanel((p) => cyclePanel(p, -1));
       return;
     }
-    if (name >= "1" && name <= "4") {
+    if (name >= "1" && name <= "5") {
       setPanel(PANEL_ORDER[Number(name) - 1]!);
       return;
     }
@@ -1692,6 +1734,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setPrSel((i) => Math.max(0, Math.min(i, (view.prs?.length ?? 1) - 1)));
   }, [view.prs?.length]);
   useEffect(() => {
+    setReviewRunSel((index) => clampSel(index, reviewRuns.length));
+  }, [reviewRuns.length]);
+  useEffect(() => {
     setProcSel((i) => Math.max(0, Math.min(i, Math.max(0, procRows.length - 1))));
   }, [procRows.length]);
   useEffect(() => {
@@ -1724,8 +1769,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     1,
     Math.min(2, monitor.result?.slices[0]?.procs.length ?? 0),
   );
-  const sidebarSectionHeaderRows = 4;
-  const sidebarDividerRows = 3;
+  const reviewContentRows = Math.max(1, Math.min(2, reviewRuns.length));
+  const sidebarSectionHeaderRows = 5;
+  const sidebarDividerRows = 4;
   const sessionContentRows = 2;
   const stackContentRows = Math.max(
     1,
@@ -1734,6 +1780,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       sidebarDividerRows -
       sessionContentRows -
       prContentRows -
+      reviewContentRows -
       processContentRows,
   );
 
@@ -1750,6 +1797,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
         return ciLog
           ? `${ciLog.repo}${arrow}CI log`
           : `${view.prs?.[prSel]?.repo ?? slice}${arrow}PR`;
+      case "reviews":
+        return `${slice}${arrow}${reviewRuns[reviewRunSel]?.agent ?? "Reviews"}`;
       case "session":
         return `${slice}${arrow}Sessions`;
       case "procs":
@@ -1767,6 +1816,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
     prSel,
     slice,
     ciLog,
+    reviewRuns,
+    reviewRunSel,
   ]);
 
   const hints = useMemo(
@@ -1889,6 +1940,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
             <Divider width={dividerW} />
             <PrsSection view={view} focused={panel === "prs"} prSel={prSel} />
             <Divider width={dividerW} />
+            <ReviewsSection
+              runs={reviewRuns}
+              focused={panel === "reviews"}
+              selected={reviewRunSel}
+            />
+            <Divider width={dividerW} />
             <SessionSection
               view={view}
               focused={panel === "session"}
@@ -1971,6 +2028,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
                     width={props.width - leftW}
                   />
                 )
+              ) : panel === "reviews" ? (
+                <ReviewsRight
+                  runs={reviewRuns}
+                  selected={reviewRunSel}
+                  width={Math.max(20, props.width - leftW - 8)}
+                />
               ) : panel === "session" ? (
                 <SessionRight
                   view={view}
