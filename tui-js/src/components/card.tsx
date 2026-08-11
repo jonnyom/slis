@@ -20,6 +20,11 @@ export function Card({
   width,
   hints,
   scrim = true,
+  borderColor = theme.focus,
+  titleColor: titleColorOverride,
+  backgroundColor = theme.surface,
+  paddingTop = 1,
+  paddingBottom = 1,
   children,
 }: {
   id?: string;
@@ -29,6 +34,11 @@ export function Card({
   width?: number;
   hints?: Hint[];
   scrim?: boolean;
+  borderColor?: string;
+  titleColor?: string;
+  backgroundColor?: string;
+  paddingTop?: number;
+  paddingBottom?: number;
   children: ReactNode;
 }): ReactNode {
   const { width: termWidth } = useTerminalDimensions();
@@ -37,7 +47,7 @@ export function Card({
   const statusStyle = status ? resultStatusStyle(status) : undefined;
   const statusColor = statusStyle?.color;
   const statusGlyph = statusStyle?.glyph ?? "";
-  const titleColor = statusColor ?? theme.focus;
+  const titleColor = titleColorOverride ?? statusColor ?? theme.focus;
   const titleText = statusColor ? `${statusGlyph} ${title}` : title;
 
   return (
@@ -56,14 +66,16 @@ export function Card({
         id={id}
         border
         borderStyle="rounded"
-        borderColor={theme.focus}
+        borderColor={borderColor}
         title={titleText}
         titleColor={titleColor}
         flexDirection="column"
         padding={1}
+        paddingTop={paddingTop}
+        paddingBottom={paddingBottom}
         width={clamped}
         overflow="hidden"
-        backgroundColor={theme.surface}
+        backgroundColor={backgroundColor}
         zIndex={20}
       >
         {statusColor ? (
