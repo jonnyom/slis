@@ -1,0 +1,266 @@
+internal/report/diff.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 5,20-25,35,39-40,52-53,157-161,168,170,172,175,177,179,227-234,237,265-266,275,294,301,304,307
+internal/gt/restack.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 7-8,26-27,29
+internal/cli/adopt.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 333-337,379
+internal/gt/refs.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,23-28,46,110-116,121
+internal/discovery/stalename_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-31
+tui-js/src/term/embedded.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-14
+AGENTS.md
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-3
+internal/gt/gt.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 13-14,86-92,98-106,109,242-264,266
+  s_f1dc76fc57609a::t_58a3068b0c0404 265,267
+tui-js/src/components/initialscreen.test.tsx
+  s_f1dc76fc57609a::t_91966ac5ca913a 91,93-95,97-98
+  s_f1dc76fc57609a::t_168afef237eddc 21-25
+  s_f1dc76fc57609a::t_d036cbf3334a35 92,96
+internal/tmuxctl/tmux.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 7-9,17,20,24,40-48,199-204,206-208,218-220,223-225,283-348,519-581,584-588,590-592,623-642
+  s_f1dc76fc57609a::t_2ce344e4c6c508 643
+internal/radar/fanout_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-167
+internal/cli/doctor.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 309,446,449-451,453
+internal/subproc/subproc.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-46
+tui-js/src/term/scroll.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-55
+internal/gt/spawn_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-84
+internal/tmuxctl/tmux_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,9,70-212
+  s_f1dc76fc57609a::t_65871b6450c0e7 213
+.gitattributes
+  s_f1dc76fc57609a::t_d1a199dacbf635 1
+tui-js/src/rpc/mutate.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 309-320
+internal/cli/ls.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 13,88,111-133,147-154
+internal/git/branch_rename_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-49
+internal/tui/slicelist.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 248,250
+internal/cli/doctor_worktrees.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 31-32,74-110,225-228,235-240,251-269,272-273,283
+tui-js/src/components/help.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 75
+internal/cli/create.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 182-188,289
+tui-js/src/term/agentpick.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 59-70
+internal/summary/summary.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 32-36,41,48-52,58,63
+internal/radar/radar.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 18,146-202,207,214-215,225-229,231-232,235-236,241-254
+internal/discovery/registry_scan_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 6,13,625-729
+internal/cli/review.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 24,46-50,281-282,284-288,290,293-296,436,463-466,469,509,511
+internal/cli/doctor_stalename_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-88
+tui-js/src/term/feed.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-52
+internal/rpcserver/types.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 18-20,38-43,76-80,137-141
+internal/subproc/group_unix.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-30
+tui-js/src/components/selection-clipboard.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-43
+internal/gt/lineage_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,88-95
+  s_f1dc76fc57609a::t_f76467361534b6 96-97
+internal/git/tree.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,27-31,36
+README.md
+  s_f1dc76fc57609a::t_d1a199dacbf635 238-243,303-306
+internal/git/branch_rename.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-41
+internal/cli/ls_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 256-295
+tui-js/src/app.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 36-42,44-49,109,453-460,466-467,470,475,477-478,481,649-693,761,782,792
+internal/rpcserver/rpcserver_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 21,346,560-588
+  s_f1dc76fc57609a::t_4eb6751095008f 589
+internal/subproc/group_other.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-16
+tui-js/src/term/tmux.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 118-124,134-212,216-217,222
+internal/git/status.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 3-6,25-27
+  s_f1dc76fc57609a::t_3a9cc4ac8625cf 28-29
+internal/rpcserver/cancel_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-293
+internal/cli/slice_context_guard_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-74
+internal/discovery/overrides.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 7,12,150,154-209,221,226-229,231-258,262-268
+tui-js/src/term/tabs.selection.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 4-7,17,27-42
+tui-js/src/overlays/overlays.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 312-347,393-413,415-417
+  s_f1dc76fc57609a::t_e4439fed6e9532 414,418
+tui-js/src/views/browser.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 12,39,109,116,149-163,586-623,929
+tui-js/src/views/cockpit.hints.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 7,9,23,125-131
+  s_f1dc76fc57609a::t_e02f9dc24c4b91 132
+internal/git/base.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 3-6,15-24,26,28,34,42,46,49,57-62
+internal/discovery/overrides_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 203-411
+internal/discovery/stacks.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4-5,12,24,40
+tui-js/src/term/links.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-32
+internal/report/report_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4-5,9-10,51-100
+  s_f1dc76fc57609a::t_994ffd95d7b1e0 101
+internal/gt/track.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 6-7,23-24,26
+tui-js/src/term/tabs.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 8,16-22,25,28,36-37,94,106,108-111,121,141,172,298-309,318
+internal/discovery/registry_scan.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 21-66,92-97,139-143,145-152
+internal/git/blob.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,12-17,27-32,45-49
+tui-js/src/components/selection-clipboard.test.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-82
+tui-js/src/rpc/types.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 296-317,396
+tui-js/src/rpc/fake.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 25,44,67,616-648
+  s_f1dc76fc57609a::t_a5efbcb30c7260 649-650
+internal/tui/cockpit.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 294-295,300
+tui-js/src/rpc/mutate.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 7-8,65-78
+  s_f1dc76fc57609a::t_0b106ba5db428e 79-80
+internal/subproc/subproc_unix_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-127
+internal/reviewrun/store_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-255
+tui-js/src/term/input.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-17
+internal/cli/registry.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 69,73-75,150-169,178,180,182,190
+tui-js/src/overlays/useOverlays.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 46-47,68,71,91-98,126,150-158,170-177,270-271,491-492,504-547,637-647,823-859,996-999,1048-1049
+tui-js/src/term/input.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-24
+tui-js/src/views/cockpit.hints.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 14,18,24,28,43,132-136
+  s_f1dc76fc57609a::t_54a9b8c5327bd8 137-138
+tui-js/src/term/repaint.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-16
+internal/git/git.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 12-13,73,84-85,89-93,96
+tui-js/src/rpc/client-exit.test.ts
+  s_f1dc76fc57609a::t_5bdd97036ed193 18,37-53
+  s_f1dc76fc57609a::t_91966ac5ca913a 1-17,19-36,54
+skills/slis/SKILL.md
+  s_f1dc76fc57609a::t_d1a199dacbf635 39,63,67-68,72-74,96-98
+internal/cli/review_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 12,37-39,45-77
+  s_f1dc76fc57609a::t_314250a3830274 78
+internal/gt/spawn.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-42
+internal/agentreview/agentreview_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 19-30,118-132,186-205
+  s_f1dc76fc57609a::t_c67bcf0b93d516 206
+internal/forge/forge.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 14,19,314-323,328,331,361-363,378-433,455,513,636,652-658,666-667
+internal/radar/integration_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,10,63
+tui-js/src/components/sessionoverlay.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 80-143
+internal/agentreview/agentreview.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 17,20,31-35,37,79,83-90,96,98,100,106,108,114,116,118-121,123-128,130,135,165-172,177-180,183,192
+tui-js/src/rpc/coalesce.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-96
+tui-js/src/rpc/client.ts
+  s_f1dc76fc57609a::t_d036cbf3334a35 92,148,152-157,159,163,231-235,247
+  s_f1dc76fc57609a::t_d1a199dacbf635 28,99-100,106,111-117,131,242-245,273,275,285,287-298,310-312,314,331-344,412-417
+internal/discovery/stacks_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,36,56,78,93,106,117
+tui-js/src/components/terminal-link.test.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-4,7-55
+tui-js/src/term/feed.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-43
+internal/reviewrun/turn.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-126
+tui-js/src/term/e2e.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 111-117,127-150,201,203
+internal/report/file.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 5,45-49,54,62,70
+internal/review/send.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 153-164
+tui-js/src/index.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 8,46-49
+internal/rpcserver/methods.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 4,14,43-44,52,60,66,74,80,82,90,102,121-140,142-143,157,187,198,213,238,244,277,296,299,308,320,323,337,349,353,366,374,384,392,404
+docs/AGENT.md
+  s_f1dc76fc57609a::t_d1a199dacbf635 124-126,130,243-264,266-279,332-376,417-418
+internal/reviewrun/store.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-363
+tui-js/src/term/agentpick.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 2-9,62-64
+  s_f1dc76fc57609a::t_96c4fde70f6fd0 65-67
+internal/rpcserver/server.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 51-66,69-76,98,100,131-133,135,149-169,171,173-177,182-184,200-270,277-281,283,285,287,289,291,296-297,299,301,303,305,307,309,311,317-328,330-339
+tui-js/src/components/sessionoverlay.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 9-10,12,39-57,71,74,80-82,86
+CLAUDE.md
+  s_f1dc76fc57609a::t_d1a199dacbf635 62,89,93-100
+  s_f1dc76fc57609a::t_7c0e589edbf356 101
+internal/diff/diff.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 6,27-28,67-68,141-146,160,164,174,178,191-195,207,211,218,222,237-241,244,251,266-271,277-282,286,296,304,309,320-324,329,336-340,352,356,363
+tui-js/src/term/tmux.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 5,10-11,14,108-111,142-297
+tui-js/src/views/cockpit.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 40,70-71,89,157-159,733,741,755,759-771,781-784,947-950,1038-1039,1044-1045,1047,1050-1051,1149-1169,1208-1209,1640-1652,1667,1736-1738,1772-1774,1783,1800-1801,1819-1820,1943-1948,2031-2036,2042
+internal/cli/slice_context_guard.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-19
+internal/discovery/stalename.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-52
+internal/cli/prstack.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 75-79
+  s_f1dc76fc57609a::t_c4d6080a537941 80-81
+internal/forge/batch_test.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-41
+internal/share/share.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 85-87
+internal/report/report.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 12,133-139,142,228-233,246-251,259,353-357,362,364-365,392-393,402-403,454,463,470-484,490-495,502-505,545-549,556,589-627,629,631-650,657,659-664,667,673-678
+internal/cli/review_sessions.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-356
+tui-js/src/components/reviewruns.tsx
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-118
+internal/tui/app.go
+  s_f1dc76fc57609a::t_d1a199dacbf635 17,318
+tui-js/src/term/repaint.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-6
+tui-js/src/term/links.test.ts
+  s_f1dc76fc57609a::t_d1a199dacbf635 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c25348bea195f2563fdb96163837220a22cb7142",
+  "prompts": {},
+  "sessions": {
+    "s_f1dc76fc57609a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff05a-9c08-7a12-8874-0251c3dddb90",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
