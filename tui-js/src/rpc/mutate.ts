@@ -306,6 +306,18 @@ export function reviewAgent(slice: string, agent: string): Promise<MutateResult>
   return run(reviewAgentArgs(slice, agent), 900_000);
 }
 
+export function reviewMessageArgs(runId: string, body: string): string[] {
+  return ["review", "message", runId, "--body", body];
+}
+
+export function reviewMessage(runId: string, body: string): Promise<MutateResult> {
+  return run(reviewMessageArgs(runId, body), 900_000);
+}
+
+export function reviewAttachArgv(runId: string): string[] {
+  return [BIN, "review", "attach", runId];
+}
+
 // ── grouping ─────────────────────────────────────────────────────────────────
 
 export function groupSlices(name: string, slices: string[]): Promise<MutateResult> {

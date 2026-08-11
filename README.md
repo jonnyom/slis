@@ -235,6 +235,12 @@ slis adopt existing-branch
 slis import /path/to/existing/worktree
 ```
 
+Agents launched inside a slice receive `SLIS_SLICE`. In that context,
+`create`, `adopt`, and `import` refuse to register another managed slice by
+default, keeping agent scratch worktrees out of the hub. Use the conventional
+`.claude/worktrees` location for scratch work, or pass `--allow-from-slice` when
+creating a separate managed slice is intentional.
+
 In Graphite-initialised repositories, newly created or adopted branches are
 tracked best-effort. A Graphite failure does not block the Git worktree.
 
@@ -294,6 +300,10 @@ and the review commands. For example:
 slis status checkout --json
 slis review list checkout
 slis review send checkout
+slis review runs checkout --json
+slis review show <run-id>
+slis review message <run-id> --body "Re-check the locking path"
+slis review attach <run-id>
 ```
 
 Run this once if you use Claude Code and want per-slice notifications when an

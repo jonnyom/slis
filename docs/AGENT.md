@@ -121,10 +121,13 @@ per-check counts. `number` is omitted when the branch has no PR.
    "review_decision": "APPROVED", "stack_order": 1,
    "ci": "fail", "ci_pass": 5, "ci_fail": 2, "ci_pending": 0 }]
 ```
+The array contains one row for every non-trunk branch in each member repo's
+full Graphite stack. When Graphite data is unavailable, that repo contributes
+one row for the slice member branch.
 
 ### `slis share <slice>` → clipboard Markdown
 
-Copies every PR in every repo's Graphite lineage as a linked title with its
+Copies every PR in every repo's full Graphite stack as a linked title with its
 parent-relative `+added` / `-deleted` totals. Use `--stdout` to print the
 identical raw Markdown instead of copying it. The TUI's `Y` shortcut runs this
 for the focused slice.
@@ -237,15 +240,43 @@ shell or unrelated process. The read-only RPC
 sidecar exposes the same array as the `reviews` method (`{ "slice"?: string }`);
 adding and sending stay CLI-only so the sidecar never mutates.
 
+### `slis review runs [slice] --json` → array
+Persistent agent-review conversations, newest first. A run survives completion,
+including clean reviews with zero findings.
+```jsonc
+[{
+  "id": "20260731T100000.000000000-a1b2c3d4e5f6",
+  "slice": "checkout",
+  "agent": "Codex",
+  "window": "review-codex-d4e5f6",
+  "status": "findings",
+  "finding_count": 2,
+  "created_at": "2026-07-31T10:00:00Z",
+  "updated_at": "2026-07-31T10:04:00Z"
+}]
+```
+Statuses are `queued`, `running`, `clean`, `findings`, or `failed`.
+`slis review show <run-id> --json` returns the same fields plus `messages`, an
+ordered array of `{id, role, body, created_at}` where role is `user`,
+`reviewer`, or `system`. The sidecar exposes run summaries through
+`reviewRuns` with optional `{ "slice": string }`; pass
+`{ "include_messages": true }` when the full conversation is needed.
+
 `review agent` starts the selected configured or PATH-detected Claude Code,
-Codex, OpenCode, Gemini CLI, or Cursor Agent in a dedicated window in the
-slice's tmux session and returns immediately. The reviewer runs non-interactively
-across every worktree in the slice. Structured findings are attributed to that
-reviewer, stored in the same review list, and immediately delivered to the
-slice's working agent. Only the new agent findings are delivered; existing human
-drafts are left untouched. Findings remain stored for the user to inspect. A
-failed reviewer remains visible in its tmux window and never removes stored
-findings.
+Codex, OpenCode, Gemini CLI, or Cursor Agent in a dedicated persistent tmux
+window and returns immediately. The initial turn reviews every worktree in the
+slice in read-only mode. Its readable response, status, finding count, and
+errors are persisted; structured findings are attributed to the reviewer,
+stored in the pending-review list, and delivered to the slice's working agent.
+The tmux pane keeps its scrollback after completion.
+
+`slis review message <run-id> --body <text>` appends a user turn and respawns the
+same review window. The selected reviewer receives the complete stored
+conversation, so follow-ups work consistently across supported agent harnesses
+without relying on vendor-specific session IDs. A message received during a
+running turn is queued and handled by that run before it exits.
+`slis review attach <run-id>` attaches or switches to the exact tmux window for
+live output and completed scrollback.
 
 ### `slis branch-diff <slice> <repo> <branch> --json` → object
 The committed diff of one branch against its Graphite stack **parent** (falling
@@ -298,6 +329,51 @@ and object params, returning the shapes above:
 Errors carry `data.kind`: `slice-not-found`, `branch-not-found`, `path-not-found`,
 `file-too-large`, `repo-not-configured` (non-member repo → invalid-params).
 
+#### Cancelling a request (`cancel`)
+Every read is cancellable. A client that gives up on a request — its own timeout
+fired, the user navigated away, the front-end is quitting — MUST withdraw it:
+
+```jsonc
+{ "jsonrpc": "2.0", "method": "cancel", "params": { "id": 42 } }
+```
+
+Use **session-unique request ids** (slis's own client just increments forever).
+`cancel` names a request by id and applies to whatever is live under that id, so a
+client that both recycles ids and withdraws requests it has already been answered
+can cancel the wrong one. Reusing an id after its answer is otherwise safe.
+
+A notification (no `id` of its own), so there is no reply. The named request stops:
+queued work behind the concurrency gate is never started, running work has its
+context cancelled, and its git / gt / gh subprocess trees are killed. The request
+itself is answered with error code `-32800` and `data.kind: "cancelled"`. Cancelling
+an id that already finished is a no-op, not an error. Sidecar shutdown cancels
+everything still in flight, so quitting never leaves subprocesses behind.
+
+A cancelled request NEVER returns partial data: work that was killed mid-flight
+(e.g. a half-read conflict radar, which would otherwise look like "no conflicts")
+is reported as the cancellation instead.
+
+Two things still run to completion, both by design because neither can run long:
+discovery's worktree scan (one `git worktree list` per repo) and the pure
+file-store reads (`comments`, `reviews`) — no subprocess involved.
+
+### Slice-name drift
+
+A registered worktree keeps its slice name across branch changes, so a stacked
+workflow never loses its slice. Once the branch the name came from is merged and
+deleted, and the worktree is reused for something else, the name stops describing
+what the slice holds. `slis ls` warns on stderr and `slis doctor` explains it:
+
+```
+⚠ 1 slice named after a branch it no longer holds (unpaid-leave-f2-endpoint-guards) — run slis doctor
+```
+
+doctor reports the slice, what it actually holds now, and the remedy (`slis forget`,
+then `slis import` if you still want it managed). `--fix` applies only when the
+worktree is an agent's own scratch directory that slis ignores by default — there,
+dropping the registry entry restores the ignore rule and touches no git state.
+Real work is reported, never un-managed for you.
+
 ## Session status
 
 The headline automation signal: *which slice's Claude is waiting for input.*
@@ -338,8 +414,8 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 
 | Class | Commands | Notes for agents |
 |---|---|---|
-| **read / safe repair** | `ls show status pr pr-stack summary conflicts comments doctor candidates branch-diff tree cat edit review list` | Safe anytime. Discovery-backed reads may atomically refresh/backfill the registry, quarantine a malformed registry, remove the exact stale Git administration for an already-gone Slis-owned checkout, and remove empty Slis-managed directories; they never alter external worktrees or delete live worktrees, refs, or commits. `doctor --fix` additionally applies its documented repairs. |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup gather scatter init init-hooks init-skill editor agent focus share review add/rm/send/clear/agent` | Touches local worktrees/branches/config/uncommitted work or the system clipboard. `share` reads Git/Graphite/GitHub and writes only the clipboard (`--stdout` writes the Markdown to stdout instead). `import`/`forget` edit only the slis registry (never git); `ignore`, `editor set`, and `agent set-default` edit `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store (a JSON file, never git); `review send` starts the configured agent in the slice's tmux session when needed, injects only after verifying that agent owns the active pane, and clears the pending batch on success. `review agent` invokes the selected external reviewer, stores attributed findings, and injects only those new findings into the working agent. `gather`/`scatter` only edit `overrides.yaml` (a `folded:` section alongside `overrides:`); a gathered slice is represented by its stack tip and the folded intermediate branches are hidden as standalone slices — their worktrees and branches are never touched, and `scatter` fully reverses it. |
+| **read / safe repair** | `ls show status pr pr-stack summary conflicts comments doctor candidates branch-diff tree cat edit review list/runs/show` | Safe anytime. Discovery-backed reads may atomically refresh/backfill the registry, quarantine a malformed registry, remove the exact stale Git administration for an already-gone Slis-owned checkout, and remove empty Slis-managed directories; they never alter external worktrees or delete live worktrees, refs, or commits. `doctor --fix` additionally applies its documented repairs. |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup gather scatter init init-hooks init-skill editor agent focus share review add/rm/send/clear/agent/message/attach` | Touches local worktrees/branches/config/uncommitted work or the system clipboard. `create`/`adopt`/`import` refuse by default when `SLIS_SLICE` identifies an enclosing agent session; use `.claude/worktrees` for scratch work or pass `--allow-from-slice` for an intentional separate managed slice. `share` reads Git/Graphite/GitHub and writes only the clipboard (`--stdout` writes the Markdown to stdout instead). `import`/`forget` edit only the slis registry (never git); `ignore`, `editor set`, and `agent set-default` edit `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store; `review send` starts the configured agent when needed and clears the pending batch on success. `review agent/message` write the persistent review-conversation store and start a read-only reviewer turn in the run's tmux window; `review attach` switches or attaches to that exact window. `gather`/`scatter` only edit `overrides.yaml` (a `folded:` section alongside `overrides:`); a gathered slice is represented by its stack tip and the folded intermediate branches are hidden as standalone slices — their worktrees and branches are never touched, and `scatter` fully reverses it. |
 | **remote / destructive** | `submit merge sync fix-ci ci-rerun` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits; `ci-rerun <slice>` re-triggers each repo's failed CI runs (`gh run rerun --failed`) — the one CI write. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before

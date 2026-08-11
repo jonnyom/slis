@@ -18,7 +18,11 @@ afterEach(() => {
 
 test("initial workspace failure is shown in a centered dialog", async () => {
   let quitCount = 0;
-  setup = await createTestRenderer({ width: 120, height: 30 });
+  setup = await createTestRenderer({
+    width: 120,
+    height: 30,
+    kittyKeyboard: true,
+  });
   root = createRoot(setup.renderer);
   flushSync(() => root!.render(
     <InitialScreen
@@ -84,6 +88,14 @@ test("initial workspace failure is shown in a centered dialog", async () => {
   setup.mockInput.pressKey("q");
   await setup.flush();
   expect(quitCount).toBe(1);
+
+  setup.mockInput.pressEscape();
+  await setup.flush();
+  expect(quitCount).toBe(2);
+
+  setup.mockInput.pressCtrlC();
+  await setup.flush();
+  expect(quitCount).toBe(3);
 });
 
 test("workspace diagnosis removes the duplicated recovery instruction", () => {

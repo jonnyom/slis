@@ -1,6 +1,7 @@
 package gt
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -19,7 +20,12 @@ type refMeta struct {
 // parentBranchName. Blobs that cannot be parsed are silently skipped; only
 // hard git errors from for-each-ref are propagated.
 func ReadRefMetadata(repoDir string) (map[string]string, error) {
-	out, err := git.Run(repoDir, "for-each-ref", "--format=%(refname)", "refs/branch-metadata/")
+	return ReadRefMetadataCtx(context.Background(), repoDir)
+}
+
+// ReadRefMetadataCtx is ReadRefMetadata with a caller-supplied context.
+func ReadRefMetadataCtx(ctx context.Context, repoDir string) (map[string]string, error) {
+	out, err := git.RunCtx(ctx, repoDir, "for-each-ref", "--format=%(refname)", "refs/branch-metadata/")
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +43,7 @@ func ReadRefMetadata(repoDir string) (map[string]string, error) {
 
 		branch := strings.TrimPrefix(refname, "refs/branch-metadata/")
 
-		blob, err := git.Run(repoDir, "cat-file", "-p", refname)
+		blob, err := git.RunCtx(ctx, repoDir, "cat-file", "-p", refname)
 		if err != nil {
 			// Tolerate refs whose blobs can't be read.
 			continue
@@ -101,12 +107,18 @@ func StackFromRefMeta(meta map[string]string) State {
 // metadata does not carry restack status), and trunk detection is best-effort
 // (the branch referenced as a parent but absent from the metadata namespace).
 func ReadStack(repoDir string) (State, error) {
-	st, _ := ReadState(repoDir)
+	return ReadStackCtx(context.Background(), repoDir)
+}
+
+// ReadStackCtx is ReadStack with a caller-supplied context, propagated to both
+// the gt process and the pure-git refs fallback.
+func ReadStackCtx(ctx context.Context, repoDir string) (State, error) {
+	st, _ := ReadStateCtx(ctx, repoDir)
 	if len(st) > 0 {
 		return st, nil
 	}
 
-	meta, err := ReadRefMetadata(repoDir)
+	meta, err := ReadRefMetadataCtx(ctx, repoDir)
 	if err != nil {
 		return nil, err
 	}

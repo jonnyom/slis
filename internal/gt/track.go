@@ -3,6 +3,8 @@ package gt
 import (
 	"os/exec"
 	"strings"
+
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // Track runs `gt track --parent <parent> --no-interactive <branch>` in dir,
@@ -18,7 +20,10 @@ func Track(dir, branch, parent string) (string, error) {
 	if _, err := exec.LookPath("gt"); err != nil {
 		return "", ErrNotInstalled
 	}
+	defer acquireSpawnSlot()()
+
 	cmd := exec.Command("gt", "track", "--parent", parent, "--no-interactive", branch)
+	subproc.Configure(cmd)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err

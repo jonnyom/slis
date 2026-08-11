@@ -6,7 +6,10 @@ import {
   isShellCmd,
   killTmuxSession,
   listTmuxSessions,
+  tmuxSessionClaimableBySlice,
+  tmuxSessionOwnedBySlice,
   tmuxSessionRelatedToMembers,
+  type TermMember,
   type TmuxSessionInfo,
 } from "../term/tmux";
 import { color, glyph, theme } from "../theme";
@@ -33,16 +36,25 @@ export function SessionCloseConfirmation({ target }: { target: string }): ReactN
   );
 }
 
-function relatedSlice(session: TmuxSessionInfo, views: SliceView[]): string | null {
-  for (const view of views) {
-    const members = view.slice.members.map((member) => ({
-      repo: member.repo,
-      branch: member.branch,
-      worktreePath: member.worktree_path,
-    }));
-    if (tmuxSessionRelatedToMembers(session, members)) return view.slice.name;
-  }
-  return null;
+function termMembers(view: SliceView): TermMember[] {
+  return view.slice.members.map((member) => ({
+    repo: member.repo,
+    branch: member.branch,
+    worktreePath: member.worktree_path,
+  }));
+}
+
+/**
+ * Which slice a session belongs to. The session's NAME wins: it is the slice that
+ * created it. Only a session no live slice is named after — the orphan a rename
+ * leaves behind — is attributed by pane location, because pane cwds are frozen at
+ * creation and a worktree may since have moved to a different slice.
+ */
+function owningSlice(session: TmuxSessionInfo, views: SliceView[]): string | null {
+  const owner = views.find((view) => tmuxSessionOwnedBySlice(session, view.slice.name));
+  if (owner) return owner.slice.name;
+  const byPanes = views.find((view) => tmuxSessionRelatedToMembers(session, termMembers(view)));
+  return byPanes?.slice.name ?? null;
 }
 
 export interface SessionRow {
@@ -56,23 +68,22 @@ export function buildSessionRows(
   views: SliceView[],
   statusEntries: StatusEntry[],
 ): SessionRow[] {
+  const knownSlices = views.map((view) => view.slice.name);
   const rows: SessionRow[] = sessions.map((session) => ({
     session,
-    slice: relatedSlice(session, views),
+    slice: owningSlice(session, views),
   }));
   for (const entry of statusEntries) {
     if (!entry.session_id || (entry.status !== "waiting-input" && entry.status !== "done")) continue;
     const view = views.find((candidate) => candidate.slice.name === entry.slice);
     if (!view) continue;
-    const members = view.slice.members.map((member) => ({
-      repo: member.repo,
-      branch: member.branch,
-      worktreePath: member.worktree_path,
-    }));
+    const members = termMembers(view);
+    // Only a session this slice may claim can host its resume; another live
+    // slice's session must never absorb it (see owningSlice).
     const related = rows.find(
       (row) =>
         row.session?.kind === "agent" &&
-        tmuxSessionRelatedToMembers(row.session, members),
+        tmuxSessionClaimableBySlice(row.session, members, entry.slice, knownSlices),
     );
     if (related?.session?.panes.some((pane) => !isShellCmd(pane.command))) continue;
     if (related) related.recovery = entry;

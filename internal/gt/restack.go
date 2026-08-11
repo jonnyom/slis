@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
+
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // ErrNotInstalled is returned by mutating operations when the gt CLI is absent.
@@ -21,7 +23,10 @@ func Restack(dir string) (string, error) {
 	if _, err := exec.LookPath("gt"); err != nil {
 		return "", ErrNotInstalled
 	}
+	defer acquireSpawnSlot()()
+
 	cmd := exec.Command("gt", "restack", "--no-interactive")
+	subproc.Configure(cmd)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err

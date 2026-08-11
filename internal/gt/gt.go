@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"sort"
 	"time"
+
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // stateTimeout bounds a `gt state` read. gt is a Node process and can hang
@@ -81,14 +83,30 @@ func ParseState(data []byte) (State, error) {
 // installed, it returns an empty State and a nil error so callers can degrade
 // gracefully.
 func ReadState(repoDir string) (State, error) {
+	return ReadStateCtx(context.Background(), repoDir)
+}
+
+// ReadStateCtx is ReadState bounded by a caller-supplied context as well as
+// stateTimeout, so a withdrawn request kills the gt process (and its git
+// children) instead of leaving it to run out its own deadline.
+func ReadStateCtx(parent context.Context, repoDir string) (State, error) {
 	if _, err := exec.LookPath("gt"); err != nil {
 		// gt not installed — return gracefully rather than erroring.
 		return State{}, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), stateTimeout)
+	// Acquire the spawn slot first: queue time is not the process's own deadline,
+	// but a cancelled caller must not wait for a slot it no longer needs.
+	release, ok := acquireSpawnSlotCtx(parent)
+	if !ok {
+		return State{}, parent.Err()
+	}
+	defer release()
+
+	ctx, cancel := context.WithTimeout(parent, stateTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gt", "state", "--no-interactive")
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -216,6 +234,32 @@ func (s State) Lineage(branch string) []OrderedBranch {
 	for _, b := range s.Ordered() {
 		if inLineage[b.Name] {
 			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func (s State) Stack(branch string) []OrderedBranch {
+	root, _, ok := s.StackRoot(branch)
+	if !ok {
+		return nil
+	}
+
+	inStack := map[string]bool{}
+	for _, ancestor := range s.Lineage(root) {
+		inStack[ancestor.Name] = true
+	}
+	for candidate := range s {
+		candidateRoot, _, candidateInStack := s.StackRoot(candidate)
+		if candidateInStack && candidateRoot == root {
+			inStack[candidate] = true
+		}
+	}
+
+	out := make([]OrderedBranch, 0, len(inStack))
+	for _, candidate := range s.Ordered() {
+		if inStack[candidate.Name] {
+			out = append(out, candidate)
 		}
 	}
 	return out

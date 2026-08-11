@@ -1,5 +1,12 @@
 import { expect, test, describe } from "bun:test";
-import { availableAgents, findSavedAgent, pickableAgents, agentCmdline, quickPickIndex } from "./agentpick";
+import {
+  availableAgents,
+  findPreferredAgent,
+  findSavedAgent,
+  pickableAgents,
+  agentCmdline,
+  quickPickIndex,
+} from "./agentpick";
 import type { AgentSpec } from "../rpc/types";
 
 const CLAUDE: AgentSpec = { name: "claude", cmd: ["claude"] };
@@ -49,6 +56,12 @@ describe("findSavedAgent", () => {
 
   test("no valid saved choice returns to the picker", () => {
     expect(findSavedAgent([CLAUDE, CODEX], undefined, "removed-agent")).toBeUndefined();
+  });
+});
+
+describe("findPreferredAgent", () => {
+  test("a live selection overrides the stale startup default", () => {
+    expect(findPreferredAgent([CLAUDE, CODEX], "claude", "codex", "codex")).toBe(CLAUDE);
   });
 });
 

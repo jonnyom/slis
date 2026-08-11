@@ -33,9 +33,20 @@ import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { TermManager } from "./term/manager";
 import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
-import { resumeClaudeSession, tmuxAvailable, type TermMember } from "./term/tmux";
+import {
+  liveForeignAgentInMembers,
+  listTmuxSessions,
+  resumeClaudeSession,
+  tmuxAvailable,
+  type TermMember,
+} from "./term/tmux";
 import type { OpenTermMode, TermSessionOpts } from "./term/session";
-import { availableAgents, findSavedAgent, pickableAgents, agentCmdline } from "./term/agentpick";
+import {
+  availableAgents,
+  findPreferredAgent,
+  pickableAgents,
+  agentCmdline,
+} from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
@@ -95,6 +106,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [activeTheme, setActiveTheme] = useState(themeName);
   const [uiPrefs, setUiPrefs] = useState(initialPrefs);
+  const [liveDefaultAgent, setLiveDefaultAgent] = useState<string>();
   const requestedTheme = process.env.SLIS_THEME?.trim().toLowerCase();
   const initialThemePreference: ThemePreference = requestedTheme
     ? requestedTheme === "auto" || requestedTheme === "system"
@@ -438,24 +450,35 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // workspace.yaml is authoritative; the XDG preference is a migration
   // fallback for releases that saved the selection there only.
   const savedAgent = useMemo(
-    () => findSavedAgent(agentList, hello?.sessions.default_agent, uiPrefs.agent),
-    [agentList, hello?.sessions.default_agent, uiPrefs.agent],
+    () =>
+      findPreferredAgent(
+        agentList,
+        liveDefaultAgent,
+        hello?.sessions.default_agent,
+        uiPrefs.agent,
+      ),
+    [agentList, hello?.sessions.default_agent, liveDefaultAgent, uiPrefs.agent],
   );
   const preferredAgent = savedAgent ?? agentList[0];
 
   const rememberAgent = useCallback(
     (choice: AgentSpec) => {
-      persistUiPrefs({ agent: choice.name });
+      const previousLiveDefault = liveDefaultAgent;
+      setLiveDefaultAgent(choice.name);
       agentDefaultSet(choice.name).then((result) => {
         if (result.code !== 0) {
+          setLiveDefaultAgent(previousLiveDefault);
           overlays.error(
             "Save default agent — failed",
             (result.stderr || result.stdout || "Unable to update workspace.yaml").trim(),
           );
+          return;
         }
+        persistUiPrefs({ agent: choice.name });
+        pushToast(`Default agent: ${choice.name}`, "ci-pass");
       });
     },
-    [overlays, persistUiPrefs],
+    [liveDefaultAgent, overlays, persistUiPrefs, pushToast],
   );
 
   const configureAgents = useCallback(() => {
@@ -623,6 +646,51 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [buildTermOpts, openExistingSession, overlays],
   );
 
+  // Guard against a second agent in a worktree that already has one. Two agents
+  // share a single git checkout and can overwrite each other's edits, so when
+  // another session's agent is live inside this slice's worktrees we offer to
+  // attach to it instead of starting a rival. Shell tabs are exempt — they are not
+  // agents — and the slice's OWN sessions are handled by the existing reuse
+  // preference in the cockpit.
+  const openTermGuarded = useCallback(
+    (slice: string, mode: OpenTermMode) => {
+      if (mode === "shell") {
+        openTerm(slice, mode);
+        return;
+      }
+      const view = views.find((candidate) => candidate.slice.name === slice);
+      if (!view) {
+        openTerm(slice, mode);
+        return;
+      }
+      const members: TermMember[] = view.slice.members.map((member) => ({
+        repo: member.repo,
+        branch: member.branch,
+        worktreePath: member.worktree_path,
+      }));
+      const knownSlices = views.map((candidate) => candidate.slice.name);
+      listTmuxSessions().then(
+        (sessions) => {
+          const busy = liveForeignAgentInMembers(sessions, members, slice, knownSlices);
+          if (!busy) {
+            openTerm(slice, mode);
+            return;
+          }
+          overlays.agentBusy(
+            slice,
+            busy.session.name,
+            busy.pane.path,
+            () => openExistingSession(slice, busy.session.name),
+            () => openTerm(slice, mode),
+          );
+        },
+        // tmux unreachable: fall through rather than block the user.
+        () => openTerm(slice, mode),
+      );
+    },
+    [openTerm, openExistingSession, overlays, views],
+  );
+
   // Remove a tab and re-point the active tab / term mode. When a *command* tab
   // closes, run the post-mutation refresh — the same resync the captured path
   // does after a mutation completes.
@@ -690,7 +758,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           agents={agentList}
           preferredAgent={preferredAgent?.name}
           onEnter={onEnter}
-          onOpenTerm={openTerm}
+          onOpenTerm={openTermGuarded}
           onConfigureAgents={configureAgents}
           onFocusSlice={onFocusSlice}
           initialFocusSlice={browserFocusRef.current}
@@ -711,6 +779,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           width={width}
           height={height}
           gatherable={isGatherableStackSlice(views, currentView.slice.name)}
+          knownSlices={views.map((entry) => entry.slice.name)}
           agents={agentList}
           preferredAgent={preferredAgent?.name}
           initialPanel={cockpitEntry?.panel}
@@ -720,7 +789,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onDiffModeChange={(mode) => persistUiPrefs({ split_diff: mode === "split" })}
           onDiffScopeChange={(scope) => persistUiPrefs({ diff_scope: scope })}
           onBack={() => setView("browser")}
-          onOpenTerm={openTerm}
+          onOpenTerm={openTermGuarded}
           onOpenExistingSession={openExistingSession}
           onConfigureAgents={configureAgents}
           onToggleProcs={() => setProcsOpen(true)}

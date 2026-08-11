@@ -1,11 +1,13 @@
 package radar_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/git"
+	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/radar"
 	"github.com/jonnyom/slis/testutil"
@@ -58,7 +60,7 @@ func TestRadar_Integration_DetectsSharedFile(t *testing.T) {
 	}
 	slices := []model.Slice{mk("feat-a", wtA), mk("feat-b", wtB)}
 
-	idx := radar.Build(radar.CollectStats(slices))
+	idx := radar.Build(radar.CollectStats(context.Background(), slices, gt.ReadStackCtx))
 
 	found := false
 	for _, o := range idx.Overlaps {

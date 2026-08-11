@@ -291,13 +291,13 @@ func stackPanelContent(m Model, sl model.Slice) string {
 			sb.WriteString("    " + cockpitDimStyle.Render("loading…") + "\n")
 			continue
 		}
-		lineage := sliceStacks[repo].Lineage(member.Branch)
-		if len(lineage) == 0 {
+		stack := sliceStacks[repo].Stack(member.Branch)
+		if len(stack) == 0 {
 			// No Graphite data — show the branch on its own.
 			sb.WriteString("    " + shortBranch(member.Branch, prefix) + "\n")
 			continue
 		}
-		for _, b := range lineage {
+		for _, b := range stack {
 			indent := strings.Repeat("  ", b.Depth+1)
 			name := shortBranch(b.Name, prefix)
 			switch {

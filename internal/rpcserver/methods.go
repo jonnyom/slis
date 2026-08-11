@@ -1,6 +1,7 @@
 package rpcserver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/jonnyom/slis/internal/proc"
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/jonnyom/slis/internal/review"
+	"github.com/jonnyom/slis/internal/reviewrun"
 	"github.com/jonnyom/slis/internal/safeterm"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
@@ -38,8 +40,8 @@ func (s *Server) hello() (interface{}, *rpcError) {
 }
 
 // ls returns the same payload as `slis ls --json` (stack-annotated).
-func (s *Server) ls() (interface{}, *rpcError) {
-	res, err := report.ListSlicesReport(s.ws, s.sp.Overrides, s.sp.ActiveJournal, true)
+func (s *Server) ls(ctx context.Context) (interface{}, *rpcError) {
+	res, err := report.ListSlicesReportCtx(ctx, s.ws, s.sp.Overrides, s.sp.ActiveJournal, true)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
@@ -47,7 +49,7 @@ func (s *Server) ls() (interface{}, *rpcError) {
 }
 
 // show returns the same payload as `slis show <slice> --json`.
-func (s *Server) show(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) show(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p sliceParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -55,13 +57,13 @@ func (s *Server) show(raw json.RawMessage) (interface{}, *rpcError) {
 	if p.Slice == "" {
 		return nil, invalidParams("slice is required")
 	}
-	dtos, err := report.ListSlices(s.ws, s.sp.Overrides, s.sp.ActiveJournal)
+	dtos, err := report.ListSlicesCtx(ctx, s.ws, s.sp.Overrides, s.sp.ActiveJournal)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
 	for i := range dtos {
 		if dtos[i].Name == p.Slice {
-			return report.BuildDetail(dtos[i]), nil
+			return report.BuildDetailCtx(ctx, dtos[i]), nil
 		}
 	}
 	return nil, serverErr(fmt.Sprintf("slice %q not found", p.Slice), "slice-not-found")
@@ -69,15 +71,15 @@ func (s *Server) show(raw json.RawMessage) (interface{}, *rpcError) {
 
 // status returns a single StatusDTO when a slice is named, else the same array
 // as `slis status --json`.
-func (s *Server) status(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) status(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p optionalSliceParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
 	}
 	if p.Slice != "" {
-		return report.SliceStatusDTO(s.sp.EventsDir, p.Slice), nil
+		return report.SliceStatusDTOCtx(ctx, s.sp.EventsDir, p.Slice), nil
 	}
-	dtos, err := report.SliceStatuses(s.ws, s.sp)
+	dtos, err := report.SliceStatusesCtx(ctx, s.ws, s.sp)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
@@ -85,7 +87,7 @@ func (s *Server) status(raw json.RawMessage) (interface{}, *rpcError) {
 }
 
 // prStack returns the same payload as `slis pr-stack <slice> --json`.
-func (s *Server) prStack(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) prStack(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p sliceParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -97,7 +99,7 @@ func (s *Server) prStack(raw json.RawMessage) (interface{}, *rpcError) {
 	if err != nil {
 		return nil, serverErr(err.Error(), "slice-not-found")
 	}
-	return report.PRStackRows(sl), nil
+	return report.PRStackRowsCtx(ctx, sl), nil
 }
 
 // comments returns the same payload as `slis comments <slice> --json`.
@@ -116,9 +118,29 @@ func (s *Server) comments(raw json.RawMessage) (interface{}, *rpcError) {
 	return store, nil
 }
 
+func (s *Server) reviewRuns(raw json.RawMessage) (interface{}, *rpcError) {
+	var params reviewRunsParams
+	if responseError := decodeParams(raw, &params); responseError != nil {
+		return nil, responseError
+	}
+	store := reviewrun.Open(s.sp.StateDir)
+	if !params.IncludeMessages {
+		runs, err := store.List(params.Slice)
+		if err != nil {
+			return nil, serverErr(err.Error(), "")
+		}
+		return runs, nil
+	}
+	details, err := store.ListDetails(params.Slice)
+	if err != nil {
+		return nil, serverErr(err.Error(), "")
+	}
+	return details, nil
+}
+
 // conflicts returns the same payload as `slis conflicts --json`.
-func (s *Server) conflicts() (interface{}, *rpcError) {
-	dto, err := report.Conflicts(s.ws, s.sp.Overrides)
+func (s *Server) conflicts(ctx context.Context) (interface{}, *rpcError) {
+	dto, err := report.ConflictsCtx(ctx, s.ws, s.sp.Overrides)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
@@ -132,7 +154,7 @@ var (
 )
 
 // diff computes a slice's diff for one scope, in the requested format.
-func (s *Server) diff(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) diff(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p diffParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -162,7 +184,7 @@ func (s *Server) diff(raw json.RawMessage) (interface{}, *rpcError) {
 	if fingerprintScope == "working" {
 		fingerprintScope = "parent"
 	}
-	fingerprint, err := report.DiffFingerprint(sl, fingerprintScope)
+	fingerprint, err := report.DiffFingerprintCtx(ctx, sl, fingerprintScope)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
@@ -173,7 +195,7 @@ func (s *Server) diff(raw json.RawMessage) (interface{}, *rpcError) {
 	if found && cached.fingerprint == fingerprint {
 		return cached.result, nil
 	}
-	res, err := s.diffBuild(sl, scope, format)
+	res, err := s.diffBuild(ctx, sl, scope, format)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
@@ -188,7 +210,7 @@ func (s *Server) diff(raw json.RawMessage) (interface{}, *rpcError) {
 // repo; otherwise every member repo. Per-repo failures (no PR, no failing run,
 // gh absent) become an Error on that repo's entry rather than failing the call.
 // Read-only: it never re-runs or mutates CI.
-func (s *Server) ciLog(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) ciLog(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p ciLogParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -213,13 +235,13 @@ func (s *Server) ciLog(raw json.RawMessage) (interface{}, *rpcError) {
 	for _, repo := range repos {
 		m := sl.Members[repo]
 		entry := ciLogRepoResult{Repo: repo, Branch: m.Branch}
-		pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
+		pr, _ := forge.PRForBranchCtx(ctx, m.WorktreePath, m.Branch)
 		if pr == nil {
 			entry.Error = "no open PR for this branch"
 			out = append(out, entry)
 			continue
 		}
-		log, ferr := forge.FailedLog(m.WorktreePath, pr)
+		log, ferr := forge.FailedLogCtx(ctx, m.WorktreePath, pr)
 		if ferr != nil {
 			entry.Error = ferr.Error()
 		} else {
@@ -252,7 +274,7 @@ func (s *Server) memberPrimary(sliceName, repo string) (string, *rpcError) {
 // branchDiff computes one branch's diff against its Graphite stack parent (or
 // the repo trunk when the branch has no parent). Read-only; runs in the repo's
 // primary checkout.
-func (s *Server) branchDiff(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) branchDiff(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p branchParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -271,10 +293,10 @@ func (s *Server) branchDiff(raw json.RawMessage) (interface{}, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
-	if !git.RefExists(primary, p.Branch) {
+	if !git.RefExistsCtx(ctx, primary, p.Branch) {
 		return nil, serverErr(fmt.Sprintf("branch %q not found in repo %q", p.Branch, p.Repo), "branch-not-found")
 	}
-	res, err := report.BranchDiff(primary, p.Repo, p.Branch, format)
+	res, err := report.BranchDiffCtx(ctx, primary, p.Repo, p.Branch, format)
 	if err != nil {
 		return nil, serverErr(err.Error(), "")
 	}
@@ -283,7 +305,7 @@ func (s *Server) branchDiff(raw json.RawMessage) (interface{}, *rpcError) {
 
 // tree lists one directory level of a branch's tree (lazy expansion). Read-only;
 // runs in the repo's primary checkout.
-func (s *Server) tree(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) tree(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p treeParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -295,10 +317,10 @@ func (s *Server) tree(raw json.RawMessage) (interface{}, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
-	if !git.RefExists(primary, p.Branch) {
+	if !git.RefExistsCtx(ctx, primary, p.Branch) {
 		return nil, serverErr(fmt.Sprintf("branch %q not found in repo %q", p.Branch, p.Repo), "branch-not-found")
 	}
-	entries, err := git.LsTree(primary, p.Branch, p.Path)
+	entries, err := git.LsTreeCtx(ctx, primary, p.Branch, p.Path)
 	if err != nil {
 		return nil, serverErr(err.Error(), "path-not-found")
 	}
@@ -312,7 +334,7 @@ func (s *Server) tree(raw json.RawMessage) (interface{}, *rpcError) {
 // Binary files are flagged with their content omitted; text over the byte cap
 // errors with kind "file-too-large". Read-only; runs in the repo's primary
 // checkout.
-func (s *Server) file(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) file(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p fileParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -324,11 +346,11 @@ func (s *Server) file(raw json.RawMessage) (interface{}, *rpcError) {
 	if rerr != nil {
 		return nil, rerr
 	}
-	if !git.RefExists(primary, p.Branch) {
+	if !git.RefExistsCtx(ctx, primary, p.Branch) {
 		return nil, serverErr(fmt.Sprintf("branch %q not found in repo %q", p.Branch, p.Repo), "branch-not-found")
 	}
 
-	fc, ferr := report.FileAtRevision(primary, p.Repo, p.Branch, p.Path, p.MaxBytes)
+	fc, ferr := report.FileAtRevisionCtx(ctx, primary, p.Repo, p.Branch, p.Path, p.MaxBytes)
 	if ferr != nil {
 		if ferr.Kind == "not-a-file" {
 			return nil, invalidParams(ferr.Error())
@@ -341,7 +363,7 @@ func (s *Server) file(raw json.RawMessage) (interface{}, *rpcError) {
 // capture returns the safeterm-stripped tail of a slice's tmux session. A
 // missing session or absent tmux yields empty lines rather than an error,
 // mirroring the TUI's capture pane.
-func (s *Server) capture(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) capture(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p captureParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -349,7 +371,7 @@ func (s *Server) capture(raw json.RawMessage) (interface{}, *rpcError) {
 	if p.Slice == "" {
 		return nil, invalidParams("slice is required")
 	}
-	text, _ := tmuxctl.CapturePane(p.Slice)
+	text, _ := tmuxctl.CapturePaneCtx(ctx, p.Slice)
 	lines := splitLines(safeterm.StripNonSGR(text))
 	if p.Lines > 0 && len(lines) > p.Lines {
 		lines = lines[len(lines)-p.Lines:]
@@ -359,7 +381,7 @@ func (s *Server) capture(raw json.RawMessage) (interface{}, *rpcError) {
 
 // procs samples the process trees behind each slice's tmux session. With no
 // slice named it samples every slice; slices with no live session are omitted.
-func (s *Server) procs(raw json.RawMessage) (interface{}, *rpcError) {
+func (s *Server) procs(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
 	var p optionalSliceParams
 	if rerr := decodeParams(raw, &p); rerr != nil {
 		return nil, rerr
@@ -367,7 +389,7 @@ func (s *Server) procs(raw json.RawMessage) (interface{}, *rpcError) {
 
 	targets := []string{p.Slice}
 	if p.Slice == "" {
-		dtos, err := report.ListSlices(s.ws, s.sp.Overrides, s.sp.ActiveJournal)
+		dtos, err := report.ListSlicesCtx(ctx, s.ws, s.sp.Overrides, s.sp.ActiveJournal)
 		if err != nil {
 			return nil, serverErr(err.Error(), "")
 		}
@@ -379,7 +401,7 @@ func (s *Server) procs(raw json.RawMessage) (interface{}, *rpcError) {
 
 	out := make([]sliceProcsResult, 0, len(targets))
 	for _, name := range targets {
-		pids, err := tmuxctl.PanePIDs(name)
+		pids, err := tmuxctl.PanePIDsCtx(ctx, name)
 		if err != nil {
 			continue
 		}

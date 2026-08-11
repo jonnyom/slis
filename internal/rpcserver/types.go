@@ -15,6 +15,9 @@ const (
 	codeMethodNotFound = -32601
 	codeInvalidParams  = -32602
 	codeServer         = -32000
+	// codeRequestCancelled mirrors LSP's RequestCancelled: the client withdrew the
+	// request (or the server shut down) before it produced a result.
+	codeRequestCancelled = -32800
 )
 
 // request is an incoming JSON-RPC 2.0 request. ID is left raw so a client may
@@ -30,6 +33,12 @@ type request struct {
 // notification the server must not reply to).
 func (r request) isNotification() bool {
 	return len(r.ID) == 0 || string(r.ID) == "null"
+}
+
+// cancelParams is the payload of the `cancel` notification: the id of the
+// request to abandon, kept raw so it matches whatever form the client used.
+type cancelParams struct {
+	ID json.RawMessage `json:"id"`
 }
 
 // response is an outgoing JSON-RPC 2.0 response. Exactly one of Result/Error is
@@ -62,6 +71,11 @@ func serverErr(msg, kind string) *rpcError {
 		e.Data = &errData{Kind: kind}
 	}
 	return e
+}
+
+// cancelledErr builds the response for a request the client withdrew.
+func cancelledErr() *rpcError {
+	return &rpcError{Code: codeRequestCancelled, Message: "request cancelled", Data: &errData{Kind: "cancelled"}}
 }
 
 // notification is a server → client push with no id (JSON-RPC notification).
@@ -120,6 +134,11 @@ type optionalSliceParams struct {
 }
 
 // diffParams selects the diff scope and format for the `diff` method.
+type reviewRunsParams struct {
+	Slice           string `json:"slice"`
+	IncludeMessages bool   `json:"include_messages"`
+}
+
 type diffParams struct {
 	Slice  string `json:"slice"`
 	Scope  string `json:"scope"`

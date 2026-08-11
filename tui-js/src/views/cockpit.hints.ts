@@ -4,9 +4,9 @@
 
 import type { Hint } from "../components/hintbar";
 
-export type PanelId = "stack" | "prs" | "session" | "procs";
+export type PanelId = "stack" | "prs" | "reviews" | "session" | "procs";
 
-export const PANEL_ORDER: PanelId[] = ["stack", "prs", "session", "procs"];
+export const PANEL_ORDER: PanelId[] = ["stack", "prs", "reviews", "session", "procs"];
 
 // How the cockpit should open when entered from the browser (M4). Lets a red-CI
 // slice jump straight to the PRs panel with its failing-CI log already loaded.
@@ -20,6 +20,7 @@ export interface CockpitEntry {
 export const SECTION_LABEL: Record<PanelId, string> = {
   stack: "Stack",
   prs: "PRs",
+  reviews: "Reviews",
   session: "Session",
   procs: "Processes",
 };
@@ -120,6 +121,14 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         { key: "C", label: "launch" },
         { key: "t", label: "shell" },
         { key: "w", label: "swap" },
+      ];
+    case "reviews":
+      return [
+        { key: "j/k", label: "review" },
+        { key: "m", label: "message" },
+        { key: "a", label: "attach" },
+        { key: "n", label: "new review" },
+        { key: "enter", label: "zoom" },
       ];
     case "procs":
       return [

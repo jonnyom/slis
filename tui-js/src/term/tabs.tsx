@@ -5,8 +5,7 @@
 // Raw input: while the terminal is focused, every key except the reserved back
 // key (ctrl+q) is forwarded to the active PTY untouched.
 
-import { GhosttyTerminalRenderable } from "ghostty-opentui/terminal-buffer";
-import { extend, useRenderer } from "@opentui/react";
+import { extend, usePaste, useRenderer } from "@opentui/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import type { SessionStatus } from "../rpc/types";
 import { color, sessionBadge, theme } from "../theme";
@@ -14,12 +13,19 @@ import { BOLD, DIM } from "../components/ui";
 import { TermManager } from "./manager";
 import { tmuxWheelSequence } from "./mouse";
 import type { TermSessionOpts } from "./session";
+import { TerminalFeedBuffer } from "./feed";
+import {
+  embeddedTerminalInputSequence,
+  embeddedTerminalPasteSequence,
+} from "./input";
+import { requestTerminalFullRepaint } from "./repaint";
+import { EmbeddedTerminalRenderable } from "./embedded";
 
 // Register <ghosttyTerminal> as an OpenTUI intrinsic element.
-extend({ ghosttyTerminal: GhosttyTerminalRenderable });
+extend({ ghosttyTerminal: EmbeddedTerminalRenderable });
 declare module "@opentui/react" {
   interface OpenTUIComponents {
-    ghosttyTerminal: typeof GhosttyTerminalRenderable;
+    ghosttyTerminal: typeof EmbeddedTerminalRenderable;
   }
 }
 
@@ -27,7 +33,8 @@ declare module "@opentui/react" {
 export const BACK_KEY = process.env["SLIS_TERM_BACK_KEY"]
   ? String.fromCharCode(parseInt(process.env["SLIS_TERM_BACK_KEY"]!, 16))
   : "\x11";
-export const EMBEDDED_TERMINAL_SELECTABLE = false;
+export const EMBEDDED_TERMINAL_SELECTABLE = true;
+export const EMBEDDED_TERMINAL_BACKGROUND = theme.bg;
 
 export function isBackKeySequence(sequence: string): boolean {
   if (sequence === BACK_KEY) return true;
@@ -84,7 +91,7 @@ function TermTab({
   onCommandExit: (id: string, code: number) => void;
 }): ReactNode {
   const renderer = useRenderer();
-  const ref = useRef<GhosttyTerminalRenderable>(null);
+  const ref = useRef<EmbeddedTerminalRenderable>(null);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
 
@@ -96,9 +103,12 @@ function TermTab({
   useEffect(() => {
     const term = ref.current;
     if (!term) return;
-    const feed = (bytes: Uint8Array) => {
+    const feedBuffer = new TerminalFeedBuffer((bytes) => {
       term.feed(bytes);
-      if (visibleRef.current) renderer.requestRender();
+      if (visibleRef.current) requestTerminalFullRepaint(renderer);
+    });
+    const feed = (bytes: Uint8Array) => {
+      feedBuffer.write(bytes);
     };
     if (entry.kind === "session") {
       const session = manager.session(key, entry.slice);
@@ -108,6 +118,7 @@ function TermTab({
         renderer.requestRender();
       });
       return () => {
+        feedBuffer.cancel();
         offExit();
         manager.detach(key);
       };
@@ -127,6 +138,7 @@ function TermTab({
       renderer.requestRender();
     });
     return () => {
+      feedBuffer.cancel();
       offExit();
       manager.detach(key);
     };
@@ -157,6 +169,7 @@ function TermTab({
       height={rows}
       cols={cols}
       rows={rows}
+      bg={EMBEDDED_TERMINAL_BACKGROUND}
       visible={visible}
       zIndex={101}
       persistent
@@ -282,6 +295,18 @@ export function TerminalLayer({
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
 
+  usePaste((event) => {
+    if (!focusedRef.current) return;
+    const key = activeRef.current;
+    if (key) {
+      managerRef.current
+        .get(key)
+        ?.write(embeddedTerminalPasteSequence(event.bytes));
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
   useEffect(() => {
     const handler = (seq: string): boolean => {
       if (!focusedRef.current) return false; // browser/cockpit own the keys
@@ -290,7 +315,7 @@ export function TerminalLayer({
         return true;
       }
       const key = activeRef.current;
-      if (key) managerRef.current.get(key)?.write(seq);
+      if (key) managerRef.current.get(key)?.write(embeddedTerminalInputSequence(seq));
       return true; // consume: everything reaches the PTY, nothing is parsed
     };
     renderer.addInputHandler(handler);

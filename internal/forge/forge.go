@@ -11,10 +11,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	gitutil "github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/safeterm"
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // ghTimeout bounds a single gh invocation. gh calls are network-bound (GitHub
@@ -309,13 +311,24 @@ const jsonFields = "number,url,state,title,headRefName,headRefOid,statusCheckRol
 //
 // Returns (nil, err) for any other gh failure.
 func PRForBranch(repoDir, branch string) (*PR, error) {
+	return PRForBranchCtx(context.Background(), repoDir, branch)
+}
+
+// PRForBranchCtx is PRForBranch bounded by a caller-supplied context as well as
+// ghTimeout, so a withdrawn request kills the gh process tree.
+func PRForBranchCtx(parent context.Context, repoDir, branch string) (*PR, error) {
+	return prForBranchCtx(parent, repoDir, branch, true)
+}
+
+func prForBranchCtx(parent context.Context, repoDir, branch string, includeInlineComments bool) (*PR, error) {
 	if !Available() {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	ctx, cancel := context.WithTimeout(parent, ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", jsonFields)
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 
 	var stdout, stderr bytes.Buffer
@@ -345,6 +358,9 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 	if historicalPRIsStale(repoDir, branch, pr) {
 		return nil, nil
 	}
+	if !includeInlineComments {
+		return pr, nil
+	}
 
 	// Inline review comments (e.g. Cubic) are not exposed by `gh pr view`; fetch
 	// them via the REST API and merge. A failure here is non-fatal — the PR still
@@ -357,6 +373,62 @@ func PRForBranch(repoDir, branch string) (*PR, error) {
 		return pr, fmt.Errorf("forge: inline comments: %w", ierr)
 	}
 	return pr, nil
+}
+
+func PRsForBranchesCtx(parent context.Context, repoDir string, branches []string) (map[string]*PR, error) {
+	return prsForBranchesCtx(parent, repoDir, branches, func(ctx context.Context, repoDir, branch string) (*PR, error) {
+		return prForBranchCtx(ctx, repoDir, branch, false)
+	})
+}
+
+func prsForBranchesCtx(
+	parent context.Context,
+	repoDir string,
+	branches []string,
+	lookup func(context.Context, string, string) (*PR, error),
+) (map[string]*PR, error) {
+	const maxConcurrentLookups = 4
+	type result struct {
+		branch string
+		pr     *PR
+		err    error
+	}
+
+	prs := make(map[string]*PR, len(branches))
+	if len(branches) == 0 {
+		return prs, nil
+	}
+	workerCount := min(maxConcurrentLookups, len(branches))
+	jobs := make(chan string, len(branches))
+	results := make(chan result, len(branches))
+	var workers sync.WaitGroup
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for branch := range jobs {
+				pr, err := lookup(parent, repoDir, branch)
+				results <- result{branch: branch, pr: pr, err: err}
+			}
+		}()
+	}
+	for _, branch := range branches {
+		jobs <- branch
+	}
+	close(jobs)
+	workers.Wait()
+	close(results)
+
+	var firstErr error
+	for result := range results {
+		if result.pr != nil {
+			prs[result.branch] = result.pr
+		}
+		if result.err != nil && firstErr == nil {
+			firstErr = result.err
+		}
+	}
+	return prs, firstErr
 }
 
 func parsePRList(branch string, data []byte) (*PR, error) {
@@ -380,6 +452,7 @@ func historicalPRForBranch(repoDir, branch string) (*PR, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", jsonFields)
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -437,6 +510,7 @@ func inlineComments(repoDir, prURL string, number int) ([]Comment, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", "api", path, "--paginate")
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 
 	var stdout, stderr bytes.Buffer
@@ -559,6 +633,7 @@ func RerunFailedChecks(repoDir string, pr *PR) (int, error) {
 	var firstErr error
 	for _, id := range ids {
 		cmd := exec.Command("gh", "run", "rerun", id, "--failed")
+		subproc.Configure(cmd)
 		cmd.Dir = repoDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if firstErr == nil {
@@ -574,6 +649,13 @@ func RerunFailedChecks(repoDir string, pr *PR) (int, error) {
 // FailedLog returns the failed-step logs for pr's first failing check's run
 // (`gh run view <id> --log-failed`, run in repoDir), for display inside slis.
 func FailedLog(repoDir string, pr *PR) (string, error) {
+	return FailedLogCtx(context.Background(), repoDir, pr)
+}
+
+// FailedLogCtx is FailedLog with a caller-supplied context: downloading a CI log
+// is the slowest read in the sidecar, so a client that navigates away must be
+// able to stop it.
+func FailedLogCtx(ctx context.Context, repoDir string, pr *PR) (string, error) {
 	if !Available() {
 		return "", fmt.Errorf("gh not found on PATH")
 	}
@@ -581,7 +663,8 @@ func FailedLog(repoDir string, pr *PR) (string, error) {
 	if len(ids) == 0 {
 		return "", fmt.Errorf("no failing CI run found")
 	}
-	cmd := exec.Command("gh", "run", "view", ids[0], "--log-failed")
+	cmd := exec.CommandContext(ctx, "gh", "run", "view", ids[0], "--log-failed")
+	subproc.Configure(cmd)
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {

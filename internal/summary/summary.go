@@ -29,28 +29,38 @@ const aiSummaryTimeout = 120 * time.Second
 // base is the ref to log against. Pass "" to auto-detect each repo's trunk
 // independently (git.DetectBase); a non-empty base is used verbatim for all.
 func CommitSummary(sl model.Slice, base string) (map[string][]string, error) {
+	return CommitSummaryCtx(context.Background(), sl, base)
+}
+
+// CommitSummaryCtx is CommitSummary with a caller-supplied context.
+func CommitSummaryCtx(ctx context.Context, sl model.Slice, base string) (map[string][]string, error) {
 	bases := make(map[string]string, len(sl.Members))
 	for repo := range sl.Members {
 		bases[repo] = base
 	}
-	return CommitSummaryBases(sl, bases)
+	return CommitSummaryBasesCtx(ctx, sl, bases)
 }
 
 // CommitSummaryBases is like CommitSummary but takes a per-repo base (bases[repo]).
 // A repo with no entry (or "") auto-detects its trunk. Used to log a stacked
 // branch against its Graphite parent so the count reflects only that branch.
 func CommitSummaryBases(sl model.Slice, bases map[string]string) (map[string][]string, error) {
+	return CommitSummaryBasesCtx(context.Background(), sl, bases)
+}
+
+// CommitSummaryBasesCtx is CommitSummaryBases with a caller-supplied context.
+func CommitSummaryBasesCtx(ctx context.Context, sl model.Slice, bases map[string]string) (map[string][]string, error) {
 	result := make(map[string][]string, len(sl.Members))
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
 		b := bases[repo]
 		if b == "" {
-			b = git.DetectBase(m.WorktreePath)
+			b = git.DetectBaseCtx(ctx, m.WorktreePath)
 		}
 		// --end-of-options: ensure a base ref that begins with '-' is treated as
 		// a revision, never a git option (defence-in-depth; trunk refs don't, but
 		// a whole-slice Base override comes from config).
-		out, err := git.Run(m.WorktreePath, "log", "--format=%s", "--end-of-options", b+"..HEAD")
+		out, err := git.RunCtx(ctx, m.WorktreePath, "log", "--format=%s", "--end-of-options", b+"..HEAD")
 		if err != nil {
 			// base ref may be absent — treat as no commits for this repo.
 			result[repo] = []string{}

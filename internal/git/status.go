@@ -1,6 +1,9 @@
 package git
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // IsDirty reports whether the working tree at dir has any uncommitted changes
 // (staged, unstaged, or untracked). It uses `git status --porcelain -z` which
@@ -17,6 +20,11 @@ func IsDirty(dir string) (bool, error) {
 // For "HEAD" this is the 40-character commit hash of the current commit.
 func RevParse(dir, rev string) (string, error) {
 	return Run(dir, "rev-parse", rev)
+}
+
+// RevParseCtx is RevParse with a caller-supplied context.
+func RevParseCtx(ctx context.Context, dir, rev string) (string, error) {
+	return RunCtx(ctx, dir, "rev-parse", rev)
 }
 
 // IsMergedInto reports whether branch has been merged into trunk in dir's repo

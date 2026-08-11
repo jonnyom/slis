@@ -4,6 +4,9 @@
 package tmuxctl
 
 import (
+	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,11 +14,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jonnyom/slis/internal/model"
+	"github.com/jonnyom/slis/internal/subproc"
 )
 
 var sanitiser = strings.NewReplacer(":", "-", ".", "-")
+var ErrWindowBusy = errors.New("tmux window is already running")
 
 // SessionName returns the tmux session name for a slice. tmux disallows ':' and
 // '.' in session names, so they are replaced with '-'. Format: "slis/<slice>".
@@ -31,8 +37,15 @@ func Available() bool {
 
 // SessionExists reports whether the slice's tmux session exists.
 func SessionExists(slice string) bool {
-	err := exec.Command("tmux", "has-session", "-t", SessionName(slice)).Run()
-	return err == nil
+	return SessionExistsCtx(context.Background(), slice)
+}
+
+// SessionExistsCtx is SessionExists with a caller-supplied context, so a
+// cancelled status poll stops probing tmux for the remaining slices.
+func SessionExistsCtx(ctx context.Context, slice string) bool {
+	cmd := exec.CommandContext(ctx, "tmux", "has-session", "-t", SessionName(slice))
+	subproc.Configure(cmd)
+	return cmd.Run() == nil
 }
 
 // SessionOpts controls the window layout of a slice's tmux session.
@@ -183,8 +196,16 @@ func EnsureSession(slice string, members []model.SliceMember, opts SessionOpts) 
 // what is running (e.g. a Claude session) without attaching. Returns an error
 // if the session does not exist.
 func CapturePane(slice string) (string, error) {
+	return CapturePaneCtx(context.Background(), slice)
+}
+
+// CapturePaneCtx is CapturePane with a caller-supplied context: it runs one tmux
+// capture per window, so a withdrawn request must be able to stop between them.
+func CapturePaneCtx(ctx context.Context, slice string) (string, error) {
 	name := SessionName(slice)
-	out, err := exec.Command("tmux", "list-windows", "-t", name, "-F", "#{window_index}\t#{window_name}").Output()
+	listCmd := exec.CommandContext(ctx, "tmux", "list-windows", "-t", name, "-F", "#{window_index}\t#{window_name}")
+	subproc.Configure(listCmd)
+	out, err := listCmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("tmux list-windows: %w", err)
 	}
@@ -194,9 +215,14 @@ func CapturePane(slice string) (string, error) {
 		if line == "" {
 			continue
 		}
+		if ctx.Err() != nil {
+			return sb.String(), ctx.Err()
+		}
 		idx, wname, _ := strings.Cut(line, "\t")
 		// -e preserves the pane's colour escapes (slis keeps SGR, strips the rest).
-		captured, _ := exec.Command("tmux", "capture-pane", "-p", "-e", "-t", name+":"+idx).Output()
+		captureCmd := exec.CommandContext(ctx, "tmux", "capture-pane", "-p", "-e", "-t", name+":"+idx)
+		subproc.Configure(captureCmd)
+		captured, _ := captureCmd.Output()
 		sb.WriteString("── " + wname + " ──\n")
 		sb.Write(captured)
 		if !strings.HasSuffix(string(captured), "\n") {
@@ -250,6 +276,72 @@ func SendPrompt(slice, prompt string) error {
 	}
 	if out, err := exec.Command("tmux", "send-keys", "-t", name, "Enter").CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux send-keys: %w: %s", err, out)
+	}
+	return nil
+}
+
+func SendPromptOnce(slice, prompt, deliveryID string) error {
+	name := SessionName(slice)
+	digest := sha256.Sum256([]byte(deliveryID))
+	suffix := fmt.Sprintf("%x", digest[:8])
+	lockName := "slis-review-delivery-" + suffix
+	lock := exec.Command("tmux", "wait-for", "-L", lockName)
+	subproc.Configure(lock)
+	if out, err := lock.CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux lock prompt delivery: %w: %s", err, out)
+	}
+	sendErr := sendPromptOnceLocked(name, prompt, suffix)
+	unlock := exec.Command("tmux", "wait-for", "-U", lockName)
+	subproc.Configure(unlock)
+	out, unlockErr := unlock.CombinedOutput()
+	if unlockErr != nil {
+		unlockErr = fmt.Errorf("tmux unlock prompt delivery: %w: %s", unlockErr, out)
+	}
+	return errors.Join(sendErr, unlockErr)
+}
+
+func sendPromptOnceLocked(name, prompt, suffix string) error {
+	option := "@slis_review_delivery_" + suffix
+	check := exec.Command("tmux", "show-options", "-p", "-qv", "-t", name, option)
+	subproc.Configure(check)
+	out, err := check.Output()
+	if err != nil {
+		return fmt.Errorf("tmux show-options: %w", err)
+	}
+	deliveryState := strings.TrimSpace(string(out))
+	if deliveryState == "sent" {
+		return nil
+	}
+
+	if deliveryState == "" {
+		buffer := "slis-review-" + suffix
+		load := exec.Command("tmux", "load-buffer", "-b", buffer, "-")
+		subproc.Configure(load)
+		load.Stdin = strings.NewReader(prompt)
+		if out, err := load.CombinedOutput(); err != nil {
+			return fmt.Errorf("tmux load-buffer: %w: %s", err, out)
+		}
+		paste := exec.Command(
+			"tmux",
+			"paste-buffer", "-d", "-p", "-b", buffer, "-t", name,
+			";", "set-option", "-p", "-t", name, option, "pasted",
+		)
+		subproc.Configure(paste)
+		if out, err := paste.CombinedOutput(); err != nil {
+			return fmt.Errorf("tmux paste prompt: %w: %s", err, out)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	send := exec.Command("tmux", "send-keys", "-t", name, "Enter")
+	subproc.Configure(send)
+	if out, err := send.CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux send-keys: %w: %s", err, out)
+	}
+	complete := exec.Command("tmux", "set-option", "-p", "-t", name, option, "sent")
+	subproc.Configure(complete)
+	if out, err := complete.CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux set-option: %w: %s", err, out)
 	}
 	return nil
 }
@@ -424,10 +516,80 @@ func StartWindow(slice, window, cwd, command string) error {
 	return nil
 }
 
+func StartOrRespawnWindow(slice, window, cwd, command string) error {
+	target := WindowTarget(slice, window)
+	exists := false
+	dead := false
+	for range 20 {
+		var err error
+		exists, dead, err = windowState(slice, window)
+		if err != nil {
+			return err
+		}
+		if !exists || dead {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if exists && !dead {
+		return ErrWindowBusy
+	}
+	if !exists {
+		args := []string{"new-window", "-d", "-t", SessionName(slice), "-n", window}
+		if cwd != "" {
+			args = append(args, "-c", cwd)
+		}
+		if createOut, createErr := exec.Command("tmux", args...).CombinedOutput(); createErr != nil {
+			return fmt.Errorf("tmux new-window %q: %w: %s", window, createErr, createOut)
+		}
+		if optionOut, optionErr := exec.Command("tmux", "set-option", "-w", "-t", target, "remain-on-exit", "on").CombinedOutput(); optionErr != nil {
+			return fmt.Errorf("tmux set-option %q: %w: %s", window, optionErr, optionOut)
+		}
+	}
+	args := []string{"respawn-pane", "-k", "-t", target}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	args = append(args, command)
+	if respawnOut, respawnErr := exec.Command("tmux", args...).CombinedOutput(); respawnErr != nil {
+		return fmt.Errorf("tmux respawn-pane %q: %w: %s", window, respawnErr, respawnOut)
+	}
+	return nil
+}
+
+func WindowRunning(slice, window string) (bool, error) {
+	exists, dead, err := windowState(slice, window)
+	return exists && !dead, err
+}
+
+func windowState(slice, window string) (bool, bool, error) {
+	out, err := exec.Command("tmux", "list-windows", "-t", SessionName(slice), "-F", "#{window_name}\t#{pane_dead}").CombinedOutput()
+	if err != nil {
+		if !SessionExists(slice) {
+			return false, false, nil
+		}
+		return false, false, fmt.Errorf("tmux list-windows: %w: %s", err, out)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) == 2 && fields[0] == window {
+			return true, fields[1] == "1", nil
+		}
+	}
+	return false, false, nil
+}
+
 // PanePIDs returns the pane PIDs across all windows of the slice's session.
 func PanePIDs(slice string) ([]int, error) {
+	return PanePIDsCtx(context.Background(), slice)
+}
+
+// PanePIDsCtx is PanePIDs with a caller-supplied context.
+func PanePIDsCtx(ctx context.Context, slice string) ([]int, error) {
 	name := SessionName(slice)
-	out, err := exec.Command("tmux", "list-panes", "-s", "-t", name, "-F", "#{pane_pid}").Output()
+	cmd := exec.CommandContext(ctx, "tmux", "list-panes", "-s", "-t", name, "-F", "#{pane_pid}")
+	subproc.Configure(cmd)
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("tmux list-panes: %w", err)
 	}
@@ -456,6 +618,27 @@ func AttachArgv(slice string, insideTmux bool) (string, []string) {
 		return "tmux", []string{"switch-client", "-t", target}
 	}
 	return "tmux", []string{"attach", "-t", target}
+}
+
+func WindowTarget(slice, window string) string {
+	return SessionName(slice) + ":" + window
+}
+
+func AttachWindowArgv(slice, window string, insideTmux bool) (string, []string) {
+	target := WindowTarget(slice, window)
+	if insideTmux {
+		return "tmux", []string{"switch-client", "-t", target}
+	}
+	return "tmux", []string{"attach", "-t", target}
+}
+
+func AttachWindow(slice, window string) error {
+	name, args := AttachWindowArgv(slice, window, os.Getenv("TMUX") != "")
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // Attach attaches the current terminal to the slice's session (switch-client if

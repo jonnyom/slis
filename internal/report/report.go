@@ -9,6 +9,7 @@
 package report
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -129,9 +130,16 @@ type StatusDTO struct {
 }
 
 func SliceStatusDTO(eventsDir, slice string) StatusDTO {
+	return SliceStatusDTOCtx(context.Background(), eventsDir, slice)
+}
+
+// SliceStatusDTOCtx is SliceStatusDTO with a caller-supplied context. The tmux
+// fallback probe is a subprocess per slice, so a cancelled all-slice status poll
+// must stop rather than walk the whole workspace.
+func SliceStatusDTOCtx(ctx context.Context, eventsDir, slice string) StatusDTO {
 	record := notify.ReadStatusRecord(eventsDir, slice)
 	status := notify.ReadStatus(eventsDir, slice)
-	if status == model.SessNone && tmuxctl.SessionExists(slice) {
+	if status == model.SessNone && tmuxctl.SessionExistsCtx(ctx, slice) {
 		status = model.SessRunning
 	}
 	return StatusDTO{
@@ -217,7 +225,12 @@ func RegistryPathFor(overridesPath string) string {
 // active slice from the journal, and returns DTOs sorted by name. Overrides and
 // journal paths that do not exist are silently treated as empty/absent.
 func ListSlices(ws config.Workspace, overridesPath, journalPath string) ([]SliceDTO, error) {
-	res, err := ListSlicesReport(ws, overridesPath, journalPath, false)
+	return ListSlicesCtx(context.Background(), ws, overridesPath, journalPath)
+}
+
+// ListSlicesCtx is ListSlices with a caller-supplied context.
+func ListSlicesCtx(ctx context.Context, ws config.Workspace, overridesPath, journalPath string) ([]SliceDTO, error) {
+	res, err := ListSlicesReportCtx(ctx, ws, overridesPath, journalPath, false)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +243,12 @@ func ListSlices(ws config.Workspace, overridesPath, journalPath string) ([]Slice
 // opt-in: only registered (or managed-tree) worktrees become slices; the rest
 // are candidates.
 func ListSlicesReport(ws config.Workspace, overridesPath, journalPath string, annotateStacks bool) (LsResultDTO, error) {
+	return ListSlicesReportCtx(context.Background(), ws, overridesPath, journalPath, annotateStacks)
+}
+
+// ListSlicesReportCtx is ListSlicesReport with a caller-supplied context, so the
+// stack annotation's gt reads (the expensive part) stop when the caller gives up.
+func ListSlicesReportCtx(ctx context.Context, ws config.Workspace, overridesPath, journalPath string, annotateStacks bool) (LsResultDTO, error) {
 	rep := discovery.Report(ws, RegistryPathFor(overridesPath))
 
 	slices := discovery.Resolve(rep.Slices, overridesPath, ws.Grouping.StripPrefix)
@@ -237,7 +256,7 @@ func ListSlicesReport(ws config.Workspace, overridesPath, journalPath string, an
 	// Graphite stack annotation is opt-in: only ls --json needs it, and it costs
 	// a `gt state` read per member, so polling commands (status) skip it.
 	if annotateStacks {
-		slices = discovery.AnnotateStacks(slices, gt.ReadStack)
+		slices = discovery.AnnotateStacks(ctx, slices, gt.ReadStackCtx)
 	}
 
 	j, _ := swap.Load(journalPath)
@@ -331,17 +350,19 @@ func ToSliceDTO(s model.Slice) SliceDTO {
 // Graphite stack from its worktree (best-effort; a repo with no gt data yields
 // an empty stack).
 func BuildDetail(dto SliceDTO) SliceDetailDTO {
+	return BuildDetailCtx(context.Background(), dto)
+}
+
+// BuildDetailCtx is BuildDetail with a caller-supplied context.
+func BuildDetailCtx(ctx context.Context, dto SliceDTO) SliceDetailDTO {
 	members := make([]MemberDetailDTO, 0, len(dto.Members))
 	for _, m := range dto.Members {
 		mdet := MemberDetailDTO{MemberDTO: m}
 		if m.WorktreePath != "" {
-			st, err := gt.ReadStack(m.WorktreePath)
+			st, err := gt.ReadStackCtx(ctx, m.WorktreePath)
 			if err == nil {
-				dirtyAdded, dirtyDeleted, dirtyOK := memberDirtyCounts(m)
-				// A slice owns the branch checked out in this worktree. Include only
-				// its downstack ancestry for context; siblings and upstack branches
-				// belong to other worktrees/slices and must never leak into this view.
-				ordered := st.Lineage(m.Branch)
+				dirtyAdded, dirtyDeleted, dirtyOK := memberDirtyCounts(ctx, m)
+				ordered := st.Stack(m.Branch)
 				stack := make([]OrderedBranchDTO, 0, len(ordered)+1)
 				sawCurrent := false
 				sawTrunk := false
@@ -368,8 +389,8 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 					case ob.Name == m.Branch && dirtyOK:
 						node.Added, node.Deleted = intPtr(dirtyAdded), intPtr(dirtyDeleted)
 					default:
-						if bd, err := BranchDiff(m.WorktreePath, m.Repo, ob.Name, "stat"); err == nil && bd.Err == "" && bd.Stat != nil {
-							node.Added, node.Deleted = intPtr(bd.Stat.Added), intPtr(bd.Stat.Deleted)
+						if stat := branchStatFromState(ctx, m.WorktreePath, st, ob.Name); stat != nil {
+							node.Added, node.Deleted = intPtr(stat.Added), intPtr(stat.Deleted)
 						}
 					}
 					stack = append(stack, node)
@@ -378,8 +399,8 @@ func BuildDetail(dto SliceDTO) SliceDetailDTO {
 				// but Git can still provide the repository trunk. Preserve the same
 				// trunk → member structure every repo group uses without mutating gt.
 				if !sawTrunk {
-					base := git.DetectBase(m.WorktreePath)
-					if base != "" && git.RefExists(m.WorktreePath, base) {
+					base := git.DetectBaseCtx(ctx, m.WorktreePath)
+					if base != "" && git.RefExistsCtx(ctx, m.WorktreePath, base) {
 						if base == m.Branch {
 							if !sawCurrent {
 								stack = append(stack, OrderedBranchDTO{Name: base, Trunk: true})
@@ -430,7 +451,7 @@ func intPtr(n int) *int { return &n }
 // memberDirtyCounts matches the cockpit's default "working" scope for the
 // currently checked-out member branch. Other stack rows use committed
 // branch-vs-parent counts above.
-func memberDirtyCounts(m MemberDTO) (added, deleted int, ok bool) {
+func memberDirtyCounts(ctx context.Context, m MemberDTO) (added, deleted int, ok bool) {
 	sl := model.Slice{Members: map[string]model.SliceMember{
 		m.Repo: {
 			Repo:         m.Repo,
@@ -439,11 +460,26 @@ func memberDirtyCounts(m MemberDTO) (added, deleted int, ok bool) {
 			TipSHA:       m.TipSHA,
 		},
 	}}
-	diffs, err := diffpkg.SliceDirtyStat(sl)
+	diffs, err := diffpkg.SliceDirtyStatCtx(ctx, sl)
 	if err != nil || len(diffs) != 1 || diffs[0].Err != "" {
 		return 0, 0, false
 	}
 	return diffs[0].TotalAdded(), diffs[0].TotalDeleted(), true
+}
+
+func branchStatFromState(ctx context.Context, repoDir string, state gt.State, branch string) *DiffStatDTO {
+	parent := ""
+	if branchState, ok := state[branch]; ok && len(branchState.Parents) > 0 {
+		parent = branchState.Parents[0].Ref
+	}
+	if parent == "" || !git.RefExistsCtx(ctx, repoDir, parent) {
+		parent = git.DetectBaseCtx(ctx, repoDir)
+	}
+	result, err := diffpkg.BranchAgainstParentCtx(ctx, repoDir, parent, branch, false)
+	if err != nil || result.Err != "" {
+		return nil
+	}
+	return statDTO(result)
 }
 
 // SliceStatuses returns the session status for every slice in the workspace,
@@ -451,14 +487,22 @@ func memberDirtyCounts(m MemberDTO) (added, deleted int, ok bool) {
 // "running" and a slice with no session reports "none". The slice set is the
 // same canonical set ls shows (discovery + overrides).
 func SliceStatuses(ws config.Workspace, sp config.Paths) ([]StatusDTO, error) {
-	dtos, err := ListSlices(ws, sp.Overrides, sp.ActiveJournal)
+	return SliceStatusesCtx(context.Background(), ws, sp)
+}
+
+// SliceStatusesCtx is SliceStatuses with a caller-supplied context.
+func SliceStatusesCtx(ctx context.Context, ws config.Workspace, sp config.Paths) ([]StatusDTO, error) {
+	dtos, err := ListSlicesCtx(ctx, ws, sp.Overrides, sp.ActiveJournal)
 	if err != nil {
 		return nil, err
 	}
 
 	out := make([]StatusDTO, 0, len(dtos))
 	for _, s := range dtos {
-		out = append(out, SliceStatusDTO(sp.EventsDir, s.Name))
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		out = append(out, SliceStatusDTOCtx(ctx, sp.EventsDir, s.Name))
 	}
 	sort.Slice(out, func(i, k int) bool { return out[i].Slice < out[k].Slice })
 	return out, nil
@@ -498,13 +542,18 @@ func FindSliceIn(ws config.Workspace, sp config.Paths, name string) (model.Slice
 // branch was not found in that repo's stack (no data); real stacked branches sit
 // at depth ≥ 1 (trunk = 0).
 func StackDepths(sl model.Slice) (depths map[string]int, anyStack bool) {
+	return StackDepthsCtx(context.Background(), sl)
+}
+
+// StackDepthsCtx is StackDepths with a caller-supplied context.
+func StackDepthsCtx(ctx context.Context, sl model.Slice) (depths map[string]int, anyStack bool) {
 	depths = make(map[string]int, len(sl.Members))
 	for _, repo := range sl.Repos() {
 		m := sl.Members[repo]
 		if m.WorktreePath == "" {
 			continue
 		}
-		st, err := gt.ReadStack(m.WorktreePath)
+		st, err := gt.ReadStackCtx(ctx, m.WorktreePath)
 		if err != nil || len(st) == 0 {
 			continue
 		}
@@ -536,37 +585,97 @@ func OrderReposByStack(sl model.Slice, depths map[string]int, anyStack bool) []s
 	return repos
 }
 
-// PRStackRows builds the `slis pr-stack --json` rows for a slice: one row per
-// member repo, trunk-first by Graphite depth, each carrying the repo's PR (when
-// one exists). Per-repo PR lookups that fail or find no PR leave the PR fields
-// empty rather than aborting the whole slice.
 func PRStackRows(sl model.Slice) []PRStackRowDTO {
-	depths, anyStack := StackDepths(sl)
+	return PRStackRowsCtx(context.Background(), sl)
+}
+
+func PRStackRowsCtx(ctx context.Context, sl model.Slice) []PRStackRowDTO {
+	return buildPRStackRowsCtx(ctx, sl, gt.ReadStackCtx, forge.PRsForBranchesCtx)
+}
+
+func buildPRStackRowsCtx(
+	ctx context.Context,
+	sl model.Slice,
+	readStack func(context.Context, string) (gt.State, error),
+	findPRs func(context.Context, string, []string) (map[string]*forge.PR, error),
+) []PRStackRowDTO {
+	depths := make(map[string]int, len(sl.Members))
+	stacks := make(map[string][]gt.OrderedBranch, len(sl.Members))
+	anyStack := false
+	for _, repo := range sl.Repos() {
+		member := sl.Members[repo]
+		if member.WorktreePath == "" {
+			continue
+		}
+		state, err := readStack(ctx, member.WorktreePath)
+		if err != nil {
+			continue
+		}
+		stack := state.Stack(member.Branch)
+		if len(stack) == 0 {
+			continue
+		}
+		stacks[repo] = stack
+		for _, branch := range stack {
+			if branch.Name == member.Branch {
+				depths[repo] = branch.Depth
+				anyStack = true
+				break
+			}
+		}
+	}
+
 	repos := OrderReposByStack(sl, depths, anyStack)
-	rows := make([]PRStackRowDTO, 0, len(repos))
+	rows := make([]PRStackRowDTO, 0)
 	for _, repo := range repos {
-		m := sl.Members[repo]
-		row := PRStackRowDTO{Repo: repo, Branch: m.Branch, StackOrder: depths[repo]}
-		pr, _ := forge.PRForBranch(m.WorktreePath, m.Branch)
-		row.SetPR(pr)
-		rows = append(rows, row)
+		member := sl.Members[repo]
+		branches := stacks[repo]
+		if len(branches) == 0 {
+			branches = []gt.OrderedBranch{{Name: member.Branch, Depth: depths[repo]}}
+		}
+		branchNames := make([]string, 0, len(branches))
+		for _, branch := range branches {
+			if !branch.Trunk {
+				branchNames = append(branchNames, branch.Name)
+			}
+		}
+		prs, _ := findPRs(ctx, member.WorktreePath, branchNames)
+		for _, branch := range branches {
+			if branch.Trunk {
+				continue
+			}
+			row := PRStackRowDTO{Repo: repo, Branch: branch.Name, StackOrder: branch.Depth}
+			row.SetPR(prs[branch.Name])
+			rows = append(rows, row)
+		}
 	}
 	return rows
 }
 
 // ComputeConflicts discovers slices, applies overrides, and builds the radar
 // index over their changed-file sets. Stats are computed fresh (no TUI card
-// cache outside the running program), concurrently per slice.
+// cache outside the running program), a bounded number of slices at a time.
 func ComputeConflicts(ws config.Workspace, overridesPath string) (*radar.Index, error) {
+	return ComputeConflictsCtx(context.Background(), ws, overridesPath)
+}
+
+// ComputeConflictsCtx is ComputeConflicts with a caller-supplied context: the
+// radar is the heaviest read in slis, so cancelling it must stop the fan-out.
+func ComputeConflictsCtx(ctx context.Context, ws config.Workspace, overridesPath string) (*radar.Index, error) {
 	slices := discovery.Resolve(discovery.Report(ws, RegistryPathFor(overridesPath)).Slices, overridesPath, ws.Grouping.StripPrefix)
 
-	return radar.Build(radar.CollectStats(slices)), nil
+	return radar.Build(radar.CollectStats(ctx, slices, gt.ReadStackCtx)), nil
 }
 
 // Conflicts is ComputeConflicts wrapped as a ready-to-marshal ConflictsDTO, with
 // nil slices normalised to empty arrays so the JSON always has the two keys.
 func Conflicts(ws config.Workspace, overridesPath string) (ConflictsDTO, error) {
-	idx, err := ComputeConflicts(ws, overridesPath)
+	return ConflictsCtx(context.Background(), ws, overridesPath)
+}
+
+// ConflictsCtx is Conflicts with a caller-supplied context.
+func ConflictsCtx(ctx context.Context, ws config.Workspace, overridesPath string) (ConflictsDTO, error) {
+	idx, err := ComputeConflictsCtx(ctx, ws, overridesPath)
 	if err != nil {
 		return ConflictsDTO{}, err
 	}

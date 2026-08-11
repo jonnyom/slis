@@ -1,6 +1,7 @@
 package discovery_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/discovery"
@@ -32,7 +33,7 @@ func sliceWith(name, repo, branch, path string) model.Slice {
 // fakeReader returns webStack for any web-repo worktree path and an empty state
 // otherwise.
 func fakeReader(byPath map[string]gt.State) discovery.StackReader {
-	return func(path string) (gt.State, error) {
+	return func(_ context.Context, path string) (gt.State, error) {
 		if st, ok := byPath[path]; ok {
 			return st, nil
 		}
@@ -52,7 +53,7 @@ func TestAnnotateStacksSharesStackID(t *testing.T) {
 		sliceWith("lone", "web", "lone", "/w/lone"),
 	}
 
-	slices = discovery.AnnotateStacks(slices, fakeReader(byPath))
+	slices = discovery.AnnotateStacks(context.Background(), slices, fakeReader(byPath))
 
 	id103, id104, id105 := slices[0].StackID, slices[1].StackID, slices[2].StackID
 	if id103 == "" {
@@ -74,7 +75,7 @@ func TestAnnotateStacksSharesStackID(t *testing.T) {
 func TestAnnotateStacksNoDataLeavesEmpty(t *testing.T) {
 	slices := []model.Slice{sliceWith("x", "web", "feat", "/w/x")}
 	// Reader returns empty state for every path.
-	slices = discovery.AnnotateStacks(slices, fakeReader(nil))
+	slices = discovery.AnnotateStacks(context.Background(), slices, fakeReader(nil))
 	if slices[0].StackID != "" {
 		t.Errorf("StackID = %q; want empty when no stack data", slices[0].StackID)
 	}
@@ -89,7 +90,7 @@ func TestAnnotateStacksDistinctReposDoNotShare(t *testing.T) {
 		sliceWith("one", "web", "feat", "/a"),
 		sliceWith("two", "api", "feat", "/b"),
 	}
-	slices = discovery.AnnotateStacks(slices, fakeReader(byPath))
+	slices = discovery.AnnotateStacks(context.Background(), slices, fakeReader(byPath))
 	if slices[0].StackID == slices[1].StackID {
 		t.Errorf("slices in different repos share StackID %q; must be repo-scoped", slices[0].StackID)
 	}
@@ -102,7 +103,7 @@ func TestAnnotateStacksDistinctReposDoNotShare(t *testing.T) {
 func TestAnnotateStacksCachesPerRepo(t *testing.T) {
 	st := webStack()
 	calls := 0
-	reader := func(path string) (gt.State, error) {
+	reader := func(_ context.Context, path string) (gt.State, error) {
 		calls++
 		return st, nil
 	}
@@ -113,7 +114,7 @@ func TestAnnotateStacksCachesPerRepo(t *testing.T) {
 		sliceWith("lone", "web", "lone", "/w/lone"),
 	}
 
-	discovery.AnnotateStacks(slices, reader)
+	discovery.AnnotateStacks(context.Background(), slices, reader)
 
 	if calls != 1 {
 		t.Errorf("reader called %d times across 4 worktrees of one repo; want 1 (per-repo cache)", calls)

@@ -9,6 +9,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/review"
+	"github.com/jonnyom/slis/internal/reviewrun"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
@@ -33,11 +34,45 @@ func newStore(t *testing.T) *review.Store {
 	return review.Open(filepath.Join(t.TempDir(), "reviews.json"))
 }
 
-func TestReviewAgentForegroundCommandQuotesArguments(t *testing.T) {
-	got := reviewAgentForegroundCommand("/tmp/slis app", "slice's name", "Codex Pro")
-	want := "'/tmp/slis app' review agent 'slice'\\''s name' --agent 'Codex Pro' --foreground"
+func TestReviewRunCommandQuotesArguments(t *testing.T) {
+	got := reviewRunCommand("/tmp/slis app", "slice's name", "Codex Pro", "run id")
+	want := "'/tmp/slis app' review agent 'slice'\\''s name' --agent 'Codex Pro' --foreground --run-id 'run id'"
 	if got != want {
 		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestPendingReviewMessagesStartsAfterTheLastCompletedRequest(t *testing.T) {
+	detail := reviewrun.Detail{
+		Run: reviewrun.Run{LastRequest: "first"},
+		Messages: []reviewrun.Message{
+			{ID: "first", Role: reviewrun.RoleUser, Body: "Initial review"},
+			{ID: "reply", Role: reviewrun.RoleReviewer, Body: "Looks good"},
+			{ID: "second", Role: reviewrun.RoleUser, Body: "Check the lock"},
+		},
+	}
+
+	pending := pendingReviewMessages(detail)
+	if len(pending) != 1 || pending[0].ID != "second" {
+		t.Fatalf("pending = %#v", pending)
+	}
+}
+
+func TestReviewConversationPromptIncludesTheStoredThread(t *testing.T) {
+	slice := model.Slice{Name: "feature", Members: map[string]model.SliceMember{
+		"api": {Repo: "api", Branch: "feature", WorktreePath: "/work/api"},
+	}}
+	detail := reviewrun.Detail{Messages: []reviewrun.Message{
+		{Role: reviewrun.RoleUser, Body: "Review the stack"},
+		{Role: reviewrun.RoleReviewer, Body: "One issue"},
+		{Role: reviewrun.RoleUser, Body: "Explain it"},
+	}}
+
+	prompt := reviewConversationPrompt(slice, detail)
+	for _, expected := range []string{"Review the stack", "One issue", "Explain it"} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("prompt does not contain %q", expected)
+		}
 	}
 }
 

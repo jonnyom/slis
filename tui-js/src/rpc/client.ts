@@ -25,6 +25,7 @@ import type {
   StatusEntry,
   PrStackEntry,
   ReviewComment,
+  ReviewRun,
   TreeResult,
 } from "./types";
 
@@ -88,21 +89,32 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const BACKOFF_MIN_MS = 100;
 const BACKOFF_MAX_MS = 5_000;
 const STDERR_LIMIT = 16_384;
+const STDERR_DRAIN_TIMEOUT_MS = 500;
 
 export interface SidecarOptions {
   /** Binary to run. Defaults to $SLIS_BIN or "slis". */
   bin?: string;
   /** Extra args after "rpc". */
   args?: string[];
+  /** Per-request ceiling before the client gives up. Defaults to 30s. */
+  requestTimeoutMs?: number;
 }
 
 export class SlisRpcClient implements RpcClient {
   private readonly bin: string;
   private readonly args: string[];
+  private readonly requestTimeoutMs: number;
 
   private proc: Bun.Subprocess<"pipe", "pipe", "pipe"> | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  // Identical reads already in flight, keyed by method+params. Every method here
+  // is a read, so a second identical request issued before the first returns is
+  // pure duplicated work: the 30s tick used to re-fire `conflicts` while the
+  // previous one was still fanning out subprocesses in the sidecar, so a slow
+  // workspace queued burst after burst. Joining the in-flight call caps the
+  // sidecar's work at one of each read at a time.
+  private readonly inFlight = new Map<string, Promise<unknown>>();
   private readonly sessionHandlers = new Set<(e: SessionEvent) => void>();
   private readonly connectionHandlers = new Set<
     (connected: boolean, error?: Error) => void
@@ -116,6 +128,7 @@ export class SlisRpcClient implements RpcClient {
   constructor(opts: SidecarOptions = {}) {
     this.bin = opts.bin ?? process.env["SLIS_BIN"] ?? "slis";
     this.args = opts.args ?? [];
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
     this.spawn();
   }
 
@@ -132,16 +145,22 @@ export class SlisRpcClient implements RpcClient {
     this.proc = proc;
     this.buffer = "";
     const stderrText = this.readStderr(proc);
-    this.readLoop(proc).catch((err) => this.onTransportDown(err));
+    this.readLoop(proc).catch((err) => this.onTransportDown(proc, err));
     // When the process exits, tear down and schedule a restart.
     proc.exited
       .then(async (code) => {
-        const diagnostic = (await stderrText).trim();
+        const diagnostic = (
+          await Promise.race([
+            stderrText,
+            Bun.sleep(STDERR_DRAIN_TIMEOUT_MS).then(() => ""),
+          ])
+        ).trim();
         this.onTransportDown(
+          proc,
           new Error(diagnostic || `sidecar exited (${code})`),
         );
       })
-      .catch((err) => this.onTransportDown(err));
+      .catch((err) => this.onTransportDown(proc, err));
     this.emitConnection(true);
   }
 
@@ -209,15 +228,23 @@ export class SlisRpcClient implements RpcClient {
     }
   }
 
-  private onTransportDown(err: unknown): void {
-    if (this.closed) return;
+  private onTransportDown(
+    proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
+    err: unknown,
+  ): void {
+    if (this.closed || this.proc !== proc) return;
     // Reject every in-flight request so callers surface the failure.
     for (const [, pending] of this.pending) {
       clearTimeout(pending.timer);
       pending.reject(err instanceof Error ? err : new Error(String(err)));
     }
     this.pending.clear();
+    // Kill the sidecar we just gave up on. The transport can go down while the
+    // process is still alive (a broken stdout read), and an unreachable sidecar
+    // still holds its in-flight git/gt/gh children — leaking it would leave those
+    // subprocesses burning CPU with nothing left to read their answers.
     this.proc = null;
+    if (proc.exitCode === null) proc.kill();
     this.emitConnection(
       false,
       err instanceof Error ? err : new Error(String(err)),
@@ -243,8 +270,9 @@ export class SlisRpcClient implements RpcClient {
   close(): void {
     this.closed = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
-    for (const [, pending] of this.pending) {
+    for (const [id, pending] of this.pending) {
       clearTimeout(pending.timer);
+      this.withdraw(id);
       pending.reject(new Error("client closed"));
     }
     this.pending.clear();
@@ -254,7 +282,20 @@ export class SlisRpcClient implements RpcClient {
 
   // ── request plumbing ──────────────────────────────────────────────────────
 
+  // call coalesces identical concurrent reads onto one request; see inFlight.
   private call<T>(method: string, params?: unknown): Promise<T> {
+    const key = method + ":" + (params === undefined ? "" : JSON.stringify(params));
+    const joined = this.inFlight.get(key) as Promise<T> | undefined;
+    if (joined) return joined;
+
+    const promise = this.send<T>(method, params).finally(() => {
+      this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, promise);
+    return promise;
+  }
+
+  private send<T>(method: string, params?: unknown): Promise<T> {
     const proc = this.proc;
     if (!proc) {
       return Promise.reject(new Error("sidecar not connected"));
@@ -266,8 +307,11 @@ export class SlisRpcClient implements RpcClient {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        // Giving up locally is not enough: without this the sidecar keeps fanning
+        // out subprocesses for an answer nobody will read.
+        this.withdraw(id);
         reject(new Error(`rpc timeout: ${method}`));
-      }, REQUEST_TIMEOUT_MS);
+      }, this.requestTimeoutMs);
       this.pending.set(id, {
         resolve: resolve as (v: unknown) => void,
         reject,
@@ -282,6 +326,20 @@ export class SlisRpcClient implements RpcClient {
         reject(err);
       }
     });
+  }
+
+  // withdraw tells the sidecar to abandon a request we no longer want, so its
+  // in-flight git / gt / gh work is cancelled instead of running to completion.
+  // Best-effort: a dead transport means the sidecar (and its children) are gone.
+  private withdraw(id: number): void {
+    const proc = this.proc;
+    if (!proc) return;
+    try {
+      proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "cancel", params: { id } }) + "\n");
+      proc.stdin.flush();
+    } catch {
+      // Transport already down — nothing left to cancel.
+    }
   }
 
   // ── typed method wrappers ─────────────────────────────────────────────────
@@ -350,6 +408,12 @@ export class SlisRpcClient implements RpcClient {
   }
   reviews(params?: { slice?: string }): Promise<ReviewComment[]> {
     return this.call<ReviewComment[]>("reviews", params?.slice ? { slice: params.slice } : {});
+  }
+  reviewRuns(params?: { slice?: string; includeMessages?: boolean }): Promise<ReviewRun[]> {
+    return this.call<ReviewRun[]>("reviewRuns", {
+      ...(params?.slice ? { slice: params.slice } : {}),
+      ...(params?.includeMessages ? { include_messages: true } : {}),
+    });
   }
 
   // ── subscriptions ─────────────────────────────────────────────────────────

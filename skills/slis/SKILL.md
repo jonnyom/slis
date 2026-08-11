@@ -36,7 +36,7 @@ slis is built to be driven headlessly. Two rules:
 1. **Read with `--json`, parse the data — don't screen-scrape tables and don't
    branch on the exit code** (it's a flat `1` on any failure today). Every read
    command takes `--json`: `ls show status pr pr-stack summary conflicts comments
-   doctor candidates`.
+   doctor candidates review list review runs review show`.
 2. **Know what mutates before you run it.** See the safety map below. Prefer
    `--json` / `--dry-run` to inspect first; never run a remote/destructive
    mutator (`submit`, `merge`, `sync`, `rm --force`) without explicit intent.
@@ -60,16 +60,18 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done), plus optional Claude `session_id`/`cwd` for recovery |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
-| `slis pr-stack <slice>` | read | **yes** | Shareable PR stack (markdown; `--copy` to clipboard; `--json` rows carry `stack_order` and are ordered trunk-first by Graphite depth) |
+| `slis pr-stack <slice>` | read | **yes** | Shareable full PR stack (markdown; `--copy` to clipboard; `--json` emits every non-trunk Graphite branch with `stack_order`, ordered trunk-first) |
 | `slis share <slice>` | clipboard | no | Copy every PR across every repo stack with parent-relative `+added` / `-deleted` totals as Markdown (`--stdout` prints it instead) |
 | `slis comments [slice]` | read | **yes** | Cached PR review/inline comments (persists after `rm`) |
 | `slis review list [slice]` | read | **yes** | List pending inline-review comments awaiting delivery to a slice's agent |
+| `slis review runs [slice]` | read | **yes** | List persistent agent-review conversations and their queued/running/clean/findings/failed status |
+| `slis review show <run-id>` | read | **yes** | Show one review conversation, including its complete user/reviewer/system message history |
 | `slis conflicts` | read | **yes** | Files touched by >1 slice (merge-overlap radar) |
 | `slis doctor` | read | **yes** | Workspace health findings incl. hidden/detached/prunable worktrees + orphaned `.slis/worktrees` dirs, swap-journal health (stale journal, deleted prior branch, orphaned `slis/live` branch/detach tagged auto-fixable vs needs-manual-attention, partial swap where the journal covers only some member repos, and a repo swapped-in but un-journaled), and a Graphite section (gt installed? repos initialised? branches tracked?). `--fix` auto-repairs the safe ones (incl. deleting a stale journal only when every primary is on a branch, and clearing a contained orphaned `slis/live` branch); never prunes worktrees |
 | `slis edit <slice>` | read* | no | Open worktrees in your editor (`--print` prints the path) |
-| `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run); in a Graphite-native repo also `gt track`s the new branch (best-effort) |
-| `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees); in a Graphite-native repo also `gt track`s it (best-effort) |
-| `slis import [path]` | mutate | no | Register a candidate worktree (or `--all`) as a managed slice — registry only, never git |
+| `slis create <slice>` | mutate | no | Create worktrees + branch across all repos (`--no-worktrees` dry-run); refuses inside an existing `SLIS_SLICE` unless `--allow-from-slice`; in a Graphite-native repo also `gt track`s the new branch (best-effort) |
+| `slis adopt [branch]` | mutate | no | Adopt an existing branch into a managed slice (creates worktrees); refuses inside an existing `SLIS_SLICE` unless `--allow-from-slice`; in a Graphite-native repo also `gt track`s it (best-effort) |
+| `slis import [path]` | mutate | no | Register a candidate worktree (or `--all`) as a managed slice — registry only, never git; refuses inside an existing `SLIS_SLICE` unless `--allow-from-slice` |
 | `slis ignore <path-or-glob>` | mutate | no | Add a path/glob to `grouping.ignore` so matching worktrees are never ingested |
 | `slis forget <slice>` | mutate | no | Drop a slice from the registry (does not touch git — use for a missing slice) |
 | `slis activate <slice>` | mutate | no | Put all primaries on a `slis/live/<slice>` branch at the slice's branch tips (`--stash` if dirty) |
@@ -91,7 +93,9 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
 | `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
 | `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active pane, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
-| `slis review agent <slice> --agent <name>` | mutate | no | Start the selected configured or PATH-detected reviewer in a dedicated slice tmux window and return immediately; it reviews the whole stack, stores attributed findings, and delivers only those new findings to the working agent. Failed reviews remain visible in tmux |
+| `slis review agent <slice> --agent <name>` | mutate | no | Start a persistent review conversation in a dedicated slice tmux window; results and clean receipts survive completion |
+| `slis review message <run-id> --body <text>` | mutate | no | Append a follow-up turn; the reviewer receives the complete stored conversation and the same tmux window is resumed |
+| `slis review attach <run-id>` | interactive | no | Attach or switch to the exact review tmux window, including completed scrollback |
 
 `*` `edit` opens an editor / prints a path; it does not change repo state.
 `slis hook <event>` exists but is hidden and machine-invoked by Claude Code — never call it by hand.

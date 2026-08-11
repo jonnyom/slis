@@ -11,21 +11,21 @@ describe("cyclePanel", () => {
   test("cycles forward through the full order and wraps", () => {
     let p: PanelId = "stack";
     const seen: PanelId[] = [p];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       p = cyclePanel(p, 1);
       seen.push(p);
     }
-    expect(seen).toEqual(["stack", "prs", "session", "procs", "stack"]);
+    expect(seen).toEqual(["stack", "prs", "reviews", "session", "procs", "stack"]);
   });
 
   test("cycles backward and wraps (G9)", () => {
     let p: PanelId = "stack";
     const seen: PanelId[] = [p];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       p = cyclePanel(p, -1);
       seen.push(p);
     }
-    expect(seen).toEqual(["stack", "procs", "session", "prs", "stack"]);
+    expect(seen).toEqual(["stack", "procs", "session", "reviews", "prs", "stack"]);
   });
 
   test("forward then back returns to the start from every panel", () => {
@@ -40,6 +40,7 @@ describe("breadcrumbSection", () => {
   test("maps each panel to its short label", () => {
     expect(breadcrumbSection("stack", false)).toBe("Stack");
     expect(breadcrumbSection("prs", false)).toBe("PRs");
+    expect(breadcrumbSection("reviews", false)).toBe("Reviews");
     expect(breadcrumbSection("session", false)).toBe("Session");
     expect(breadcrumbSection("procs", false)).toBe("Processes");
   });
@@ -126,6 +127,13 @@ describe("cockpitHints", () => {
 
   test("session hints surface swap", () => {
     expect(cockpitHints("session", base).some((h) => h.label === "swap")).toBe(true);
+  });
+
+  test("reviews hints surface conversation actions", () => {
+    const labels = cockpitHints("reviews", base).map((hint) => hint.label);
+    expect(labels).toContain("message");
+    expect(labels).toContain("attach");
+    expect(labels).toContain("new review");
   });
 
   test("every non-modal panel keeps hints within the 4–6 range", () => {

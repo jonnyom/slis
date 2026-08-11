@@ -14,6 +14,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -314,7 +315,7 @@ func loadSlicesCmd(ws config.Workspace) tea.Cmd {
 		// Annotate Graphite stacks so the browser can cluster stack-sibling
 		// slices. Off the UI goroutine (this is a tea.Cmd), so the per-member
 		// gt reads never touch Update/View.
-		slices = discovery.AnnotateStacks(slices, gt.ReadStack)
+		slices = discovery.AnnotateStacks(context.Background(), slices, gt.ReadStackCtx)
 
 		return slicesLoadedMsg{
 			slices:     slices,

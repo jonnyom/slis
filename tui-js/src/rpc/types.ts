@@ -293,6 +293,28 @@ export interface ReviewComment {
   created_at: string;
 }
 
+export type ReviewRunStatus = "queued" | "running" | "clean" | "findings" | "failed";
+
+export interface ReviewRunMessage {
+  id: string;
+  role: "user" | "reviewer" | "system";
+  body: string;
+  created_at: string;
+}
+
+export interface ReviewRun {
+  id: string;
+  slice: string;
+  agent: string;
+  window: string;
+  status: ReviewRunStatus;
+  finding_count: number;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  messages?: ReviewRunMessage[];
+}
+
 // ── capture (spec v0) ──────────────────────────────────────────────────────
 
 export interface CaptureResult {
@@ -371,6 +393,7 @@ export interface RpcClient {
   // one → just that slice's. Read-only; add/rm/send stay CLI-only (see mutate).
   // An older sidecar answers -32601 (method not found) — callers feature-detect.
   reviews(params?: { slice?: string }): Promise<ReviewComment[]>;
+  reviewRuns(params?: { slice?: string; includeMessages?: boolean }): Promise<ReviewRun[]>;
 
   /** Subscribe to live session-status changes. Returns an unsubscribe fn. */
   onSessionEvent(handler: (event: SessionEvent) => void): () => void;

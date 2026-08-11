@@ -37,6 +37,7 @@ import type {
   PrStackEntry,
   ProcsResult,
   ReviewComment,
+  ReviewRun,
   RpcClient,
 } from "../rpc/types";
 import { isMethodNotFound } from "../rpc/client";
@@ -66,6 +67,8 @@ import {
   isShellCmd,
   listTmuxSessions,
   preferredRunningAgentSession,
+  tmuxSessionClaimableBySlice,
+  tmuxSessionOwnedByAnotherSlice,
   sessionHasPaneOutsideMembers,
   sessionName,
   tmuxSessionRelatedToMembers,
@@ -83,6 +86,7 @@ import { DiffView, type DiffMode } from "../components/diffview";
 import { FileTree } from "../components/filetree";
 import { FileView, contentLines } from "../components/fileview";
 import { SessionCloseConfirmation } from "../components/sessionoverlay";
+import { ReviewsRight, ReviewsSection } from "../components/reviewruns";
 import { TerminalLink } from "../components/terminal-link";
 import { BOLD, DIM } from "../components/ui";
 import { stripSgr } from "../util/ansi";
@@ -150,6 +154,9 @@ export interface CockpitProps {
   width: number;
   height: number;
   gatherable: boolean;
+  // Every slice name in the workspace. Needed to tell one slice's tmux session
+  // apart from an orphan left behind by a rename — see tmuxSessionClaimableBySlice.
+  knownSlices: string[];
   agents: AgentSpec[];
   preferredAgent?: string;
   // Entry focus when opened from the browser (M4): which panel to land on and
@@ -723,6 +730,7 @@ function SessionRight({
   view,
   lines,
   sessions,
+  knownSlices,
   selected,
   pendingKill,
   killStatus,
@@ -730,6 +738,7 @@ function SessionRight({
   view: SliceView;
   lines: string[];
   sessions: TmuxSessionInfo[];
+  knownSlices: string[];
   selected: number;
   pendingKill: string | null;
   killStatus: string | null;
@@ -743,11 +752,23 @@ function SessionRight({
           : `${sessions.length} running sessions  ·  enter attach  ·  x close`}
       </text>
       {sessions.map((session, index) => {
-        const related = tmuxSessionRelatedToMembers(session, members.map((member) => ({
+        const termMembers = members.map((member) => ({
           repo: member.repo,
           branch: member.branch,
           worktreePath: member.worktree_path,
-        })));
+        }));
+        const claimable = tmuxSessionClaimableBySlice(
+          session,
+          termMembers,
+          view.slice.name,
+          knownSlices,
+        );
+        // Another slice's session can still hold a pane in one of our worktrees
+        // (a worktree that moved between slices). Say so rather than claim it.
+        const foreignHere =
+          !claimable &&
+          tmuxSessionOwnedByAnotherSlice(session, view.slice.name, knownSlices) &&
+          tmuxSessionRelatedToMembers(session, termMembers);
         const running = session.panes.some((pane) => !isShellCmd(pane.command));
         return (
           <box key={session.name} flexDirection="column">
@@ -757,7 +778,10 @@ function SessionRight({
               </span>
               <span fg={running ? theme.good : color.dim}>{running ? glyph.live : "·"}</span>
               <span fg={session.kind === "agent" ? color.fg : color.dim}> {session.name}</span>
-              {related ? <span fg={theme.focus}>  ‹this slice›</span> : null}
+              {claimable ? <span fg={theme.focus}>  ‹this slice›</span> : null}
+              {foreignHere ? (
+                <span fg={theme.attn}>  ‹other slice, in our worktree›</span>
+              ) : null}
             </text>
             {session.panes.map((pane, paneIndex) => (
               <text key={`${pane.path}-${paneIndex}`} fg={color.dim} attributes={DIM} wrapMode="none">
@@ -920,6 +944,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [reviews, setReviews] = useState<ReviewComment[]>([]);
   const [reviewsNonce, setReviewsNonce] = useState(0);
   const [reviewsSupported, setReviewsSupported] = useState(true);
+  const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
+  const [reviewRunSel, setReviewRunSel] = useState(0);
+  const [reviewRunsNonce, setReviewRunsNonce] = useState(0);
+  const [reviewRunsSupported, setReviewRunsSupported] = useState(true);
   const [fileCursor, setFileCursor] = useState(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const richDiffRequestRef = useRef(0);
@@ -1007,17 +1035,20 @@ export function Cockpit(props: CockpitProps): ReactNode {
       })),
     [view.slice.members],
   );
+  // Attach targets must be sessions this slice may claim: attaching to another
+  // live slice's agent would send this slice's prompts to the wrong Claude.
   const relatedAgentSessions = useMemo(
     () =>
       tmuxSessions.filter(
         (session) =>
-          session.kind === "agent" && tmuxSessionRelatedToMembers(session, sessionMembers),
+          session.kind === "agent" &&
+          tmuxSessionClaimableBySlice(session, sessionMembers, slice, props.knownSlices),
       ),
-    [tmuxSessions, sessionMembers],
+    [tmuxSessions, sessionMembers, slice, props.knownSlices],
   );
   const runningAgentSession = useMemo(
-    () => preferredRunningAgentSession(tmuxSessions, sessionMembers),
-    [tmuxSessions, sessionMembers],
+    () => preferredRunningAgentSession(tmuxSessions, sessionMembers, slice, props.knownSlices),
+    [tmuxSessions, sessionMembers, slice, props.knownSlices],
   );
   const selectedTmuxSession = tmuxSessions[sessionSel];
 
@@ -1115,6 +1146,27 @@ export function Cockpit(props: CockpitProps): ReactNode {
   }, [client, slice, reviewsNonce, reviewsSupported]);
 
   const bumpReviews = () => setReviewsNonce((n) => n + 1);
+  const refreshReviewRuns = () => setReviewRunsNonce((nonce) => nonce + 1);
+
+  useEffect(() => {
+    if (!reviewRunsSupported) return;
+    let live = true;
+    const load = () =>
+      client.reviewRuns({ slice, includeMessages: true }).then(
+        (runs) => {
+          if (live) setReviewRuns(runs);
+        },
+        (error) => {
+          if (live && isMethodNotFound(error)) setReviewRunsSupported(false);
+        },
+      );
+    load();
+    const timer = setInterval(load, panel === "reviews" ? 1000 : 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [client, slice, panel, reviewRunsNonce, reviewRunsSupported]);
 
   // Leaving the Stack panel (or changing slice) drops back to its summary.
   useEffect(() => {
@@ -1153,6 +1205,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (row) setStackSelKey(`${row.repo}\t${row.branch}`);
     } else if (panel === "prs")
       setPrSel((i) => Math.max(0, Math.min((view.prs?.length ?? 1) - 1, i + delta)));
+    else if (panel === "reviews")
+      setReviewRunSel((i) => clampSel(i + delta, reviewRuns.length));
     else if (panel === "procs")
       setProcSel((i) => Math.max(0, Math.min(procRows.length - 1, i + delta)));
     else if (panel === "session")
@@ -1583,6 +1637,19 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (selectedTmuxSession) props.onOpenExistingSession(slice, selectedTmuxSession.name);
       return;
     }
+    if (panel === "reviews") {
+      const run = reviewRuns[reviewRunSel];
+      if (name === "n")
+        return overlays.reviewStart(
+          slice,
+          props.agents,
+          props.preferredAgent,
+          refreshReviewRuns,
+        );
+      if (name === "m" && run)
+        return overlays.reviewMessage(run.id, run.agent, refreshReviewRuns);
+      if (name === "a" && run) return overlays.reviewAttach(run.id, run.agent);
+    }
     // Enter on any other panel zooms the right pane full-width (enter/esc restores).
     if (name === "return" || name === "enter") {
       setZoomed((z) => !z);
@@ -1597,7 +1664,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       setPanel((p) => cyclePanel(p, -1));
       return;
     }
-    if (name >= "1" && name <= "4") {
+    if (name >= "1" && name <= "5") {
       setPanel(PANEL_ORDER[Number(name) - 1]!);
       return;
     }
@@ -1667,6 +1734,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setPrSel((i) => Math.max(0, Math.min(i, (view.prs?.length ?? 1) - 1)));
   }, [view.prs?.length]);
   useEffect(() => {
+    setReviewRunSel((index) => clampSel(index, reviewRuns.length));
+  }, [reviewRuns.length]);
+  useEffect(() => {
     setProcSel((i) => Math.max(0, Math.min(i, Math.max(0, procRows.length - 1))));
   }, [procRows.length]);
   useEffect(() => {
@@ -1699,8 +1769,9 @@ export function Cockpit(props: CockpitProps): ReactNode {
     1,
     Math.min(2, monitor.result?.slices[0]?.procs.length ?? 0),
   );
-  const sidebarSectionHeaderRows = 4;
-  const sidebarDividerRows = 3;
+  const reviewContentRows = Math.max(1, Math.min(2, reviewRuns.length));
+  const sidebarSectionHeaderRows = 5;
+  const sidebarDividerRows = 4;
   const sessionContentRows = 2;
   const stackContentRows = Math.max(
     1,
@@ -1709,6 +1780,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       sidebarDividerRows -
       sessionContentRows -
       prContentRows -
+      reviewContentRows -
       processContentRows,
   );
 
@@ -1725,6 +1797,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
         return ciLog
           ? `${ciLog.repo}${arrow}CI log`
           : `${view.prs?.[prSel]?.repo ?? slice}${arrow}PR`;
+      case "reviews":
+        return `${slice}${arrow}${reviewRuns[reviewRunSel]?.agent ?? "Reviews"}`;
       case "session":
         return `${slice}${arrow}Sessions`;
       case "procs":
@@ -1742,6 +1816,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
     prSel,
     slice,
     ciLog,
+    reviewRuns,
+    reviewRunSel,
   ]);
 
   const hints = useMemo(
@@ -1864,6 +1940,12 @@ export function Cockpit(props: CockpitProps): ReactNode {
             <Divider width={dividerW} />
             <PrsSection view={view} focused={panel === "prs"} prSel={prSel} />
             <Divider width={dividerW} />
+            <ReviewsSection
+              runs={reviewRuns}
+              focused={panel === "reviews"}
+              selected={reviewRunSel}
+            />
+            <Divider width={dividerW} />
             <SessionSection
               view={view}
               focused={panel === "session"}
@@ -1946,11 +2028,18 @@ export function Cockpit(props: CockpitProps): ReactNode {
                     width={props.width - leftW}
                   />
                 )
+              ) : panel === "reviews" ? (
+                <ReviewsRight
+                  runs={reviewRuns}
+                  selected={reviewRunSel}
+                  width={Math.max(20, props.width - leftW - 8)}
+                />
               ) : panel === "session" ? (
                 <SessionRight
                   view={view}
                   lines={captureLines}
                   sessions={tmuxSessions}
+                  knownSlices={props.knownSlices}
                   selected={sessionSel}
                   pendingKill={pendingSessionKill}
                   killStatus={sessionKillStatus}

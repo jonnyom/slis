@@ -66,8 +66,12 @@ updates slis's registry — it never touches git.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		all, _ := cmd.Flags().GetBool("all")
+		allowFromSlice, _ := cmd.Flags().GetBool("allow-from-slice")
 		if all == (len(args) == 1) {
 			return fmt.Errorf("give a worktree path OR --all (not both, not neither)")
+		}
+		if err := managedSliceMutationGuard(allowFromSlice, "import a worktree as a managed slice"); err != nil {
+			return err
 		}
 
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
@@ -143,6 +147,26 @@ Note: saving workspace.yaml does not preserve its comments.`,
 	},
 }
 
+// forgetRegisteredSlice drops a slice from the registry (registry only — git is
+// untouched). Shared by `slis forget` and `slis doctor --fix`.
+func forgetRegisteredSlice(registryPath, name string) (string, error) {
+	reg, exists, err := config.LoadRegistry(registryPath)
+	if err != nil {
+		return "", fmt.Errorf("read registry: %w", err)
+	}
+	if !exists {
+		return "", fmt.Errorf("no registry yet — nothing to forget")
+	}
+	if _, ok := reg.Slices[name]; !ok {
+		return "", fmt.Errorf("no registered slice %q (see `slis ls`)", name)
+	}
+	delete(reg.Slices, name)
+	if err := config.SaveRegistry(registryPath, reg); err != nil {
+		return "", fmt.Errorf("save registry: %w", err)
+	}
+	return fmt.Sprintf("forgot %q (registry only — worktrees and branches untouched)", name), nil
+}
+
 var forgetCmd = &cobra.Command{
 	Use:   "forget <slice>",
 	Short: "Remove a slice from the registry (does not touch git)",
@@ -151,23 +175,11 @@ NOT remove worktrees or branches (use ` + "`slis rm`" + ` for that). Use it to d
 missing slice whose worktree is gone, or to un-manage a slice.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
-		regPath := config.StatePaths().Registry
-		reg, exists, err := config.LoadRegistry(regPath)
+		message, err := forgetRegisteredSlice(config.StatePaths().Registry, args[0])
 		if err != nil {
-			return fmt.Errorf("read registry: %w", err)
+			return err
 		}
-		if !exists {
-			return fmt.Errorf("no registry yet — nothing to forget")
-		}
-		if _, ok := reg.Slices[name]; !ok {
-			return fmt.Errorf("no registered slice %q (see `slis ls`)", name)
-		}
-		delete(reg.Slices, name)
-		if err := config.SaveRegistry(regPath, reg); err != nil {
-			return fmt.Errorf("save registry: %w", err)
-		}
-		fmt.Printf("forgot %q (registry only — worktrees and branches untouched)\n", name)
+		fmt.Println(message)
 		return nil
 	},
 }
@@ -175,6 +187,7 @@ missing slice whose worktree is gone, or to un-manage a slice.`,
 func init() {
 	candidatesCmd.Flags().Bool("json", false, "Output as JSON")
 	importCmd.Flags().Bool("all", false, "Import every candidate worktree")
+	importCmd.Flags().Bool("allow-from-slice", false, "Allow importing a separate managed slice from inside another slice")
 	rootCmd.AddCommand(candidatesCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(ignoreCmd)

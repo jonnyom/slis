@@ -18,6 +18,7 @@ import (
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/jonnyom/slis/internal/review"
+	"github.com/jonnyom/slis/internal/reviewrun"
 	"github.com/jonnyom/slis/testutil"
 )
 
@@ -342,7 +343,7 @@ func TestDiffCachesUntilRepositoryContentChanges(t *testing.T) {
 	ws := makeWorkspace(t)
 	h := newHarness(t, ws)
 	builds := 0
-	h.srv.diffBuild = func(sl model.Slice, scope, format string) (report.DiffResult, error) {
+	h.srv.diffBuild = func(_ context.Context, sl model.Slice, scope, format string) (report.DiffResult, error) {
 		builds++
 		return report.SliceDiffScoped(sl, scope, format)
 	}
@@ -554,5 +555,35 @@ func TestReviewsEmptyIsArray(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("reviews = %v, want empty", got)
+	}
+}
+
+func TestReviewRunsReturnsPersistentConversations(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	store := reviewrun.Open(h.sp.StateDir)
+	run, err := store.Create("checkout", "Codex", "review-codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendMessage(run.ID, reviewrun.RoleUser, "Review this stack."); err != nil {
+		t.Fatal(err)
+	}
+
+	var summaries []map[string]interface{}
+	decodeResult(t, h.call(1, "reviewRuns", `{"slice":"checkout"}`), &summaries)
+	if len(summaries) != 1 {
+		t.Fatalf("review run summaries = %#v", summaries)
+	}
+	if _, found := summaries[0]["messages"]; found {
+		t.Fatalf("summary unexpectedly included messages: %#v", summaries[0])
+	}
+
+	var got []reviewrun.Detail
+	decodeResult(t, h.call(2, "reviewRuns", `{"slice":"checkout","include_messages":true}`), &got)
+	if len(got) != 1 || got[0].ID != run.ID {
+		t.Fatalf("review runs = %#v", got)
+	}
+	if len(got[0].Messages) != 1 || got[0].Messages[0].Body != "Review this stack." {
+		t.Fatalf("messages = %#v", got[0].Messages)
 	}
 }

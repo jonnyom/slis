@@ -82,9 +82,9 @@ func Markdown(slice model.Slice, readStack ReadStack, prForBranch PRForBranch, b
 func stackBranches(member model.SliceMember, readStack ReadStack) []string {
 	state, err := readStack(member.WorktreePath)
 	if err == nil {
-		lineage := state.Lineage(member.Branch)
-		branches := make([]string, 0, len(lineage))
-		for _, branch := range lineage {
+		stack := state.Stack(member.Branch)
+		branches := make([]string, 0, len(stack))
+		for _, branch := range stack {
 			if !branch.Trunk {
 				branches = append(branches, branch.Name)
 			}
