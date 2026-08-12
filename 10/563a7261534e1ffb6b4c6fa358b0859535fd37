@@ -1,0 +1,550 @@
+tui-js/src/util/shortcut-contract.test.ts
+  s_f4c56e9ce5ef15::t_c729c3531f6f86 25,40
+scripts/fetch-zmx.sh
+  s_f4c56e9ce5ef15::t_cc7e853e2624ed 1-29
+tui-js/src/term/agentpick.ts
+  s_f4c56e9ce5ef15::t_e604910fba4c41 89-96
+tui-js/src/views/cockpit.hints.ts
+  s_f4c56e9ce5ef15::t_c265768dd66c45 70,82,93,102,107,121,135
+internal/zmxctl/argv.go
+  s_f4c56e9ce5ef15::t_cd93441c81f8c6 4
+  s_f4c56e9ce5ef15::t_97b8697d2ecbef 1,3,5,7-9,11-12,15-18,20,23-29
+internal/session/manager_test.go
+  s_f4c56e9ce5ef15::t_67990de5f905f6 10,214-225,227-244,246,248-250,252-253,255-256,258-260,262-263
+  s_f4c56e9ce5ef15::t_1a481da810f800 1,38-46,48-49,52-54,56-58,60-61,191
+  s_f4c56e9ce5ef15::t_7d3ddd6df0919b 93-114,116-117,119,121-122,124-126,128-129,131-133,135-136,138-139,141-142,144-145,147
+  s_f4c56e9ce5ef15::t_5a567329df8513 5
+  s_f4c56e9ce5ef15::t_16c10dc8b60b8b 8,149-182,184-186,188-189
+  s_f4c56e9ce5ef15::t_051c482ca54505 4,6-7,14,65-77,80-81,83,85-86,88-89
+  s_f4c56e9ce5ef15::t_cc5a634920ff8b 226,247
+  s_f4c56e9ce5ef15::t_fbec93c0b00005 193-201,203-204,206,208-210
+  s_f4c56e9ce5ef15::t_3e26ddd10ac4af 17-35
+internal/cli/session_test.go
+  s_f4c56e9ce5ef15::t_14b727351e678e 1-4,6-12,16-17,19-20,34-35
+  s_f4c56e9ce5ef15::t_218528fc418501 18
+  s_f4c56e9ce5ef15::t_7cecf9793d830a 5,13-15,21-33
+internal/report/report_test.go
+  s_f4c56e9ce5ef15::t_28d269d1311ec0 27-30,44-45
+  s_f4c56e9ce5ef15::t_b65a8ad5a66768 46
+tui-js/src/views/browser.hints.ts
+  s_f4c56e9ce5ef15::t_69c42c52ed2760 25-26
+internal/session/store.go
+  s_f4c56e9ce5ef15::t_611214cbbd8fbb 24-28,31-36,38-41
+  s_f4c56e9ce5ef15::t_ed2a56b0f97d77 135-147
+  s_f4c56e9ce5ef15::t_b5a5891e0ddc57 80-96
+  s_f4c56e9ce5ef15::t_6a53360d266f38 1,4-5,7-8,11-22,37,44-45,48-50,52-54,56,58-59,63-68,70-77,149-151,153-155,157-158,160-162,182-192,194-195,197-225
+  s_f4c56e9ce5ef15::t_f1cf3b2cb48712 99-114
+  s_f4c56e9ce5ef15::t_d834c198c49dce 117-131
+  s_f4c56e9ce5ef15::t_083db06ac504ae 165-172,174-180
+internal/session/manager.go
+  s_f4c56e9ce5ef15::t_a8f2067b78f76d 459-462
+  s_f4c56e9ce5ef15::t_19e22c25a69321 350,352-357
+  s_f4c56e9ce5ef15::t_34677b84dd2c8e 377-428
+  s_f4c56e9ce5ef15::t_8dff57643aea40 1,4-5,15,23-25,28-29,36-37,39,41-46,49-51,55-57,60,62-63,74-77,85-87,443-445,455-456,458
+  s_f4c56e9ce5ef15::t_083db06ac504ae 20,274-277,291-294,296,310-311,313-320,326-327,331,333-334,337-339
+  s_f4c56e9ce5ef15::t_bcc5bba2ec12a7 301-307,321-325
+  s_f4c56e9ce5ef15::t_bc659e65892bb1 222-238,240
+  s_f4c56e9ce5ef15::t_717b112d344add 267,271
+  s_f4c56e9ce5ef15::t_ed2a56b0f97d77 360-368,371-374
+  s_f4c56e9ce5ef15::t_c742f6fde39677 244-245,248,251,255,259-260,263
+  s_f4c56e9ce5ef15::t_fc818597cbbe8f 278-279,281-285,288-290,295,297-300,309,336
+  s_f4c56e9ce5ef15::t_e2fecd76012ba7 124-130
+  s_f4c56e9ce5ef15::t_f1cf3b2cb48712 342-349
+  s_f4c56e9ce5ef15::t_611214cbbd8fbb 21,176-211
+  s_f4c56e9ce5ef15::t_ec174b06c6fcb8 14,19,243,249-250,252-254,256-258,266,268-269
+  s_f4c56e9ce5ef15::t_3e26ddd10ac4af 9,59,61,64-67,69-72,90-100
+  s_f4c56e9ce5ef15::t_0fcc8bebad636e 32-33
+  s_f4c56e9ce5ef15::t_178e7faf17c460 308,312,328-330,332,335
+  s_f4c56e9ce5ef15::t_8e1566df731e87 119-122,132-142,145-152,154-165,446,449-454
+  s_f4c56e9ce5ef15::t_196bfa3930e985 18,168-169,171,173,214-219,430-438,440
+  s_f4c56e9ce5ef15::t_d834c198c49dce 38,40,53,80-84,103-109,111-114,116
+internal/zmxctl/resolve.go
+  s_f4c56e9ce5ef15::t_af78ba11f14d9f 1,4,6,10,12,19-29,31-32,34-35,38-39,41-49
+  s_f4c56e9ce5ef15::t_e539ec45f2a9f5 13-15
+  s_f4c56e9ce5ef15::t_5eb47b614a8563 17-18
+  s_f4c56e9ce5ef15::t_18df3f79318024 30
+tui-js/src/app.tsx
+  s_f4c56e9ce5ef15::t_3897759553ed14 1011-1014,1018-1020
+  s_f4c56e9ce5ef15::t_51f79bf63155fc 147-148,157,162,164
+  s_f4c56e9ce5ef15::t_7f4d52277db3c9 556-564,660-668,673-679,690,703-704,707,712,719-720,723-735,783
+  s_f4c56e9ce5ef15::t_53815c23c0796c 656,659,681-689,691-693,695-698,700
+  s_f4c56e9ce5ef15::t_bf9855d2f6426d 165-171,448-456,1007-1008,1010,1124
+  s_f4c56e9ce5ef15::t_db46a55eb27f95 1038,1116
+  s_f4c56e9ce5ef15::t_f8fb63d2d1b559 35-42,53-56,58-59,150-153,158-161,163,304-311
+  s_f4c56e9ce5ef15::t_d97ec978eba794 792,807-808,837-838,927,940,951,1006,1015-1017,1035-1037,1039-1043,1113
+  s_f4c56e9ce5ef15::t_557a9cb5fa5faa 716
+  s_f4c56e9ce5ef15::t_bf8fe433f14390 740,867,871
+  s_f4c56e9ce5ef15::t_8fad31b98dc6ac 57,931-937,941-950,960-986,1127
+  s_f4c56e9ce5ef15::t_1cf322b782ca54 669-672
+  s_f4c56e9ce5ef15::t_3785e208653275 47,49,737,757,788-790,793-806,809,811
+  s_f4c56e9ce5ef15::t_cc36d7f2dc7a65 845-846,848,850,852-854
+  s_f4c56e9ce5ef15::t_880a548f723380 1022-1026
+  s_f4c56e9ce5ef15::t_53619188ef301b 649
+  s_f4c56e9ce5ef15::t_20a3325b66a201 610-648,650-652
+  s_f4c56e9ce5ef15::t_30f4a415f2a1fd 791,810,829,840,847,851
+  s_f4c56e9ce5ef15::t_63f92d1fa5b48d 1034,1047-1053,1064,1087,1109,1114-1115,1118,1120,1126,1128-1131
+  s_f4c56e9ce5ef15::t_a499e0e305e47c 65,601,657-658,713-715,717-718,721-722,736,744-756,1123,1125
+  s_f4c56e9ce5ef15::t_47e1963e78163d 595-596,819-820
+  s_f4c56e9ce5ef15::t_23ff9165f538a9 46,849
+  s_f4c56e9ce5ef15::t_821b6a6cabd7fa 604
+  s_f4c56e9ce5ef15::t_39d7cbe0ab9d93 680
+  s_f4c56e9ce5ef15::t_ab7417d0412064 987
+  s_f4c56e9ce5ef15::t_230647be763dd7 1021
+internal/zmxctl/resolve_test.go
+  s_f4c56e9ce5ef15::t_76f9c90d7086cc 1,4-5,9-17,20-22,24-25
+  s_f4c56e9ce5ef15::t_50fe2bd5f0f5f0 55-57,59-60
+  s_f4c56e9ce5ef15::t_74c32fda1db14f 29-43,46-48,51-53,64-69,71-72,74-76,79-81,83-84
+tui-js/src/views/cockpit.tsx
+  s_f4c56e9ce5ef15::t_a57e7f02e037f3 1381
+  s_f4c56e9ce5ef15::t_2330aaf263d9de 432,762,864
+  s_f4c56e9ce5ef15::t_49fe96734e924a 1946-1953
+  s_f4c56e9ce5ef15::t_7c56b23af5ff22 1372-1375
+  s_f4c56e9ce5ef15::t_2dfe78834a76db 611-615,689-694
+  s_f4c56e9ce5ef15::t_c61991c963c855 70-71,791,1075-1077,1081
+  s_f4c56e9ce5ef15::t_4a03d34619f5ad 37,1895-1908,1929
+  s_f4c56e9ce5ef15::t_ddcad51cb9ed6f 806,1407-1408
+  s_f4c56e9ce5ef15::t_69c42c52ed2760 1371,1376,1580,1604,1640,1942
+tui-js/src/term/scroll.test.ts
+  s_f4c56e9ce5ef15::t_a85c30f9c0d430 13-33
+  s_f4c56e9ce5ef15::t_30a9a7634bab98 34,47
+internal/cli/session.go
+  s_f4c56e9ce5ef15::t_5f6c8bb50123f7 10,16,34-43,176-183,187-188,191-227,229,232-238,240-252
+  s_f4c56e9ce5ef15::t_b42cf27721278f 1,4,6-8,15,17-18,21-33,46,51-61,63-98,143-155,157-159,258-265,267-274,295-338,352-359,361-366,369-374,388-391,396
+  s_f4c56e9ce5ef15::t_44ff72cbf118df 99-117
+  s_f4c56e9ce5ef15::t_75c3679f6b4580 184-186
+  s_f4c56e9ce5ef15::t_fdfc399e96ed15 9,160-173,253-255,384-387
+  s_f4c56e9ce5ef15::t_e2fecd76012ba7 47-49,118-142,375,377-382,392-394
+  s_f4c56e9ce5ef15::t_9871b779ee2d9e 275-294
+  s_f4c56e9ce5ef15::t_046681b1bbb63a 12,156
+  s_f4c56e9ce5ef15::t_5c8640e6fde9d9 5,189-190
+  s_f4c56e9ce5ef15::t_f4e213d5a2523b 339-349,395
+internal/cli/focus.go
+  s_f4c56e9ce5ef15::t_eb26aa8e82130d 17,69
+  s_f4c56e9ce5ef15::t_5afc4d50f9b830 43
+  s_f4c56e9ce5ef15::t_7435ad0e4a103d 31-33,48,65,73-74,88-91,95-96
+  s_f4c56e9ce5ef15::t_933981651013b0 4-6,11,38-41,66-67,75-76,80-86
+  s_f4c56e9ce5ef15::t_26ccf00e9958b7 35
+internal/cleanup/cleanup.go
+  s_f4c56e9ce5ef15::t_fe4571196a9475 25,118-125,134
+internal/report/report.go
+  s_f4c56e9ce5ef15::t_191e175e53c4e5 185-196
+  s_f4c56e9ce5ef15::t_f3a5fec1ab428f 27,143-148
+  s_f4c56e9ce5ef15::t_36c33271818e0c 197,212
+internal/session/store_test.go
+  s_f4c56e9ce5ef15::t_e0c21e3607c2b9 1-29
+  s_f4c56e9ce5ef15::t_813467ad4ce1a8 30-47
+internal/zmxctl/runtime_test.go
+  s_f4c56e9ce5ef15::t_e745ec8d9601e0 1-4,6-22,35-36
+  s_f4c56e9ce5ef15::t_d0ec94d63ff5e5 5,23-34
+internal/cli/root.go
+  s_f4c56e9ce5ef15::t_affabdad9cad15 24
+tui-js/src/rpc/client-exit.test.ts
+  s_f4c56e9ce5ef15::t_08530356b2b7f1 59,62
+  s_f4c56e9ce5ef15::t_cc36d7f2dc7a65 55-58,60-61,63-64,66
+  s_f4c56e9ce5ef15::t_336bd521327675 65
+tui-js/src/term/input.test.ts
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 15-19,23
+  s_f4c56e9ce5ef15::t_e32e8d76f6fff0 5,20-22
+  s_f4c56e9ce5ef15::t_a306ff80e0b105 24
+internal/session/manager_integration_test.go
+  s_f4c56e9ce5ef15::t_d5d1997187138e 333-335
+  s_f4c56e9ce5ef15::t_a41b8abe629493 51-64,66
+  s_f4c56e9ce5ef15::t_715fa61ff9339c 5,310-332,336-339,341
+  s_f4c56e9ce5ef15::t_32ab44c757f5eb 33-38
+  s_f4c56e9ce5ef15::t_091099a733a0e8 157-162
+  s_f4c56e9ce5ef15::t_d62260b55b22c6 224-246,248-250,258-260
+  s_f4c56e9ce5ef15::t_78058382b23c06 265-298,300-301,303-304,306
+  s_f4c56e9ce5ef15::t_8bebed4579fa69 1,4,6-7,9,13,16-19,22-25,27-30,39-50,69,71,73-74,76-77,80-82,84-86,91-93
+  s_f4c56e9ce5ef15::t_15d51cb387a40e 194
+  s_f4c56e9ce5ef15::t_0f4d4e6b508d91 251-257
+  s_f4c56e9ce5ef15::t_d5249f59414366 166,196-197
+  s_f4c56e9ce5ef15::t_8e6b7e3868afc5 10,100-103,106-109,111-113,115-130,133-143,145-156
+  s_f4c56e9ce5ef15::t_3573b1ba4bef74 167-169,172-191,195,198-208,210-211,213-220
+  s_f4c56e9ce5ef15::t_1ae4df279689c0 264
+internal/tmuxctl/tmux.go
+  s_f4c56e9ce5ef15::t_5f6c8bb50123f7 381,385,392-393,396
+internal/forge/testdata/comments_inline.json
+  s_f4c56e9ce5ef15::t_28d269d1311ec0 8-9,19-20
+tui-js/src/term/responses.ts
+  s_f4c56e9ce5ef15::t_9f5607ba64a1fc 1-31
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 32-45
+Makefile
+  s_f4c56e9ce5ef15::t_434245cfa13f95 4,6
+tui-js/src/term/command.ts
+  s_f4c56e9ce5ef15::t_eff38afaefcdc1 83,95,97
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 18-19,75-79
+internal/cli/rpc.go
+  s_f4c56e9ce5ef15::t_2bb00f64b4ff1d 37-41
+internal/proc/terminal_test.go
+  s_f4c56e9ce5ef15::t_e749cce1e84f00 1,5-8,10-27
+internal/session/layout.go
+  s_f4c56e9ce5ef15::t_f4bfbeef4f22dd 51-52,57,60,72-76,78-82,84
+  s_f4c56e9ce5ef15::t_94c2c2ca5e7745 36-39,50,53-56,58-59,63-69,71
+  s_f4c56e9ce5ef15::t_580da30c50082d 1,4,10-11,19-31,33-34,70
+  s_f4c56e9ce5ef15::t_10f174ed61a949 5,12,18,32,40,61
+  s_f4c56e9ce5ef15::t_97d3ce98ae66ce 41-47
+  s_f4c56e9ce5ef15::t_8e1566df731e87 13-17
+tui-js/src/term/agentpick.test.ts
+  s_f4c56e9ce5ef15::t_c729c3531f6f86 8,86-89
+  s_f4c56e9ce5ef15::t_ebf1f5abc67c8c 90-92
+tui-js/src/util/keys.test.ts
+  s_f4c56e9ce5ef15::t_bf9855d2f6426d 42-45
+tui-js/README.md
+  s_f4c56e9ce5ef15::t_20c944ab8d74ea 17-18,33,42,50-51,54,75,164,173,180,199
+tui-js/src/term/slis.test.ts
+  s_f4c56e9ce5ef15::t_37fd56c75b99b0 1-2,18-24,32-40,85,95-96
+  s_f4c56e9ce5ef15::t_9d055af4bd3ed6 16,41-47
+  s_f4c56e9ce5ef15::t_522b4cdf5b7608 5,25-31
+  s_f4c56e9ce5ef15::t_1bbad28104a18d 12,86
+  s_f4c56e9ce5ef15::t_9b03110f77472a 13,87
+  s_f4c56e9ce5ef15::t_b4f36cea1db655 8,66-70,84
+  s_f4c56e9ce5ef15::t_4de2ac89937066 14,88-94
+  s_f4c56e9ce5ef15::t_0abf2b14fc6219 3-4,6-7,15,17,56,59-64
+  s_f4c56e9ce5ef15::t_5c7bcac0b56264 49,57-58
+  s_f4c56e9ce5ef15::t_50cfd4c58bface 48,50-55,65
+  s_f4c56e9ce5ef15::t_eeed3d0f7fff9f 9-11,71-83
+internal/zmxctl/list.go
+  s_f4c56e9ce5ef15::t_6ad175a721a5a5 1,5-6,9-18,21-60,62,65-68,71-74,76-78,80,83-86,88-90,92
+internal/cli/status_test.go
+  s_f4c56e9ce5ef15::t_71803cc256385f 12,108,110-112
+.gitignore
+  s_f4c56e9ce5ef15::t_434245cfa13f95 4
+  s_f4c56e9ce5ef15::t_309ee2619ed75f 6
+internal/rpcserver/rpcserver_test.go
+  s_f4c56e9ce5ef15::t_9a33d55d84021f 23,555-565
+  s_f4c56e9ce5ef15::t_30f4a415f2a1fd 532
+  s_f4c56e9ce5ef15::t_07c5da118f64b7 22,503-505,507-531,533-539
+  s_f4c56e9ce5ef15::t_5afc4d50f9b830 506
+  s_f4c56e9ce5ef15::t_c3bc617fd9781d 540-541
+  s_f4c56e9ce5ef15::t_b9e50fb03176de 566-567
+internal/cli/review_test.go
+  s_f4c56e9ce5ef15::t_91c9d7a9831ff0 94-95
+  s_f4c56e9ce5ef15::t_d5ea2917feb99d 4-5,15-16,222-224,227-231,244-245,249
+tui-js/src/term/e2e.ts
+  s_f4c56e9ce5ef15::t_d8cfe8fc9c4a65 2-4,9-12,14,16,20-21,24-36,42-63,89,92-93,95-97,101,107-108,110,115,117,119-120,134-137,139,141,143-149,151,155,158-160,162-164,167-175,178-186,189-191,195-196,199-200,203-205,207,209,214-216,219,222-224,231,234-236,239,242,244,251,254-255
+  s_f4c56e9ce5ef15::t_efb6711297457b 37-38,40-41
+  s_f4c56e9ce5ef15::t_3854cdea11cc69 206,232
+  s_f4c56e9ce5ef15::t_368314c6471b1e 245-249
+  s_f4c56e9ce5ef15::t_0deedc31848411 5,64,66-86,165-166,176-177,193,202
+  s_f4c56e9ce5ef15::t_1047e0767f97bf 15,17-19
+  s_f4c56e9ce5ef15::t_6a4c6ae50be271 39
+  s_f4c56e9ce5ef15::t_1824b331208db3 88
+internal/proc/proc.go
+  s_f4c56e9ce5ef15::t_56605bd70ed11f 8-9,11-12,18-40
+  s_f4c56e9ce5ef15::t_97c0c89a60db2e 41
+internal/review/send.go
+  s_f4c56e9ce5ef15::t_0fcc8bebad636e 4,11,167-229
+  s_f4c56e9ce5ef15::t_77bc170cf052bd 230
+tui-js/src/overlays/overlays.tsx
+  s_f4c56e9ce5ef15::t_78fa8ac4286aff 170-186
+  s_f4c56e9ce5ef15::t_2330aaf263d9de 384
+tui-js/src/review/e2e.ts
+  s_f4c56e9ce5ef15::t_2dadc5a927f89c 62-72,143
+  s_f4c56e9ce5ef15::t_5471ec717a036d 78,146
+  s_f4c56e9ce5ef15::t_8431f70171f5cc 12,15,26-32
+internal/cli/adopt.go
+  s_f4c56e9ce5ef15::t_ce0e868ab56dc7 4,16,106,191-196,198,373
+  s_d4ec6ff01bd2e9::t_4e2485ea0c5310 378
+tui-js/src/term/tmux.ts
+  s_f4c56e9ce5ef15::t_3785e208653275 15,17,20,59,82-94,101-104,107-108,110-112,119-122,156-157,247-248
+  s_f4c56e9ce5ef15::t_622cc480dc9ef3 11-14,16,18-19,21,60,250,259,261-263,267
+  s_f4c56e9ce5ef15::t_c61991c963c855 95-98
+  s_f4c56e9ce5ef15::t_509890707b02e0 105-106,109,113-115
+  s_f4c56e9ce5ef15::t_351735c74a8e0b 118
+internal/zmxctl/argv_test.go
+  s_f4c56e9ce5ef15::t_3a41ad57cf1f8e 14
+  s_f4c56e9ce5ef15::t_069a66cf14c7c3 1-13,15-30
+internal/cli/review_sessions.go
+  s_f4c56e9ce5ef15::t_bc470c967092ee 112-114,116
+  s_f4c56e9ce5ef15::t_cf4040b97a2c9e 296-300,337,339,345-353,355-358
+  s_f4c56e9ce5ef15::t_eee03c65793981 20,60-62,64-65,72,324
+internal/cli/focus_test.go
+  s_f4c56e9ce5ef15::t_ba0780ca088abd 25,27,29,36
+.goreleaser.yaml
+  s_f4c56e9ce5ef15::t_3096fc1309007e 57-58
+  s_f4c56e9ce5ef15::t_cc7e853e2624ed 10,41-44,84
+  s_f4c56e9ce5ef15::t_f00a4b720e6e09 59
+tui-js/src/rpc/types.ts
+  s_f4c56e9ce5ef15::t_7280b515fb3903 187-190
+  s_f4c56e9ce5ef15::t_30f4a415f2a1fd 420
+  s_f4c56e9ce5ef15::t_2dfe78834a76db 156,180-184
+  s_f4c56e9ce5ef15::t_336bd521327675 367
+  s_f4c56e9ce5ef15::t_cc36d7f2dc7a65 185,363-366,368-369,419
+  s_f4c56e9ce5ef15::t_6c2e96dddc8517 186
+internal/zmxctl/integration_test.go
+  s_f4c56e9ce5ef15::t_30bfac38f793ec 1-43,45-72
+  s_f4c56e9ce5ef15::t_d3044bc38e1eda 44
+tui-js/src/rpc/fake.ts
+  s_f4c56e9ce5ef15::t_30f4a415f2a1fd 681
+  s_f4c56e9ce5ef15::t_cc36d7f2dc7a65 15,448,478,677-679
+  s_f4c56e9ce5ef15::t_5471ec717a036d 146-165
+  s_cd72c4828723bf::t_f56294c78caa07 680
+tui-js/src/views/browser.tsx
+  s_f4c56e9ce5ef15::t_69c42c52ed2760 831-834
+internal/zmxctl/client_test.go
+  s_f4c56e9ce5ef15::t_193baa24c22318 164-166,170
+  s_f4c56e9ce5ef15::t_205d9efead1260 193-198
+  s_f4c56e9ce5ef15::t_e0bdd548a3d156 5,184-190
+  s_f4c56e9ce5ef15::t_14db4b12169dfb 8
+  s_f4c56e9ce5ef15::t_42a6ad48cb4dea 68-74,79-81
+  s_f4c56e9ce5ef15::t_0b6acf39bf8b8b 55,135-139,141-144,146-151,160-162,171,173-179,181-182,192
+  s_f4c56e9ce5ef15::t_59c5fa2f33766e 13,16-17,19,23-24,33,37-38,40,44-49,51-52
+  s_f4c56e9ce5ef15::t_9ad3e3d85728d3 105-110,112-130
+  s_f4c56e9ce5ef15::t_e0ad90348feb78 1,4,6-7,14-15,18,20-22,25,27-30,34-35,41-42,53-54
+  s_f4c56e9ce5ef15::t_f0582457665356 56-65,67,75-78,82-101
+  s_f4c56e9ce5ef15::t_3a41ad57cf1f8e 134,145,169,172
+  s_f4c56e9ce5ef15::t_1fc9686ab2f5e9 140,152-153
+  s_f4c56e9ce5ef15::t_403dfcbd5878ca 155-157,159
+tui-js/src/term/embedded.ts
+  s_f4c56e9ce5ef15::t_e25854ae50b3e0 2
+  s_f4c56e9ce5ef15::t_30a9a7634bab98 1
+internal/session/name_test.go
+  s_f4c56e9ce5ef15::t_46c9a25b6f65be 1,4,8-11,13-23
+internal/cli/review.go
+  s_f4c56e9ce5ef15::t_bc470c967092ee 327-329,331,334,337-339,341-342,346,386-390
+  s_f4c56e9ce5ef15::t_a6ed66af447225 25
+  s_d4ec6ff01bd2e9::t_20db0bed71c029 49,208,296
+internal/rpcserver/methods.go
+  s_f4c56e9ce5ef15::t_716b78cf42369f 6,17,423-424,426,441
+  s_f4c56e9ce5ef15::t_84a3511a24387c 376-383,387-391,421-422,425,438,442
+  s_f4c56e9ce5ef15::t_50d8d717999008 384-386,427-437,439-440
+tui-js/src/term/tabs.tsx
+  s_f4c56e9ce5ef15::t_be998ec9da8552 13,305-310,314,324-328,331,334-335,340-344,346-357,359-362,365,367-368,372,377,379-393,395,481,515
+  s_f4c56e9ce5ef15::t_a31886dffe6d7e 69-70,75-80
+  s_f4c56e9ce5ef15::t_e604910fba4c41 290,299,414,433,499
+  s_f4c56e9ce5ef15::t_0f4d9982487b9c 67,88,93,95,97-99,103-110,113,115,134,404,422,495
+  s_f4c56e9ce5ef15::t_db46a55eb27f95 116,124-132
+  s_f4c56e9ce5ef15::t_3dc256d171c640 71-74
+  s_f4c56e9ce5ef15::t_891a654d5acc2e 81-87
+  s_f4c56e9ce5ef15::t_5058cc928e520c 57-58,66
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 458
+  s_f4c56e9ce5ef15::t_658b40891e965c 441-442,504
+  s_f4c56e9ce5ef15::t_170a69f2c67986 358
+  s_f4c56e9ce5ef15::t_4de8da6078ab91 292,301,329-330,332-333,336-339,345,366,369-371,373-376,378,394,416,435,501
+  s_f4c56e9ce5ef15::t_880a548f723380 415,434
+  s_f4c56e9ce5ef15::t_f606aaa52cd1f5 89-92,94,96,100-102
+  s_f4c56e9ce5ef15::t_9bc40b210a57e1 246
+  s_f4c56e9ce5ef15::t_5bb59b12b90048 111-112,114,117-123,133,135-144,152-153,157,163-164,168,176-177,239,241,255,261-263,265,291,293,300,302,406,411,417,424,430,436,486,491,494,496-498,500,502-503,511-512,516
+  s_f4c56e9ce5ef15::t_6f4201aebea96d 68
+tui-js/src/term/input.ts
+  s_f4c56e9ce5ef15::t_e32e8d76f6fff0 19-22
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 9-10
+go.mod
+  s_f4c56e9ce5ef15::t_b584ea940e3a22 11,16,21-22,24
+tui-js/src/term/tabs.test.ts
+  s_f4c56e9ce5ef15::t_5c7bcac0b56264 3-12,45-50,53-54,71,100-101,106,120-127
+  s_f4c56e9ce5ef15::t_1b883c9fa1f96e 1-2,13-35,87,129
+  s_f4c56e9ce5ef15::t_b9ea1211b7caec 44,51-52,55-70,72-86
+  s_f4c56e9ce5ef15::t_a31886dffe6d7e 43
+  s_f4c56e9ce5ef15::t_087e82557a1172 36-42
+  s_f4c56e9ce5ef15::t_40da0cfd8ec6a0 88-96,128
+  s_f4c56e9ce5ef15::t_6572185c57aeb4 97-99,102-105,107-119
+tui-js/src/term/tabs.mouse.test.tsx
+  s_f4c56e9ce5ef15::t_b9ea1211b7caec 66-108,168,177
+  s_f4c56e9ce5ef15::t_b59df598aa6c7c 23-30,173
+  s_f4c56e9ce5ef15::t_1c5658a16ac0ef 110-146,152-158
+  s_f4c56e9ce5ef15::t_5b83b49897a4a8 176
+  s_f4c56e9ce5ef15::t_281082226bb113 109,147-151
+  s_f4c56e9ce5ef15::t_9bc40b210a57e1 190-222
+  s_f4c56e9ce5ef15::t_c729c3531f6f86 41-65
+internal/cli/ui.go
+  s_f4c56e9ce5ef15::t_affabdad9cad15 72-84,95-96,99,102
+README.md
+  s_f4c56e9ce5ef15::t_e04c5a10c48a63 273
+  s_f4c56e9ce5ef15::t_8fb5a2d8cde13d 261-267,278-279,281-282,289-300,515
+  s_f4c56e9ce5ef15::t_073d1b954019c3 710-712
+  s_f4c56e9ce5ef15::t_de50cc539f2b78 7,95,127,142-144,216,252,383,442,454-455,610,640,643-644,679,688
+tui-js/src/views/browser.hints.test.ts
+  s_f4c56e9ce5ef15::t_a57e7f02e037f3 39-40
+  s_f4c56e9ce5ef15::t_7c56b23af5ff22 37
+tui-js/src/term/agentpicker.e2e.ts
+  s_f4c56e9ce5ef15::t_183a3a2671c7b4 101-102,148-157,173,183-184
+  s_f4c56e9ce5ef15::t_633cf2872e2ea9 111-120,176-178
+  s_f4c56e9ce5ef15::t_6a4c6ae50be271 36
+  s_f4c56e9ce5ef15::t_44d2e60268975b 103-110,174-175
+  s_f4c56e9ce5ef15::t_53f77aae3b58b6 121-138,140-141,145-147,179-182
+  s_f4c56e9ce5ef15::t_a2d49b1f45c41f 139
+  s_f4c56e9ce5ef15::t_efb6711297457b 34-35,37-38
+  s_f4c56e9ce5ef15::t_110a44c05854d5 2,4,8-11,13-14,18,21-33,39-58,60-62,66-67,71-72,77,81,87,89,93-94,160,163-165,170-171,186-188,191-192
+  s_f4c56e9ce5ef15::t_eff38afaefcdc1 15-17,161
+  s_f4c56e9ce5ef15::t_24d34d53a1e1e8 95-97
+  s_f4c56e9ce5ef15::t_d240e821393f44 98
+tui-js/src/pr/comments.ts
+  s_f4c56e9ce5ef15::t_7280b515fb3903 6,122-144
+  s_f4c56e9ce5ef15::t_2dfe78834a76db 77-81,109-121,159-160
+  s_f4c56e9ce5ef15::t_62c3840da7415b 42-53
+tui-js/src/overlays/useOverlays.tsx
+  s_f4c56e9ce5ef15::t_78fa8ac4286aff 77,92,152,494,663-669,1007-1008
+internal/forge/batch_test.go
+  s_f4c56e9ce5ef15::t_b4ed1b685dbaac 6-7,44-80
+  s_f4c56e9ce5ef15::t_e326dab1530eb8 81
+.github/workflows/release.yml
+  s_f4c56e9ce5ef15::t_3096fc1309007e 53
+internal/cli/rm.go
+  s_f4c56e9ce5ef15::t_7391eee8a0cc3f 4,13,20,23,61,68-79,102
+internal/forge/forge_test.go
+  s_f4c56e9ce5ef15::t_28d269d1311ec0 360-365,370-372
+scripts/render-homebrew-formula.sh
+  s_f4c56e9ce5ef15::t_3cbd5f3c5ef249 60
+tui-js/src/components/sessionoverlay.tsx
+  s_f4c56e9ce5ef15::t_c61991c963c855 9,209
+  s_f4c56e9ce5ef15::t_ddcad51cb9ed6f 147-148,242
+  s_f4c56e9ce5ef15::t_2330aaf263d9de 34,204
+internal/rpcserver/server.go
+  s_f4c56e9ce5ef15::t_07c5da118f64b7 378-382,388,398,415-423,427-428
+  s_f4c56e9ce5ef15::t_525fdcbb30a716 16
+  s_f4c56e9ce5ef15::t_2bb00f64b4ff1d 29,73,108-110
+  s_f4c56e9ce5ef15::t_5afc4d50f9b830 424-426
+  s_f4c56e9ce5ef15::t_30f4a415f2a1fd 111,286-287,429-445
+  s_f4c56e9ce5ef15::t_c74d668eb4a290 21
+  s_f4c56e9ce5ef15::t_e20d32183e72d0 112
+  s_f4c56e9ce5ef15::t_768eb8b5ed86b4 446
+internal/session/focus_test.go
+  s_f4c56e9ce5ef15::t_5afc4d50f9b830 11,41,50-56
+  s_f4c56e9ce5ef15::t_7ae277c968eaac 1,4,9-10,12-13,15-19,21,23-28,30-36,38-40,42-43,45-46
+tui-js/src/term/responses.test.ts
+  s_f4c56e9ce5ef15::t_9f5607ba64a1fc 1-2,4-12,22-30
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 3,13-21
+tui-js/src/util/keys.ts
+  s_f4c56e9ce5ef15::t_bf9855d2f6426d 25-28
+internal/session/name.go
+  s_f4c56e9ce5ef15::t_7c399cbf9b788b 1-37
+tui-js/src/util/shortcut-contract.ts
+  s_f4c56e9ce5ef15::t_e604910fba4c41 38,49,69,82,104
+internal/forge/forge.go
+  s_f4c56e9ce5ef15::t_cb42f674f464c0 386
+  s_f4c56e9ce5ef15::t_36c33271818e0c 67-71,75-79,145-146,558-561
+tui-js/src/term/slis.ts
+  s_f4c56e9ce5ef15::t_e126d514ecc763 57-60,106-110
+  s_f4c56e9ce5ef15::t_afb34ed9c6a030 77-80,115-118
+  s_f4c56e9ce5ef15::t_f4e213d5a2523b 85-88,127-130
+  s_f4c56e9ce5ef15::t_e98bb2dc712c58 34-37,92-95
+  s_f4c56e9ce5ef15::t_f195bcb152c454 18-29,63-74,111-114,119-122,133,135-136,169-173
+  s_f4c56e9ce5ef15::t_15918c1934c584 55-56,91,96-97
+  s_f4c56e9ce5ef15::t_0f4d9982487b9c 46-54,98-104
+  s_f4c56e9ce5ef15::t_bf8379755c8cc6 1-17,30-33,38-41,89-90,105,131-132,137,147-156,158-168,174
+  s_f4c56e9ce5ef15::t_bbac9973b02ce7 61-62,75-76
+  s_f4c56e9ce5ef15::t_3785e208653275 81-84,123-126
+  s_f4c56e9ce5ef15::t_c57b61719761d6 42-45,134,138-146,157
+internal/cli/create.go
+  s_f4c56e9ce5ef15::t_bfcb99c7454b8d 13,260-272,274
+tui-js/src/components/diffview.wrap.test.tsx
+  s_f4c56e9ce5ef15::t_0f29b39ad4e033 39,76-110,112-115,119
+  s_f4c56e9ce5ef15::t_69c42c52ed2760 46
+  s_f4c56e9ce5ef15::t_0ce1db218fe726 17
+  s_f4c56e9ce5ef15::t_55c4b881b5136e 50,111
+  s_f4c56e9ce5ef15::t_49fe96734e924a 68,162
+  s_f4c56e9ce5ef15::t_7a1f86ecced030 116-118
+  s_f4c56e9ce5ef15::t_0a214d99ee9b9b 120-161,163-166
+tui-js/src/pr/comments.test.ts
+  s_f4c56e9ce5ef15::t_28d269d1311ec0 7,117-134
+  s_f4c56e9ce5ef15::t_7a1f86ecced030 9,25-34
+  s_f4c56e9ce5ef15::t_0f29b39ad4e033 8,35-54,135
+  s_f4c56e9ce5ef15::t_4f61323d348858 55
+internal/zmxctl/client.go
+  s_f4c56e9ce5ef15::t_dd8645c8ec08c6 109-112
+  s_f4c56e9ce5ef15::t_791ab34fafdf8e 94-95,100
+  s_f4c56e9ce5ef15::t_8b305486e33bd5 10,12,87,93,120-145,148,150-151,160-162
+  s_f4c56e9ce5ef15::t_d36cf4e863a780 77-80
+  s_f4c56e9ce5ef15::t_205d9efead1260 68-70
+  s_f4c56e9ce5ef15::t_516994ba3ffcbf 105-108
+  s_f4c56e9ce5ef15::t_3e26ddd10ac4af 39-46
+  s_f4c56e9ce5ef15::t_f0582457665356 113,146-147,152-153
+  s_f4c56e9ce5ef15::t_d40f1177eb40e4 1-4,6-8,11,13-16,19-27,73,163,165-183
+  s_f4c56e9ce5ef15::t_a228d0ce2a1d11 5,9,18,29-31
+  s_f4c56e9ce5ef15::t_a40bd5862ed5d1 51-53,55,57-61,63-66,154-158
+  s_f4c56e9ce5ef15::t_19e22c25a69321 67,71-72
+  s_f4c56e9ce5ef15::t_cd93441c81f8c6 34,38
+  s_f4c56e9ce5ef15::t_84db22fe5f6d84 97,102,116,119
+  s_f4c56e9ce5ef15::t_8f6ead754fffce 17,36,54,62,159
+  s_f4c56e9ce5ef15::t_70547e4829a7bd 28,32-33,35,37,48-50
+  s_f4c56e9ce5ef15::t_ae07ca6c97c912 56
+  s_f4c56e9ce5ef15::t_ebd473d0bc5b33 74-76,81-86,96,98-99,101,103-104,114-115,117-118
+  s_f4c56e9ce5ef15::t_d5e2767b1a114d 88-92,149,164
+  s_f4c56e9ce5ef15::t_5ef0ff7396d9b1 47
+tui-js/src/components/diffview.tsx
+  s_f4c56e9ce5ef15::t_69c42c52ed2760 283,537
+  s_f4c56e9ce5ef15::t_7280b515fb3903 13,218-220,249-252,276,395-405,687-708,718-737
+  s_f4c56e9ce5ef15::t_4317e06581ae47 24
+  s_f4c56e9ce5ef15::t_62c3840da7415b 27,221-248,418-431,654,770,779,822,824-855
+  s_f4c56e9ce5ef15::t_49fe96734e924a 288,406-417,563-566,636,753
+internal/zmxctl/list_test.go
+  s_f4c56e9ce5ef15::t_2de01da1d2fc8e 1-28
+tui-js/src/term/tmux.test.ts
+  s_f4c56e9ce5ef15::t_9b03110f77472a 6-8,20-28,30-54
+  s_f4c56e9ce5ef15::t_c61991c963c855 9,29
+tui-js/src/components/procoverlay.tsx
+  s_f4c56e9ce5ef15::t_2330aaf263d9de 136
+internal/rpcserver/types.go
+  s_f4c56e9ce5ef15::t_2bb00f64b4ff1d 173,190
+tui-js/src/rpc/client.ts
+  s_f4c56e9ce5ef15::t_cc36d7f2dc7a65 19,120,230-232,430-432
+  s_f4c56e9ce5ef15::t_30f4a415f2a1fd 433-439
+tui-js/src/components/help.tsx
+  s_f4c56e9ce5ef15::t_c265768dd66c45 60-62,134-136,151-152
+  s_f4c56e9ce5ef15::t_2330aaf263d9de 238
+.github/workflows/ci.yml
+  s_f4c56e9ce5ef15::t_077fdb86d8a414 60-65,75,78,80-82,86
+  s_f4c56e9ce5ef15::t_b8b48948bc10a9 77,79
+tui-js/src/term/session.ts
+  s_f4c56e9ce5ef15::t_eff38afaefcdc1 133,147-148
+  s_f4c56e9ce5ef15::t_9f5607ba64a1fc 86-88,94,96-101,111-112
+  s_f4c56e9ce5ef15::t_fed3994f07f79b 1-4,6-9,61-65,70-71,78,80-81,104
+  s_f4c56e9ce5ef15::t_5058cc928e520c 19-20,66-69
+  s_f4c56e9ce5ef15::t_caa43ba60b899c 10-11,48,95,126-129
+  s_f4c56e9ce5ef15::t_e32e8d76f6fff0 125
+  s_f4c56e9ce5ef15::t_9864652a38929f 5,79
+  s_f4c56e9ce5ef15::t_a499e0e305e47c 14
+internal/zmxctl/runtime.go
+  s_f4c56e9ce5ef15::t_e5661a344acfd5 1,4-6,9,14-15,17-18,20
+  s_f4c56e9ce5ef15::t_d0ec94d63ff5e5 10-13
+internal/session/focus.go
+  s_f4c56e9ce5ef15::t_7ae277c968eaac 1,4-8,10-11,14-15,17-20,27,29-31,33-34,37-41,43-45,47-49,51-53,55-57,59-60,62-88,92-96,98-100,102-104,106-108,110-112,114-115,117-118,120-121,123,126-129,131
+  s_f4c56e9ce5ef15::t_5afc4d50f9b830 9,21-22,24-26
+internal/cleanup/cleanup_test.go
+  s_f4c56e9ce5ef15::t_6db7e174de6ed3 73-93
+internal/session/layout_test.go
+  s_f4c56e9ce5ef15::t_319f8c00135d69 25-29,32-35,37-40
+  s_f4c56e9ce5ef15::t_e5e4ce4cf5093f 42-46,48-53,55-56
+  s_f4c56e9ce5ef15::t_4a56803c91a49d 60-64,67-70
+  s_f4c56e9ce5ef15::t_50c83f2860cef8 74-77,80-83,85-86
+  s_f4c56e9ce5ef15::t_196ee619d92301 1,4-5,11-15,18-21
+CLAUDE.md
+  s_f4c56e9ce5ef15::t_6bba51687ed2ab 58-60,64,68,70,82-85,94,96,102,108-109
+docs/AGENT.md
+  s_f4c56e9ce5ef15::t_436d8322f0552f 233,236-237,266-267,271,274,278,394,399-400,406,418,446,484
+skills/slis/SKILL.md
+  s_d4ec6ff01bd2e9::t_bb066b093ebe45 55,85,91,95-98,136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "10563a7261534e1ffb6b4c6fa358b0859535fd37",
+  "prompts": {},
+  "sessions": {
+    "s_cd72c4828723bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c429fa6-a0cd-4176-92ff-86d7a64988ae",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_d4ec6ff01bd2e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cc65-7333-af2b-01339f390be7",
+        "model": "unknown"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
