@@ -1,0 +1,25 @@
+README.md
+  s_f4c56e9ce5ef15::t_bdc5ee78c8fac2 255
+tui-js/src/term/tabs.test.ts
+  s_f4c56e9ce5ef15::t_334d11250d213e 5,55-60
+tui-js/src/term/tabs.tsx
+  s_f4c56e9ce5ef15::t_145ab711e9cfd1 57-60
+tui-js/src/app.tsx
+  s_f4c56e9ce5ef15::t_145ab711e9cfd1 36,449-453,458,463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b039651fc260a606b9d5911ed64a51cbb9b7f475",
+  "prompts": {},
+  "sessions": {
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
