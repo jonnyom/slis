@@ -252,7 +252,7 @@ The agent dock follows the slice selected in the hub or cockpit. Press `a` to
 open an existing agent tab, `C` to launch the default agent, `L` to choose a
 different agent, or `t` to open a shell. A slice can keep several agent and
 shell tabs alive at once. Click a tab to switch to it, click its `×` to stop
-that tab, press `ctrl+g` to return focus to Slis while the dock stays open, or
+that tab, press `ctrl+g` to toggle focus between Slis and the dock, or
 press `ctrl+q` to hide the dock without stopping anything. New shell tabs start
 with your login shell from `$SHELL`. While the dock has focus, press
 `ctrl+shift+right` for the next tab or `ctrl+shift+left` for the previous tab.

@@ -54,6 +54,10 @@ export function tabCycleDirection(sequence: string): -1 | 0 | 1 {
   return 0;
 }
 
+export function isDockRefocusShortcut(name: string, ctrl: boolean, dockVisible: boolean): boolean {
+  return dockVisible && ctrl && name.toLowerCase() === "g";
+}
+
 // A tmux-session tab (keyed by slice) or an interactive command tab (keyed by a
 // unique id, running a one-shot mutation in a PTY). `exited` tracks a finished
 // command so the tab bar / back key can offer to close it.

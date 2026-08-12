@@ -33,6 +33,7 @@ import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { TermManager } from "./term/manager";
 import {
+  isDockRefocusShortcut,
   nextSessionTabID,
   sessionTabKeyForSlice,
   TerminalLayer,
@@ -445,16 +446,21 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // so Shift+T works under both legacy and modern kitty keyboard protocols.
   useKeyboard((key) => {
     const enabled = !overlays.active && !procsOpen && bulkPromptCount === null && !termMode;
+    const name = normalizeKeyName(key);
+    if (enabled && isDockRefocusShortcut(name, key.ctrl === true, dockedSessionTab !== null)) {
+      setTermMode(true);
+      return;
+    }
     if (
       enabled &&
       dockedSessionTab &&
       key.ctrl === true &&
-      normalizeKeyName(key).toLowerCase() === "q"
+      name.toLowerCase() === "q"
     ) {
       hideSessionDock();
       return;
     }
-    if (!enabled || normalizeKeyName(key) !== "T") return;
+    if (!enabled || name !== "T") return;
     const index = THEME_PREFERENCES.indexOf(themePreferenceRef.current);
     const next = THEME_PREFERENCES[(index + 1) % THEME_PREFERENCES.length]!;
     themePreferenceRef.current = next;

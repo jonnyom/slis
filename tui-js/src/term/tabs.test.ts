@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   adjacentTabKey,
+  isDockRefocusShortcut,
   nextSessionTabID,
   sessionTabKeyForSlice,
   tabBarLabel,
@@ -51,6 +52,12 @@ describe("Slis terminal tabs", () => {
 });
 
 describe("session terminal presentation", () => {
+  test("ctrl+g refocuses a visible session dock", () => {
+    expect(isDockRefocusShortcut("g", true, true)).toBe(true);
+    expect(isDockRefocusShortcut("g", true, false)).toBe(false);
+    expect(isDockRefocusShortcut("g", false, true)).toBe(false);
+  });
+
   test("keeps a session dock visible with and without terminal focus", () => {
     expect(terminalPresentation(180, true, true, true)).toEqual({
       shown: true,
