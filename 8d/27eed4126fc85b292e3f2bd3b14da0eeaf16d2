@@ -1,0 +1,33 @@
+README.md
+  s_f4c56e9ce5ef15::t_ef9dcf228e9d84 355-356
+  s_f4c56e9ce5ef15::t_a59f576c5efdfb 392,394-395,397-405
+  s_f4c56e9ce5ef15::t_b09820a381175f 60,76-78,91-94,100,141,440,574
+  s_f4c56e9ce5ef15::t_b5a87f8cd89de0 192,194-196,198-199,201
+  s_f4c56e9ce5ef15::t_802a1651b83f30 263,266-268
+  s_f4c56e9ce5ef15::t_713e6eceaba152 416-417
+  s_f4c56e9ce5ef15::t_af877670e3f435 19-58
+  s_f4c56e9ce5ef15::t_5491acef059c9c 166,168,174-176
+  s_f4c56e9ce5ef15::t_c95dc261cfe500 178,180-190
+  s_f4c56e9ce5ef15::t_ceff0aa9fe7941 203,209,245
+  s_f4c56e9ce5ef15::t_adc45c81a10944 154,156-158
+  s_f4c56e9ce5ef15::t_2345a79df2de3d 275,277-278,280-281,283-286,288,290-291,295-296
+  s_f4c56e9ce5ef15::t_1bc341eb261515 72-74
+  s_f4c56e9ce5ef15::t_fe7de99e38ca33 270-271
+  s_f4c56e9ce5ef15::t_f8aa9251ebd420 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8d27eed4126fc85b292e3f2bd3b14da0eeaf16d2",
+  "prompts": {},
+  "sessions": {
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
