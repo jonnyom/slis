@@ -188,6 +188,109 @@ test("ctrl+q leaves the focused terminal", async () => {
   expect(backCount).toBe(1);
 });
 
+test("ctrl+g returns focus to Slis without hiding the terminal", async () => {
+  setup = await createTestRenderer({ width: 80, height: 24, kittyKeyboard: true });
+  root = createRoot(setup.renderer);
+  let unfocusCount = 0;
+  flushSync(() =>
+    root!.render(
+      <TerminalLayer
+        tabs={[]}
+        active={null}
+        shown
+        focused
+        statuses={{}}
+        width={80}
+        height={24}
+        left={0}
+        manager={new TermManager()}
+        onBack={() => {}}
+        onUnfocus={() => unfocusCount++}
+        onSelectTab={() => {}}
+        onFocus={() => {}}
+        onSessionExit={() => {}}
+        onCommandExit={() => {}}
+      />,
+    ),
+  );
+  await setup.flush();
+
+  setup.mockInput.pressKey("g", { ctrl: true });
+  await setup.flush();
+
+  expect(unfocusCount).toBe(1);
+});
+
+test("ctrl+shift+right selects the next terminal tab", async () => {
+  setup = await createTestRenderer({ width: 80, height: 24, kittyKeyboard: true });
+  root = createRoot(setup.renderer);
+  let selected = "";
+  const first = { kind: "command" as const, id: "first", title: "first", argv: [], exited: false };
+  const second = { kind: "command" as const, id: "second", title: "second", argv: [], exited: false };
+  flushSync(() =>
+    root!.render(
+      <TerminalLayer
+        tabs={[]}
+        tabBarTabs={[first, second]}
+        active="first"
+        shown
+        focused
+        statuses={{}}
+        width={80}
+        height={24}
+        left={0}
+        manager={new TermManager()}
+        onBack={() => {}}
+        onSelectTab={(key) => { selected = key; }}
+        onFocus={() => {}}
+        onSessionExit={() => {}}
+        onCommandExit={() => {}}
+      />,
+    ),
+  );
+  await setup.flush();
+
+  setup.mockInput.pressArrow("right", { ctrl: true, shift: true });
+  await setup.flush();
+
+  expect(selected).toBe("second");
+});
+
+test("ctrl+shift+left selects the previous terminal tab", async () => {
+  setup = await createTestRenderer({ width: 80, height: 24, kittyKeyboard: true });
+  root = createRoot(setup.renderer);
+  let selected = "";
+  const first = { kind: "command" as const, id: "first", title: "first", argv: [], exited: false };
+  const second = { kind: "command" as const, id: "second", title: "second", argv: [], exited: false };
+  flushSync(() =>
+    root!.render(
+      <TerminalLayer
+        tabs={[]}
+        tabBarTabs={[first, second]}
+        active="second"
+        shown
+        focused
+        statuses={{}}
+        width={80}
+        height={24}
+        left={0}
+        manager={new TermManager()}
+        onBack={() => {}}
+        onSelectTab={(key) => { selected = key; }}
+        onFocus={() => {}}
+        onSessionExit={() => {}}
+        onCommandExit={() => {}}
+      />,
+    ),
+  );
+  await setup.flush();
+
+  setup.mockInput.pressArrow("left", { ctrl: true, shift: true });
+  await setup.flush();
+
+  expect(selected).toBe("first");
+});
+
 test("clicking a visible terminal pane focuses it", async () => {
   setup = await createTestRenderer({ width: 80, height: 24 });
   root = createRoot(setup.renderer);

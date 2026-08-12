@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isQuitKey, normalizeKeyName } from "./keys";
+import { isQuitKey, isUnmodifiedKey, normalizeKeyName } from "./keys";
 import type { KeyEvent } from "@opentui/core";
 
 function key(name: string, shift = false): KeyEvent {
@@ -45,5 +45,12 @@ describe("isQuitKey", () => {
 
   test("plain c remains the create-slice key", () => {
     expect(isQuitKey(key("c"))).toBe(false);
+  });
+});
+
+describe("isUnmodifiedKey", () => {
+  test("rejects ctrl+g as plain hub navigation", () => {
+    expect(isUnmodifiedKey({ name: "g", ctrl: true } as KeyEvent)).toBe(false);
+    expect(isUnmodifiedKey(key("g"))).toBe(true);
   });
 });

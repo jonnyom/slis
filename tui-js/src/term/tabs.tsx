@@ -2,8 +2,8 @@
 // open slice session. Terminals stay mounted while their tab is open, so the
 // per-tab ghostty state persists and switching tabs is instant (no re-attach).
 //
-// Raw input: while the terminal is focused, every key except the reserved back
-// key (ctrl+q) is forwarded to the active PTY untouched.
+// Raw input: while the terminal is focused, every key except reserved Slis
+// shortcuts is forwarded to the active PTY untouched.
 
 import { extend, usePaste, useRenderer } from "@opentui/react";
 import { useEffect, useRef, type ReactNode } from "react";
@@ -33,6 +33,7 @@ declare module "@opentui/react" {
 export const BACK_KEY = process.env["SLIS_TERM_BACK_KEY"]
   ? String.fromCharCode(parseInt(process.env["SLIS_TERM_BACK_KEY"]!, 16))
   : "\x11";
+export const UNFOCUS_KEY = "\x07";
 export const EMBEDDED_TERMINAL_SELECTABLE = true;
 export const EMBEDDED_TERMINAL_BACKGROUND = theme.bg;
 
@@ -41,6 +42,16 @@ export function isBackKeySequence(sequence: string): boolean {
   const controlCode = BACK_KEY.charCodeAt(0);
   const keyCode = controlCode >= 1 && controlCode <= 26 ? controlCode + 96 : controlCode;
   return sequence === `\x1b[${keyCode};5u`;
+}
+
+export function isUnfocusKeySequence(sequence: string): boolean {
+  return sequence === UNFOCUS_KEY || sequence === "\x1b[103;5u";
+}
+
+export function tabCycleDirection(sequence: string): -1 | 0 | 1 {
+  if (sequence === "\x1b[57351;6u" || sequence === "\x1b[1;6C") return 1;
+  if (sequence === "\x1b[57350;6u" || sequence === "\x1b[1;6D") return -1;
+  return 0;
 }
 
 // A tmux-session tab (keyed by slice) or an interactive command tab (keyed by a
@@ -287,6 +298,7 @@ export function TabBar({
   active,
   statuses,
   onBack,
+  onUnfocus,
   onHide,
   onSelectTab,
   onCloseTab,
@@ -296,6 +308,7 @@ export function TabBar({
   active: string | null;
   statuses: Record<string, SessionStatus>;
   onBack: () => void;
+  onUnfocus?: () => void;
   onHide?: () => void;
   onSelectTab: (key: string) => void;
   onCloseTab?: (key: string) => void;
@@ -363,18 +376,22 @@ export function TabBar({
           );
         })}
         <box flexGrow={1} flexDirection="row" justifyContent="flex-end" paddingRight={1}>
+          {tabs.length > 1 ? (
+            <text fg={theme.textFaint} attributes={DIM} wrapMode="none">{"^⇧←/→ tabs  "}</text>
+          ) : null}
           <text
-            id="term-back"
+            id={onUnfocus ? "term-unfocus" : "term-back"}
             fg={theme.textFaint}
             attributes={DIM}
             wrapMode="none"
             onMouseDown={(event) => {
-              onBack();
+              if (onUnfocus) onUnfocus();
+              else onBack();
               event.preventDefault();
               event.stopPropagation();
             }}
           >
-            {onHide ? "ctrl+q" : "ctrl+q back"}
+            {onUnfocus ? "ctrl+g slis" : "ctrl+q back"}
           </text>
           {onHide ? (
             <text
@@ -387,7 +404,7 @@ export function TabBar({
                 event.stopPropagation();
               }}
             >
-              {"  hide ×"}
+              {"  ctrl+q hide ×"}
             </text>
           ) : null}
         </box>
@@ -411,6 +428,7 @@ export function TerminalLayer({
   left,
   manager,
   onBack,
+  onUnfocus,
   onHide,
   onSelectTab,
   onCloseTab,
@@ -430,6 +448,7 @@ export function TerminalLayer({
   left: number;
   manager: TermManager;
   onBack: () => void;
+  onUnfocus?: () => void;
   onHide?: () => void;
   onSelectTab: (key: string) => void;
   onCloseTab?: (key: string) => void;
@@ -446,10 +465,16 @@ export function TerminalLayer({
   focusedRef.current = focused;
   const activeRef = useRef(active);
   activeRef.current = active;
+  const cycleTabsRef = useRef(tabBarTabs ?? tabs);
+  cycleTabsRef.current = tabBarTabs ?? tabs;
   const managerRef = useRef(manager);
   managerRef.current = manager;
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
+  const onUnfocusRef = useRef(onUnfocus);
+  onUnfocusRef.current = onUnfocus;
+  const onSelectTabRef = useRef(onSelectTab);
+  onSelectTabRef.current = onSelectTab;
 
   usePaste((event) => {
     if (!focusedRef.current) return;
@@ -464,6 +489,16 @@ export function TerminalLayer({
   useEffect(() => {
     const handler = (seq: string): boolean => {
       if (!focusedRef.current) return false; // browser/cockpit own the keys
+      if (onUnfocusRef.current && isUnfocusKeySequence(seq)) {
+        onUnfocusRef.current();
+        return true;
+      }
+      const cycleDirection = tabCycleDirection(seq);
+      if (cycleDirection !== 0) {
+        const next = adjacentTabKey(cycleTabsRef.current, activeRef.current, cycleDirection);
+        if (next) onSelectTabRef.current(next);
+        return true;
+      }
       if (isBackKeySequence(seq)) {
         onBackRef.current();
         return true;
@@ -496,6 +531,7 @@ export function TerminalLayer({
         active={active}
         statuses={statuses}
         onBack={onBack}
+        onUnfocus={onUnfocus}
         onHide={onHide}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}

@@ -40,7 +40,7 @@ import { isMethodNotFound } from "../rpc/client";
 import { listHints } from "./browser.hints";
 import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
-import { isQuitKey, normalizeKeyName } from "../util/keys";
+import { isQuitKey, isUnmodifiedKey, normalizeKeyName } from "../util/keys";
 import { shortcutAction } from "../util/shortcut-contract";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
@@ -724,6 +724,7 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
     if (key.ctrl && (name === "d" || name === "u")) return;
+    if (!isUnmodifiedKey(key)) return;
     if (name === "pagedown" || name === "pageup") return;
     if (name === "j" || name === "down") {
       if (hubFocus === "rail") setFilterIndex((i) => Math.min(FILTERS.length - 1, i + 1));

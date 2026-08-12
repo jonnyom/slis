@@ -2,8 +2,18 @@ package cli
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 )
+
+func TestEnvironmentWithValueReplacesExistingValue(t *testing.T) {
+	environment := []string{"HOME=/home/jonny", "SLIS_WORKSPACE_CONFIG=/old"}
+	got := environmentWithValue(environment, "SLIS_WORKSPACE_CONFIG", "/new")
+	want := []string{"HOME=/home/jonny", "SLIS_WORKSPACE_CONFIG=/new"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("environment = %v, want %v", got, want)
+	}
+}
 
 func TestResolveUILaunchPrefersSiblingCompiledBinary(t *testing.T) {
 	binPath := "/opt/slis/bin/slis"

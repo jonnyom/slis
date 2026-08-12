@@ -1,9 +1,16 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+const WorkspaceConfigEnv = "SLIS_WORKSPACE_CONFIG"
 
 // Paths holds the XDG-compliant file-system paths used by slis at runtime.
 type Paths struct {
@@ -58,6 +65,9 @@ func configBase() string {
 // $XDG_STATE_HOME/slis (fallback: ~/.local/state/slis).
 func StatePaths() Paths {
 	stateDir := filepath.Join(stateBase(), "slis")
+	if scope := WorkspaceScope(); scope != "" {
+		stateDir = filepath.Join(stateDir, "workspaces", scope)
+	}
 	return Paths{
 		StateDir:      stateDir,
 		Overrides:     filepath.Join(stateDir, "overrides.yaml"),
@@ -89,7 +99,111 @@ func ConfigDir() string {
 	return filepath.Join(configBase(), "slis")
 }
 
-// WorkspacePath returns the canonical path to workspace.yaml inside ConfigDir.
 func WorkspacePath() string {
+	if configured := os.Getenv(WorkspaceConfigEnv); configured != "" {
+		return canonicalPath(configured)
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return WorkspacePathForRoot(".")
+	}
+	if selected := workspacePathForDirectory(workingDirectory); selected != "" {
+		return selected
+	}
+	return WorkspacePathForRoot(workingDirectory)
+}
+
+func WorkspacePathForRoot(root string) string {
+	legacyRoot, err := workspaceRoot(legacyWorkspacePath())
+	if err == nil && canonicalPath(legacyRoot) == canonicalPath(root) {
+		return legacyWorkspacePath()
+	}
+	return filepath.Join(ConfigDir(), "workspaces", workspaceKey(root), "workspace.yaml")
+}
+
+func WorkspaceScope() string {
+	path := WorkspacePath()
+	relative, err := filepath.Rel(filepath.Join(ConfigDir(), "workspaces"), path)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(filepath.Clean(relative), string(filepath.Separator))
+	if len(parts) != 2 || parts[1] != "workspace.yaml" || parts[0] == ".." {
+		return ""
+	}
+	return parts[0]
+}
+
+func legacyWorkspacePath() string {
 	return filepath.Join(ConfigDir(), "workspace.yaml")
+}
+
+func workspacePathForDirectory(directory string) string {
+	candidates := []string{legacyWorkspacePath()}
+	entries, err := os.ReadDir(filepath.Join(ConfigDir(), "workspaces"))
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				candidates = append(candidates, filepath.Join(ConfigDir(), "workspaces", entry.Name(), "workspace.yaml"))
+			}
+		}
+	}
+
+	directory = canonicalPath(directory)
+	selectedPath := ""
+	selectedRoot := ""
+	for _, candidate := range candidates {
+		workspaceRoot, err := workspaceRoot(candidate)
+		if err != nil {
+			continue
+		}
+		root := canonicalPath(workspaceRoot)
+		if pathWithinRoot(directory, root) && len(root) > len(selectedRoot) {
+			selectedPath = candidate
+			selectedRoot = root
+		}
+	}
+	return selectedPath
+}
+
+func workspaceRoot(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	var workspace struct {
+		Root string `yaml:"root"`
+	}
+	if err := yaml.Unmarshal(data, &workspace); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(workspace.Root) == "" {
+		return "", os.ErrInvalid
+	}
+	return expandTilde(workspace.Root)
+}
+
+func workspaceKey(root string) string {
+	digest := sha256.Sum256([]byte(canonicalPath(root)))
+	return hex.EncodeToString(digest[:8])
+}
+
+func canonicalPath(path string) string {
+	absolute, err := filepath.Abs(path)
+	if err == nil {
+		path = absolute
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		path = resolved
+	}
+	return filepath.Clean(path)
+}
+
+func pathWithinRoot(path, root string) bool {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }

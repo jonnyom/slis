@@ -1120,6 +1120,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         left={terminalLayout.terminalLeft}
         manager={manager}
         onBack={termBack}
+        onUnfocus={terminalLayout.docked ? () => setTermMode(false) : undefined}
         onHide={terminalLayout.docked ? () => {
           hideSessionDock();
         } : undefined}

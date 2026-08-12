@@ -14,7 +14,8 @@ mutate-vs-read classification, and how errors surface. The
   Prefer it over parsing tables.
 - **Worktree ingestion is opt-in.** A worktree becomes a slice only when it is
   *managed*: under `<root>/.slis/worktrees/**` or recorded in the registry
-  (`$XDG_STATE_HOME/slis/registry.yaml`). Other worktrees are **candidates** —
+  (`$XDG_STATE_HOME/slis/workspaces/<workspace-id>/registry.yaml`; legacy
+  workspaces keep `$XDG_STATE_HOME/slis/registry.yaml`). Other worktrees are **candidates** —
   surfaced, never auto-ingested. Register one with `slis import` (or `--all`);
   hide one with `slis ignore <path-or-glob>`; un-manage one with `slis forget`.
   A missing external/imported worktree surfaces as **missing** for manual
@@ -381,7 +382,8 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 - **Enum:** `none | running | waiting-input | done`.
 - **Read path (use this):** `slis status [slice] --json`.
 - **Storage (fallback):** one file per slice at
-  `$XDG_STATE_HOME/slis/events/<slice>.json` (fallback `~/.local/state/slis/events`);
+  `$XDG_STATE_HOME/slis/workspaces/<workspace-id>/events/<slice>.json` (legacy
+  workspaces keep `$XDG_STATE_HOME/slis/events/<slice>.json`);
   slashes in the slice name become dashes. On-disk shape:
   `{ "slice": "...", "status": "running", "time_ns": 1719...,
   "session_id": "...", "cwd": "/abs/path" }`.

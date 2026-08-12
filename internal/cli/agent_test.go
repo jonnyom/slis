@@ -9,6 +9,7 @@ import (
 func TestAgentDefaultCommandsPersistWorkspaceConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	path := config.WorkspacePath()
+	t.Setenv(config.WorkspaceConfigEnv, path)
 	ws := config.Workspace{
 		Root: t.TempDir(),
 		Repos: map[string]config.Repo{

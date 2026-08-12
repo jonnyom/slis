@@ -252,8 +252,10 @@ The agent dock follows the slice selected in the hub or cockpit. Press `a` to
 open an existing agent tab, `C` to launch the default agent, `L` to choose a
 different agent, or `t` to open a shell. A slice can keep several agent and
 shell tabs alive at once. Click a tab to switch to it, click its `×` to stop
-that tab, or press `ctrl+q` to hide the dock without stopping anything. New
-shell tabs start with your login shell from `$SHELL`.
+that tab, press `ctrl+g` to return focus to Slis while the dock stays open, or
+press `ctrl+q` to hide the dock without stopping anything. New shell tabs start
+with your login shell from `$SHELL`. While the dock has focus, press
+`ctrl+shift+right` for the next tab or `ctrl+shift+left` for the previous tab.
 
 Set `sessions.layout: repos` if you want one terminal tab per repository.
 
@@ -301,15 +303,19 @@ PR comments remain cached after cleanup so review history is not lost.
 
 ### Workspace configuration
 
-The main configuration file is:
+Slis selects the workspace that contains the current directory. Each workspace
+has separate configuration, preferences, session state, and zmx sessions.
+
+`slis init` creates:
 
 ```text
-$XDG_CONFIG_HOME/slis/workspace.yaml
-~/.config/slis/workspace.yaml   # default
+$XDG_CONFIG_HOME/slis/workspaces/<workspace-id>/workspace.yaml
+~/.config/slis/workspaces/<workspace-id>/workspace.yaml   # default
 ```
 
-`slis init` creates it. Restart Slis after editing it so the workspace and
-session configuration are reloaded.
+Run `slis init .` once from each workspace root. Running Slis outside an
+initialized workspace shows the setup prompt instead of opening another
+workspace. Restart Slis after editing its configuration.
 
 ### Configure coding agents
 
@@ -379,11 +385,12 @@ Supported canonical names are `midnight`, `violet`, `light`, and `mono`;
 `auto` or `system` follows the terminal. Common aliases such as `dark`, `blue`,
 `purple`, and `monochrome` are accepted.
 
-Theme, the legacy coding-agent fallback, diff layout, and diff scope are stored in:
+Theme, the legacy coding-agent fallback, diff layout, and diff scope are stored
+per workspace in:
 
 ```text
-$XDG_STATE_HOME/slis/prefs.json
-~/.local/state/slis/prefs.json   # default
+$XDG_STATE_HOME/slis/workspaces/<workspace-id>/prefs.json
+~/.local/state/slis/workspaces/<workspace-id>/prefs.json   # default
 ```
 
 Environment variables override saved preferences for that launch. `NO_COLOR`
@@ -437,9 +444,9 @@ missing worktree, a branch ref, or a commit. Missing external worktrees remain
 visible for manual recovery, including worktrees on temporarily unavailable
 volumes.
 
-Existing workspace configuration, including `sessions.default_agent`, remains in
-the XDG config directory. Theme and diff preferences, plus the legacy agent
-fallback, remain in the XDG state directory and are reused by new releases.
+Existing workspace configuration, including `sessions.default_agent`, remains
+at the legacy XDG path and keeps its existing state. New workspaces use separate
+workspace directories under the XDG config and state directories.
 
 After upgrading, a useful smoke check is:
 

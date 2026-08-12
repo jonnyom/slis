@@ -358,7 +358,7 @@ func openSessionManager() (*sessionmanager.Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	runtimeDirectory, err := zmxctl.EnsureRuntimeDirectory()
+	runtimeDirectory, err := zmxctl.EnsureRuntimeDirectory(config.WorkspaceScope())
 	if err != nil {
 		return nil, err
 	}

@@ -175,7 +175,7 @@ func (client *Client) command(ctx context.Context, args []string) *exec.Cmd {
 func runtimeEnvironment(runtimeDir string) []string {
 	environment := make([]string, 0, len(os.Environ())+1)
 	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "ZMX_DIR=") {
+		if !strings.HasPrefix(value, "ZMX_DIR=") && !strings.HasPrefix(value, "SLIS_WORKSPACE_CONFIG=") {
 			environment = append(environment, value)
 		}
 	}

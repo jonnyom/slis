@@ -7,7 +7,7 @@ import (
 )
 
 func TestEnsureRuntimeDirectoryCreatesPrivateShortPath(t *testing.T) {
-	directory, err := EnsureRuntimeDirectory()
+	directory, err := EnsureRuntimeDirectory("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,11 +26,25 @@ func TestEnsureRuntimeDirectoryCreatesPrivateShortPath(t *testing.T) {
 func TestEnsureRuntimeDirectoryUsesSlisOverride(t *testing.T) {
 	directory := filepath.Join("/tmp", "slis-runtime-test")
 	t.Setenv("SLIS_SESSION_RUNTIME_DIR", directory)
-	got, err := EnsureRuntimeDirectory()
+	got, err := EnsureRuntimeDirectory("workspace")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != directory {
 		t.Fatalf("runtime directory = %q, want %q", got, directory)
+	}
+}
+
+func TestEnsureRuntimeDirectorySeparatesWorkspaceScopes(t *testing.T) {
+	first, err := EnsureRuntimeDirectory("workspace-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := EnsureRuntimeDirectory("workspace-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("runtime directories are equal: %q", first)
 	}
 }

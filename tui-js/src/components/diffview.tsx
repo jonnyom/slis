@@ -529,6 +529,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
   useKeyboard((key) => {
     if (!enabled) return;
     const name = normalizeKeyName(key);
+    if (key.ctrl && name.toLowerCase() === "g") return;
     const shortcut = shortcutAction("diff", name);
     if (shortcut === "configure-agents") return props.onConfigureAgents();
     if (name === "q") return props.onQuit();

@@ -1551,6 +1551,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     // While the full diff view is open it owns the keyboard.
     if (diffOpen) return;
     const name = normalizeKeyName(key);
+    if (key.ctrl && name.toLowerCase() === "g") return;
     const cockpitShortcut = shortcutAction("cockpit", name);
 
     if (pendingSessionKill) {

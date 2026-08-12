@@ -191,6 +191,24 @@ func TestClientEnsureRejectsSocketPathTooLong(t *testing.T) {
 	}
 }
 
+func TestRuntimeEnvironmentDoesNotLeakWorkspaceSelection(t *testing.T) {
+	t.Setenv("SLIS_WORKSPACE_CONFIG", "/workspace/one/workspace.yaml")
+	t.Setenv("ZMX_DIR", "/old/runtime")
+	environment := runtimeEnvironment("/new/runtime")
+	foundRuntime := false
+	for _, value := range environment {
+		if strings.HasPrefix(value, "SLIS_WORKSPACE_CONFIG=") {
+			t.Fatalf("runtime environment contains workspace selection: %q", value)
+		}
+		if value == "ZMX_DIR=/new/runtime" {
+			foundRuntime = true
+		}
+	}
+	if !foundRuntime {
+		t.Fatal("runtime environment does not contain new ZMX_DIR")
+	}
+}
+
 func TestClientAttachKeepsTerminalForegroundProcessGroup(t *testing.T) {
 	client := New("zmx", "/tmp/slis-session-test")
 	command := client.AttachCommand(context.Background(), "group-root")

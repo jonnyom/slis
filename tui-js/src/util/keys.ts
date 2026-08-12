@@ -17,6 +17,10 @@ export function normalizeKeyName(key: KeyEvent): string {
   return name;
 }
 
+export function isUnmodifiedKey(key: KeyEvent): boolean {
+  return key.ctrl !== true && key.meta !== true && key.option !== true;
+}
+
 // Ctrl+C can arrive either as the raw ETX byte (handled globally in app.tsx)
 // or as a normalized KeyEvent under terminal keyboard protocols. Keeping this
 // second guard in React views prevents normalized ctrl+c from falling through

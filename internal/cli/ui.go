@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
+	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/hooks"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +44,7 @@ func execJSUI(binPath string, launch uiLaunch) error {
 	if err != nil {
 		return fmt.Errorf("cannot find %q on PATH: %w", launch.name, err)
 	}
+	workspacePath := config.WorkspacePath()
 
 	prevDir := ""
 	if launch.dir != "" {
@@ -59,6 +62,7 @@ func execJSUI(binPath string, launch uiLaunch) error {
 	if os.Getenv("SLIS_BIN") == "" {
 		env = append(env, "SLIS_BIN="+binPath)
 	}
+	env = environmentWithValue(env, config.WorkspaceConfigEnv, workspacePath)
 
 	execErr := syscall.Exec(argv0, append([]string{launch.name}, launch.args...), env)
 	if prevDir != "" {
@@ -67,6 +71,17 @@ func execJSUI(binPath string, launch uiLaunch) error {
 		}
 	}
 	return execErr
+}
+
+func environmentWithValue(environment []string, name, value string) []string {
+	prefix := name + "="
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+value)
 }
 
 func runUI() error {

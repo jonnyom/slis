@@ -40,7 +40,7 @@ func InitWithSelection(root string, selected []string, stripPrefix string) (stri
 	}
 
 	ws := config.BuildWorkspace(root, filtered, stripPrefix)
-	destPath := config.WorkspacePath()
+	destPath := config.WorkspacePathForRoot(ws.Root)
 	if err := config.SaveWorkspace(destPath, ws); err != nil {
 		return "", fmt.Errorf("init: save workspace: %w", err)
 	}
@@ -86,7 +86,7 @@ func runInteractiveInit(root string, stripPrefix string) (string, error) {
 
 	// Pre-check repos already present in an existing workspace.yaml.
 	var preSelected []string
-	if existing, err := config.LoadWorkspace(config.WorkspacePath()); err == nil {
+	if existing, err := config.LoadWorkspace(config.WorkspacePathForRoot(root)); err == nil {
 		for _, c := range candidates {
 			if _, ok := existing.Repos[c.Name]; ok {
 				preSelected = append(preSelected, c.Name)
