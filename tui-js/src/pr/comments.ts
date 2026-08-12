@@ -3,7 +3,7 @@
 // commentBlock). Pure so the cockpit PR-detail pane can consume parsed blocks and
 // the logic is unit-testable. Comment `kind`: 0 issue · 1 review · 2 inline.
 
-import type { PrComment } from "../rpc/types";
+import type { PrComment, PrDiffComment } from "../rpc/types";
 
 const HTML_COMMENT = /<!--[\s\S]*?-->/g;
 const MD_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
@@ -39,6 +39,18 @@ export function cleanCommentBody(s: string): string {
   return s.trim().split(/\s+/).filter(Boolean).join(" ");
 }
 
+export function inlineCommentPreview(
+  value: string,
+  maxLength = 320,
+): { body: string; truncated: boolean } {
+  const cleaned = cleanCommentBody(value);
+  if (cleaned.length <= maxLength) return { body: cleaned, truncated: false };
+  const candidate = cleaned.slice(0, maxLength);
+  const lastSpace = candidate.lastIndexOf(" ");
+  const end = lastSpace >= Math.floor(maxLength * 0.7) ? lastSpace : maxLength;
+  return { body: candidate.slice(0, end).trimEnd() + "…", truncated: true };
+}
+
 // reviewStateLabel renders a review submission's state as a short label.
 export function reviewStateLabel(state: string): string {
   switch (state.toUpperCase()) {
@@ -62,7 +74,11 @@ export function commentKindLabel(c: PrComment): string {
     case 1:
       return reviewStateLabel(c.context ?? "");
     case 2:
-      return c.context ? "📝 " + c.context : "📝 inline";
+      return c.context
+        ? "📝 " + c.context
+        : c.path
+          ? `📝 ${c.path}${c.line ? `:${c.line}` : ""}`
+          : "📝 inline";
     default:
       return "💬";
   }
@@ -90,6 +106,42 @@ export function wrapText(s: string, width: number): string[] {
 export interface CommentBlock {
   header: string;
   body: string[];
+  code: string[];
+}
+
+export function diffHunkContext(diffHunk: string): string[] {
+  return diffHunk
+    .split("\n")
+    .filter((line) => line !== "" && !line.startsWith("@@"))
+    .map((line) => {
+      const marker = line[0];
+      if (marker === "+" || marker === "-") return `${marker} ${line.slice(1)}`;
+      return `  ${marker === " " ? line.slice(1) : line}`;
+    })
+    .slice(-5);
+}
+
+export function indexInlineComments(
+  comments: readonly PrDiffComment[],
+  repo: string,
+  branch: string,
+  path: string,
+  oldPath?: string,
+): { old: Map<number, PrDiffComment[]>; new: Map<number, PrDiffComment[]> } {
+  const indexed = {
+    old: new Map<number, PrDiffComment[]>(),
+    new: new Map<number, PrDiffComment[]>(),
+  };
+  for (const comment of comments) {
+    if (comment.kind !== 2 || comment.repo !== repo || comment.branch !== branch || !comment.line) continue;
+    const side = comment.side?.toUpperCase() === "LEFT" ? "old" : "new";
+    const expectedPath = side === "old" ? oldPath ?? path : path;
+    if (comment.path !== expectedPath) continue;
+    const lineComments = indexed[side].get(comment.line) ?? [];
+    lineComments.push(comment);
+    indexed[side].set(comment.line, lineComments);
+  }
+  return indexed;
 }
 
 // commentBlocks renders each comment as a header (kind · repo #N · author) plus
@@ -104,6 +156,7 @@ export function commentBlocks(
     const author = c.author || "?";
     const header = `${commentKindLabel(c)}  ${repo} #${prNumber} — ${author}`;
     const body = cleanCommentBody(c.body) || "(no text)";
-    return { header, body: wrapText(body, width) };
+    const code = c.kind === 2 && c.diff_hunk ? diffHunkContext(c.diff_hunk) : [];
+    return { header, body: wrapText(body, width), code };
   });
 }

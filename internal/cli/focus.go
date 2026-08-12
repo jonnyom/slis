@@ -1,45 +1,21 @@
 package cli
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 )
-
-// focusAction is what `slis focus` decides to do given the attached tmux clients.
-type focusAction int
-
-const (
-	// focusSwitch points a specific client at the target session.
-	focusSwitch focusAction = iota
-	// focusAttachHint prints the attach command because no client is attached.
-	focusAttachHint
-	// focusAlready is a no-op: the chosen client already views the target session.
-	focusAlready
-)
-
-// decideFocus picks the focus action for the target session given the attached
-// clients: no clients → print an attach hint; the most-recently-used client is
-// already on the target → no-op; otherwise switch that client to the target.
-// Pure so it is unit-testable without spawning tmux.
-func decideFocus(clients []tmuxctl.Client, targetSession string) (focusAction, tmuxctl.Client) {
-	c, ok := tmuxctl.MostRecentClient(clients)
-	if !ok {
-		return focusAttachHint, tmuxctl.Client{}
-	}
-	if c.Session == targetSession {
-		return focusAlready, c
-	}
-	return focusSwitch, c
-}
 
 // membersOfSlice returns a slice's members in sorted repo order (for session
 // creation, which wants a deterministic window order).
@@ -52,55 +28,30 @@ func membersOfSlice(sl model.Slice) []model.SliceMember {
 	return members
 }
 
-func targetSessionForSlice(sl model.Slice, panes []tmuxctl.SessionPane) string {
-	related := make(map[string]bool)
-	for _, pane := range panes {
-		if strings.HasPrefix(pane.Session, "slis-shell/") {
-			continue
-		}
-		for _, member := range sl.Members {
-			relative, err := filepath.Rel(member.WorktreePath, pane.Path)
-			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-				continue
-			}
-			related[pane.Session] = true
-			if !tmuxctl.IsShellCommand(pane.Command) {
-				return pane.Session
-			}
-		}
-	}
-	canonical := tmuxctl.SessionName(sl.Name)
-	if related[canonical] {
-		return canonical
-	}
-	for _, pane := range panes {
-		if related[pane.Session] {
-			return pane.Session
-		}
-	}
-	return canonical
-}
-
-func detachedSessionAttachArgv(terminalApp, target string) (string, []string, bool) {
+func detachedSlisAttachArgv(terminalApp, groupID, tabID string) (string, []string, bool) {
 	if strings.EqualFold(terminalApp, "ghostty") {
-		return "open", []string{"-na", "Ghostty.app", "--args", "-e", "tmux", "attach", "-t", target}, true
+		return "open", []string{"-na", "Ghostty.app", "--args", "-e", "slis", "session", "attach", groupID, tabID}, true
 	}
 	return "", nil, false
 }
 
+func newFocusRequest(groupID, tabID string) (sessionmanager.FocusRequest, error) {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return sessionmanager.FocusRequest{}, err
+	}
+	return sessionmanager.FocusRequest{ID: hex.EncodeToString(random), GroupID: groupID, TabID: tabID, TimeNS: time.Now().UnixNano()}, nil
+}
+
 var focusCmd = &cobra.Command{
 	Use:   "focus <slice>",
-	Short: "Switch the active tmux client to a slice's session (used by notification clicks)",
+	Short: "Focus a slice's persistent Slis session",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		if err := validateSliceName(name); err != nil {
 			return err
 		}
-		if !tmuxctl.Available() {
-			return fmt.Errorf("tmux not found on PATH")
-		}
-
 		ws, err := config.LoadWorkspace(config.WorkspacePath())
 		if err != nil {
 			return fmt.Errorf("workspace not found — run `slis init` first: %w", err)
@@ -111,39 +62,38 @@ var focusCmd = &cobra.Command{
 			return err
 		}
 
-		if err := tmuxctl.EnsureSession(sl.Name, membersOfSlice(sl), tmuxctl.SessionOpts{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
-			return fmt.Errorf("ensure tmux session: %w", err)
-		}
-
-		panes, err := tmuxctl.ListSessionPanes()
+		manager, err := openSessionManager()
 		if err != nil {
 			return err
 		}
-		target := targetSessionForSlice(sl, panes)
-		clients, err := tmuxctl.ListClients()
+		group, err := manager.Ensure(cmd.Context(), sl.Name, membersOfSlice(sl), sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout})
 		if err != nil {
 			return err
 		}
-
-		switch action, client := decideFocus(clients, target); action {
-		case focusAttachHint:
-			if launchName, launchArgs, ok := detachedSessionAttachArgv(os.Getenv("SLIS_TERMINAL_APP"), target); ok {
-				if out, err := exec.Command(launchName, launchArgs...).CombinedOutput(); err != nil {
-					return fmt.Errorf("open terminal session: %w: %s", err, out)
-				}
-				return nil
-			}
-			fmt.Printf("tmux attach -t %s\n", target)
+		if group.ActiveTabID == "" {
+			return fmt.Errorf("slice %q has no terminal tabs", sl.Name)
+		}
+		request, err := newFocusRequest(group.ID, group.ActiveTabID)
+		if err != nil {
+			return err
+		}
+		focusContext, cancel := context.WithTimeout(cmd.Context(), 750*time.Millisecond)
+		focused, err := sessionmanager.RequestFrontendFocus(focusContext, config.StatePaths().StateDir, request)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if focused {
 			return nil
-		case focusAlready:
-			return nil
-		default:
-			switchName, switchArgs := tmuxctl.SwitchClientTargetArgv(client.TTY, target)
-			if out, err := exec.Command(switchName, switchArgs...).CombinedOutput(); err != nil {
-				return fmt.Errorf("tmux switch-client: %w: %s", err, out)
+		}
+		if launchName, launchArgs, ok := detachedSlisAttachArgv(os.Getenv("SLIS_TERMINAL_APP"), group.ID, group.ActiveTabID); ok {
+			if out, err := exec.Command(launchName, launchArgs...).CombinedOutput(); err != nil {
+				return fmt.Errorf("open terminal session: %w: %s", err, out)
 			}
 			return nil
 		}
+		fmt.Fprintf(cmd.OutOrStdout(), "slis session attach %s %s\n", group.ID, group.ActiveTabID)
+		return nil
 	},
 }
 

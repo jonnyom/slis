@@ -1,7 +1,9 @@
 # Binaries
 /slis
 /slis-ui
+/zmx
 /dist/
+/third_party/zmx/dist/
 *.exe
 *.out
 

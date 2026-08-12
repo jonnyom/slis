@@ -22,5 +22,8 @@ export function normalizeKeyName(key: KeyEvent): string {
 // second guard in React views prevents normalized ctrl+c from falling through
 // to the browser's plain `c` create-slice binding.
 export function isQuitKey(key: KeyEvent, normalizedName = normalizeKeyName(key)): boolean {
-  return normalizedName === "q" || (key.ctrl === true && normalizedName.toLowerCase() === "c");
+  return (
+    (normalizedName === "q" && key.ctrl !== true && key.meta !== true) ||
+    (key.ctrl === true && normalizedName.toLowerCase() === "c")
+  );
 }

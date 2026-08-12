@@ -24,6 +24,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/radar"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 	"github.com/jonnyom/slis/internal/swap"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
@@ -139,8 +140,12 @@ func SliceStatusDTO(eventsDir, slice string) StatusDTO {
 func SliceStatusDTOCtx(ctx context.Context, eventsDir, slice string) StatusDTO {
 	record := notify.ReadStatusRecord(eventsDir, slice)
 	status := notify.ReadStatus(eventsDir, slice)
-	if status == model.SessNone && tmuxctl.SessionExistsCtx(ctx, slice) {
-		status = model.SessRunning
+	if status == model.SessNone {
+		if _, err := sessionmanager.OpenStore(config.StatePaths().StateDir).Get(slice); err == nil {
+			status = model.SessRunning
+		} else if tmuxctl.SessionExistsCtx(ctx, slice) {
+			status = model.SessRunning
+		}
 	}
 	return StatusDTO{
 		Slice:     slice,
@@ -177,18 +182,19 @@ func parseStatusDTO(status StatusDTO) model.SessionStatus {
 // CI/CIPass/CIFail/CIPending carry the check rollup so a front-end can show a CI
 // badge per row without a second fetch; they are omitted for a branch with no PR.
 type PRStackRowDTO struct {
-	Repo           string `json:"repo"`
-	Branch         string `json:"branch"`
-	Number         int    `json:"number,omitempty"`
-	URL            string `json:"url,omitempty"`
-	State          string `json:"state,omitempty"`
-	Title          string `json:"title,omitempty"`
-	ReviewDecision string `json:"review_decision,omitempty"`
-	StackOrder     int    `json:"stack_order,omitempty"`
-	CI             string `json:"ci,omitempty"`
-	CIPass         int    `json:"ci_pass,omitempty"`
-	CIFail         int    `json:"ci_fail,omitempty"`
-	CIPending      int    `json:"ci_pending,omitempty"`
+	Repo           string          `json:"repo"`
+	Branch         string          `json:"branch"`
+	Number         int             `json:"number,omitempty"`
+	URL            string          `json:"url,omitempty"`
+	State          string          `json:"state,omitempty"`
+	Title          string          `json:"title,omitempty"`
+	ReviewDecision string          `json:"review_decision,omitempty"`
+	StackOrder     int             `json:"stack_order,omitempty"`
+	CI             string          `json:"ci,omitempty"`
+	CIPass         int             `json:"ci_pass,omitempty"`
+	CIFail         int             `json:"ci_fail,omitempty"`
+	CIPending      int             `json:"ci_pending,omitempty"`
+	Comments       []forge.Comment `json:"comments,omitempty"`
 }
 
 // SetPR fills a row's PR-derived fields (identity, review decision, and the CI
@@ -203,6 +209,7 @@ func (r *PRStackRowDTO) SetPR(pr *forge.PR) {
 	r.State = pr.State
 	r.Title = pr.Title
 	r.ReviewDecision = pr.ReviewDecision
+	r.Comments = pr.Comments
 	overall, pass, fail, pending := pr.CISummary()
 	r.CI = forge.CIStateName(overall)
 	r.CIPass, r.CIFail, r.CIPending = pass, fail, pending

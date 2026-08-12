@@ -8,6 +8,17 @@
 // Everything here is a thin shell-out to the `tmux` binary; nothing mutates a repo.
 
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import {
+  ensureSlisSession,
+  ensureSlisTab,
+  killLegacySession,
+  killSlisSession,
+  listLegacySessions,
+  listSlisSessions,
+  sendSlisInput,
+  slisSessionBusy,
+  type SessionGroup,
+} from "./slis";
 
 /** A slice member reduced to what session windows + agent context need. */
 export interface TermMember {
@@ -45,15 +56,8 @@ export function sessionName(slice: string, kind: SessionKind = "agent"): string 
   return prefix + slice.replace(/[:.]/g, "-");
 }
 
-async function sh(cmd: string[]): Promise<{ code: number; out: string }> {
-  const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-  const out = await new Response(p.stdout).text();
-  const code = await p.exited;
-  return { code, out };
-}
-
-export function tmuxAvailable(): boolean {
-  return Bun.which("tmux") !== null;
+export function slisSessionAvailable(): boolean {
+  return Bun.which(process.env["SLIS_BIN"] ?? "slis") !== null;
 }
 
 export function parseTmuxSessions(output: string): TmuxSessionInfo[] {
@@ -75,34 +79,47 @@ export function parseTmuxSessions(output: string): TmuxSessionInfo[] {
   return [...sessions.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export function managedSessionTarget(groupID: string, tabID: string): string {
+  return `session:${encodeURIComponent(groupID)}:${encodeURIComponent(tabID)}`;
+}
+
+export function parseManagedSessionTarget(target: string): { groupID: string; tabID: string } | undefined {
+  const match = /^session:([^:]+):([^:]+)$/.exec(target);
+  if (!match) return undefined;
+  return {
+    groupID: decodeURIComponent(match[1]!),
+    tabID: decodeURIComponent(match[2]!),
+  };
+}
+
+export function sessionDisplayName(target: string): string {
+  const managed = parseManagedSessionTarget(target);
+  if (!managed) return target.replace(/^slis(?:-shell)?\//, "");
+  return `${managed.groupID} · ${managed.tabID.replace(/^repo:/, "")}`;
+}
+
+export async function managedSessionInfos(
+  groups: SessionGroup[],
+  busy: (groupID: string, tabID: string) => Promise<boolean>,
+): Promise<TmuxSessionInfo[]> {
+  return Promise.all(
+    groups.flatMap((group) => group.tabs.map(async (tab) => {
+      const target = managedSessionTarget(group.id, tab.id);
+      const running = await busy(group.id, tab.id);
+      return {
+        name: target,
+        kind: tab.kind === "agent" || tab.kind === "review" ? "agent" : "shell",
+        panes: [{ path: tab.cwd, command: running ? "slis-process" : "sh", target }],
+      } satisfies TmuxSessionInfo;
+    })),
+  );
+}
+
 export async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
-  const result = await sh([
-    "tmux",
-    "list-panes",
-    "-a",
-    "-F",
-    "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_name}:#{window_index}.#{pane_index}",
-  ]);
-  return result.code === 0 ? parseTmuxSessions(result.out) : [];
-}
-
-export async function sessionExists(slice: string, kind: SessionKind = "agent"): Promise<boolean> {
-  return (await sh(["tmux", "has-session", "-t", sessionName(slice, kind)])).code === 0;
-}
-
-/** Current directories for every pane in a slice session. */
-export async function sessionPanePaths(slice: string, kind: SessionKind = "agent"): Promise<string[]> {
-  const r = await sh([
-    "tmux",
-    "list-panes",
-    "-s",
-    "-t",
-    sessionName(slice, kind),
-    "-F",
-    "#{pane_current_path}",
-  ]);
-  if (r.code !== 0) return [];
-  return [...new Set(r.out.split("\n").map((path) => path.trim()).filter(Boolean))];
+  const groups = await listSlisSessions();
+  const managed = await managedSessionInfos(groups, slisSessionBusy);
+  const legacy = await listLegacySessions();
+  return [...managed, ...legacy];
 }
 
 function pathIsWithin(path: string, parent: string): boolean {
@@ -136,6 +153,8 @@ export function tmuxSessionRelatedToMembers(
  * would create (`sessionName`), which is the authoritative owner.
  */
 export function tmuxSessionOwnedBySlice(session: TmuxSessionInfo, slice: string): boolean {
+  const managed = parseManagedSessionTarget(session.name);
+  if (managed) return managed.groupID === slice;
   return session.name === sessionName(slice, session.kind);
 }
 
@@ -225,8 +244,10 @@ export function preferredRunningAgentSession(
 }
 
 export async function killTmuxSession(name: string): Promise<boolean> {
+  const managed = parseManagedSessionTarget(name);
+  if (managed) return killSlisSession(managed.groupID);
   if (!name.startsWith("slis/") && !name.startsWith("slis-shell/")) return false;
-  return (await sh(["tmux", "kill-session", "-t", name])).code === 0;
+  return killLegacySession(name);
 }
 
 export async function resumeClaudeSession(opts: {
@@ -235,25 +256,15 @@ export async function resumeClaudeSession(opts: {
   cwd?: string;
   members: TermMember[];
   sessionOpts: SessionOpts;
-}): Promise<string> {
+}): Promise<void> {
   if (!/^[A-Za-z0-9-]+$/.test(opts.sessionId)) throw new Error("invalid Claude session id");
-  await ensureSession(opts.slice, opts.members, opts.sessionOpts, "agent");
-  const name = sessionName(opts.slice);
-  const session = (await listTmuxSessions()).find((candidate) => candidate.name === name);
-	const target = session?.panes.find((pane) => isShellCmd(pane.command))?.target ?? name;
+  await ensureSlisSession(opts.slice);
+  await ensureSlisTab(opts.slice, "agent", "agent");
+  if (await slisSessionBusy(opts.slice, "agent")) throw new Error("agent terminal is busy");
 	const root = rootWindowCwd(opts.members);
 	const resume = `claude --resume ${opts.sessionId}`;
 	const command = root.ok ? `cd ${shellSingleQuote(root.cwd)} && ${resume}` : resume;
-  const result = await sh([
-    "tmux",
-    "send-keys",
-    "-t",
-    target,
-		command,
-    "Enter",
-  ]);
-  if (result.code !== 0) throw new Error(`tmux send-keys: ${result.out}`);
-  return name;
+  await sendSlisInput(opts.slice, "agent", command + "\r");
 }
 
 interface Window {
@@ -297,80 +308,9 @@ export function sessionWindows(members: TermMember[], opts: SessionOpts): Window
   return wins;
 }
 
-// Claude exits on Ctrl-D (EOF); the correct, Claude-preserving way out is the
-// tmux prefix detach (C-b d). Mirrors internal/tmuxctl.detachHint.
-const DETACH_HINT = " detach: C-b d  (Ctrl-D quits Claude) ";
-
-async function setStatusHint(name: string, kind: SessionKind): Promise<void> {
-  // Per-session mouse mode lets the embedded client use wheel scrolling without
-  // changing the user's global tmux configuration.
-  await sh(["tmux", "set-option", "-t", name, "mouse", "on"]);
-  await sh(["tmux", "set-option", "-t", name, "status-right-length", "40"]);
-  const hint = kind === "agent" ? DETACH_HINT : " detach: C-b d  (ctrl+q returns to Slis) ";
-  await sh(["tmux", "set-option", "-t", name, "status-right", hint]);
-}
-
-/**
- * Create the slice's tmux session (detached) if it does not already exist, with
- * windows determined by opts. Idempotent. Mirrors tmuxctl.EnsureSession.
- */
-export async function ensureSession(
-  slice: string,
-  members: TermMember[],
-  opts: SessionOpts,
-  kind: SessionKind = "agent",
-): Promise<void> {
-  const name = sessionName(slice, kind);
-  if (await sessionExists(slice, kind)) {
-    await setStatusHint(name, kind);
-    return;
-  }
-
-  const wins = sessionWindows(members, opts);
-  if (wins.length === 0) {
-    const r = await sh(["tmux", "new-session", "-d", "-s", name]);
-    if (r.code !== 0) throw new Error(`tmux new-session: ${r.out}`);
-    await setStatusHint(name, kind);
-    return;
-  }
-
-  const first = wins[0]!;
-  const args = ["new-session", "-d", "-s", name, "-n", first.name];
-  if (first.cwd) args.push("-c", first.cwd);
-  const created = await sh(["tmux", ...args]);
-  if (created.code !== 0) throw new Error(`tmux new-session: ${created.out}`);
-
-  for (const w of wins.slice(1)) {
-    const a = ["new-window", "-t", name, "-n", w.name];
-    if (w.cwd) a.push("-c", w.cwd);
-    const r = await sh(["tmux", ...a]);
-    if (r.code !== 0) throw new Error(`tmux new-window ${w.name}: ${r.out}`);
-  }
-
-  await setStatusHint(name, kind);
-}
-
-/** Foreground command of the session's active pane (e.g. "zsh", "claude"). */
-export async function activePaneCommand(slice: string, kind: SessionKind = "agent"): Promise<string> {
-  const r = await sh([
-    "tmux",
-    "display-message",
-    "-p",
-    "-t",
-    sessionName(slice, kind),
-    "#{pane_current_command}",
-  ]);
-  return r.code === 0 ? r.out.trim() : "";
-}
-
 /** Whether cmd is an interactive shell (safe to type a launch line into). */
 export function isShellCmd(cmd: string): boolean {
   return ["zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh"].includes(cmd);
-}
-
-/** Type keys into the session's active pane followed by Enter. */
-export async function sendKeys(slice: string, keys: string, kind: SessionKind = "agent"): Promise<void> {
-  await sh(["tmux", "send-keys", "-t", sessionName(slice, kind), keys, "Enter"]);
 }
 
 // ── agent launch line (ported from internal/tui/agentctx.go) ─────────────────

@@ -230,11 +230,11 @@ comment for the slice into one structured prompt (`Code review feedback on slice
 <name> — address each item:` then a numbered item per comment with repo,
 file:line or file:start-end, fenced selection, and the instruction) and injects
 it into the slice's
-configured agent's **active tmux pane** via bracketed paste + Enter, then clears
+configured agent's **active Slis tab** via bracketed paste + Enter, then clears
 the pending batch (keep it with `--keep`). If no agent is running, `send` creates
 or reuses the slice session, launches the configured agent with the same SLIS_*
-worktree context as the TUI agent action, waits for it to own the active pane,
-then delivers. A busy non-agent pane gets a dedicated `agent` window. Startup or
+worktree context as the TUI agent action, waits for it to own the active tab,
+then delivers. A busy non-agent tab gets a dedicated `agent` tab. Startup or
 readiness failure leaves every comment pending; prompts are never pasted into a
 shell or unrelated process. The read-only RPC
 sidecar exposes the same array as the `reviews` method (`{ "slice"?: string }`);
@@ -263,19 +263,19 @@ ordered array of `{id, role, body, created_at}` where role is `user`,
 `{ "include_messages": true }` when the full conversation is needed.
 
 `review agent` starts the selected configured or PATH-detected Claude Code,
-Codex, OpenCode, Gemini CLI, or Cursor Agent in a dedicated persistent tmux
-window and returns immediately. The initial turn reviews every worktree in the
+Codex, OpenCode, Gemini CLI, or Cursor Agent in a dedicated persistent Slis
+tab and returns immediately. The initial turn reviews every worktree in the
 slice in read-only mode. Its readable response, status, finding count, and
 errors are persisted; structured findings are attributed to the reviewer,
 stored in the pending-review list, and delivered to the slice's working agent.
-The tmux pane keeps its scrollback after completion.
+The Slis tab keeps its scrollback after completion.
 
 `slis review message <run-id> --body <text>` appends a user turn and respawns the
-same review window. The selected reviewer receives the complete stored
+same review tab. The selected reviewer receives the complete stored
 conversation, so follow-ups work consistently across supported agent harnesses
 without relying on vendor-specific session IDs. A message received during a
 running turn is queued and handled by that run before it exits.
-`slis review attach <run-id>` attaches or switches to the exact tmux window for
+`slis review attach <run-id>` attaches or switches to the exact Slis tab for
 live output and completed scrollback.
 
 ### `slis branch-diff <slice> <repo> <branch> --json` → object
@@ -391,19 +391,19 @@ The headline automation signal: *which slice's Claude is waiting for input.*
   No hooks installed → every slice reads `none`.
 - **Recovery:** the Sessions panel marks a waiting/done conversation as
   `resume` when no related agent process remains. Enter recreates or reuses the
-  slice tmux session, selects the pane matching `cwd`, and runs
+  slice session, selects the tab matching `cwd`, and runs
   `claude --resume <session_id>`.
 - **Desktop notifications:** the `slis hook` process itself fires the banner when
   a slice's status *changes* to `waiting-input` or `done` (deduped — an unchanged
   status never re-fires; `→ running` is silent). This is independent of the TUI:
-  notifications arrive even with no TUI running, and even while a tmux session is
-  attached (the TUI's event loop is suspended then, so it cannot deliver them).
+  notifications arrive even with no TUI running, and even while a session is
+  attached.
   Backend: `terminal-notifier` if on `PATH`, else `osascript` (macOS) /
   `notify-send` (Linux); sound honours `notify.needs_input.sound` /
   `notify.done.sound` from `workspace.yaml`. The `terminal-notifier` backend also
   carries the slis bacon-rasher icon (extracted to `<state>/slis.png`) and wires a
   click action: clicking the banner runs `slis focus <slice>`, switching your
-  active tmux client to that slice's session (see `focus` below). Set
+  active Slis UI to that slice's session (see `focus` below). Set
   `notify.activate` in `workspace.yaml` to a macOS app bundle id (e.g.
   `com.mitchellh.ghostty`, `com.googlecode.iterm2`, `com.apple.Terminal`) to also
   foreground that terminal app on click. Click actions are `terminal-notifier`
@@ -415,7 +415,7 @@ The headline automation signal: *which slice's Claude is waiting for input.*
 | Class | Commands | Notes for agents |
 |---|---|---|
 | **read / safe repair** | `ls show status pr pr-stack summary conflicts comments doctor candidates branch-diff tree cat edit review list/runs/show` | Safe anytime. Discovery-backed reads may atomically refresh/backfill the registry, quarantine a malformed registry, remove the exact stale Git administration for an already-gone Slis-owned checkout, and remove empty Slis-managed directories; they never alter external worktrees or delete live worktrees, refs, or commits. `doctor --fix` additionally applies its documented repairs. |
-| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup gather scatter init init-hooks init-skill editor agent focus share review add/rm/send/clear/agent/message/attach` | Touches local worktrees/branches/config/uncommitted work or the system clipboard. `create`/`adopt`/`import` refuse by default when `SLIS_SLICE` identifies an enclosing agent session; use `.claude/worktrees` for scratch work or pass `--allow-from-slice` for an intentional separate managed slice. `share` reads Git/Graphite/GitHub and writes only the clipboard (`--stdout` writes the Markdown to stdout instead). `import`/`forget` edit only the slis registry (never git); `ignore`, `editor set`, and `agent set-default` edit `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's tmux session if missing and switches the active tmux client to it. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store; `review send` starts the configured agent when needed and clears the pending batch on success. `review agent/message` write the persistent review-conversation store and start a read-only reviewer turn in the run's tmux window; `review attach` switches or attaches to that exact window. `gather`/`scatter` only edit `overrides.yaml` (a `folded:` section alongside `overrides:`); a gathered slice is represented by its stack tip and the folded intermediate branches are hidden as standalone slices — their worktrees and branches are never touched, and `scatter` fully reverses it. |
+| **local mutate** | `create adopt import ignore forget activate deactivate refresh restack rm group ungroup gather scatter init init-hooks init-skill editor agent focus share review add/rm/send/clear/agent/message/attach` | Touches local worktrees/branches/config/uncommitted work or the system clipboard. `create`/`adopt`/`import` refuse by default when `SLIS_SLICE` identifies an enclosing agent session; use `.claude/worktrees` for scratch work or pass `--allow-from-slice` for an intentional separate managed slice. `share` reads Git/Graphite/GitHub and writes only the clipboard (`--stdout` writes the Markdown to stdout instead). `import`/`forget` edit only the slis registry (never git); `ignore`, `editor set`, and `agent set-default` edit `workspace.yaml` (comments not preserved); `activate --stash` moves uncommitted changes and puts each primary on a `slis/live/<slice>` branch at the slice tip (worktrees untouched; Graphite works in the primary, but do stack *mutations* in the worktrees — the primary's temp branch isn't tracked); `deactivate` refuses any primary that drifted off its temp branch (you switched it away, or the journal is stale) with zero state change, refuses when you *committed* on the temp branch (the commits are safe on that named branch — it lists them), and `deactivate --force` restores anyway — renaming a committed-on temp branch to `slis/rescue/<slice>-<repo>` (never deleting it) first so nothing is lost; `refresh` fast-forwards the temp branch (refuses a dirty primary or a diverged branch); `rm --force` removes dirty worktrees. `init-skill` writes files under `~/.claude` / `~/.agents`. `focus` creates the slice's Slis session if missing and opens its active tab. In a Graphite-native repo, `create`/`adopt` also `gt track` the new branch (metadata only, no history rewrite; best-effort — a track failure only warns). `review add/rm/clear` only touch the slis pending-review store; `review send` starts the configured agent when needed and clears the pending batch on success. `review agent/message` write the persistent review-conversation store and start a read-only reviewer turn in the run's Slis tab; `review attach` opens that exact tab. `gather`/`scatter` only edit `overrides.yaml` (a `folded:` section alongside `overrides:`); a gathered slice is represented by its stack tip and the folded intermediate branches are hidden as standalone slices — their worktrees and branches are never touched, and `scatter` fully reverses it. |
 | **remote / destructive** | `submit merge sync fix-ci ci-rerun` | `submit` force-pushes + opens PRs; `merge` triggers Graphite's server-side queue; `sync` is repo-wide (may overwrite trunk, delete merged branches); `fix-ci` runs the harness (`claude -p` / `codex exec`) and commits; `ci-rerun <slice>` re-triggers each repo's failed CI runs (`gh run rerun --failed`) — the one CI write. Require explicit intent. |
 
 Inspect with the read column (and `--dry-run` on `create`/`rm`/`fix-ci`) before
@@ -443,7 +443,7 @@ sessions:
   autostart: false  # launch the harness when a session is first attached
   agents:           # optional: selectable agents (name + argv) → launch picker
     - { name: claude, cmd: [claude] }
-    - { name: codex,  cmd: [codex, --full-auto] }
+    - { name: codex,  cmd: [codex] }
 ```
 
 - **Precedence:** a non-empty `agent` is used verbatim (binary + args);
@@ -481,7 +481,7 @@ into the installed frontmatter gates rewrites. `slis init` runs it unless
 
 ## SLIS_* environment contract
 
-When slis launches the harness in a slice's tmux session, it prefixes these
+When slis launches the harness in a slice session, it prefixes these
 inline env vars (each single-quoted) onto the launch command. An agent running
 **inside** a slis session can trust them:
 

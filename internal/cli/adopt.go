@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -12,7 +13,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/model"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 )
 
 // checkedOutElsewhere reports whether a `git worktree add` failure was because
@@ -102,7 +103,7 @@ func repoTrunk(ws config.Workspace, repo, primary string) string {
 // branch checked out in a primary is freed (stashing any uncommitted work)
 // before the worktree is created. With createMissing=true, repos that don't have
 // the branch get it created off their trunk so the slice spans every repo.
-func adoptBranch(ws config.Workspace, raw string, noSession, move, createMissing bool) error {
+func adoptBranch(ctx context.Context, ws config.Workspace, raw string, noSession, move, createMissing bool) error {
 	prefix := ws.Grouping.StripPrefix
 	sliceName := config.SliceNameFromBranch(raw, prefix)
 	branch := branchForSlice(prefix, raw)
@@ -187,13 +188,14 @@ func adoptBranch(ws config.Workspace, raw string, noSession, move, createMissing
 	}
 
 	if !noSession {
-		if !tmuxctl.Available() {
-			fmt.Println("note: tmux not found — skipping session creation")
-		} else if err := tmuxctl.EnsureSession(sliceName, members, tmuxctl.SessionOpts{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
-			fmt.Printf("note: could not start tmux session: %v\n", err)
-		} else {
-			fmt.Printf("started tmux session slis/%s\n", sliceName)
+		manager, err := openSessionManager()
+		if err != nil {
+			return err
 		}
+		if _, err := manager.Ensure(ctx, sliceName, members, sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
+			return fmt.Errorf("start Slis session: %w", err)
+		}
+		fmt.Printf("started Slis session %s\n", sliceName)
 	}
 	return nil
 }
@@ -368,12 +370,12 @@ spans every repo. strip_prefix is applied exactly once.`,
 		if err := validateSliceName(raw); err != nil {
 			return err
 		}
-		return adoptBranch(ws, raw, noSession, move, createMissing)
+		return adoptBranch(cmd.Context(), ws, raw, noSession, move, createMissing)
 	},
 }
 
 func init() {
-	adoptCmd.Flags().Bool("no-session", false, "Do not create a tmux session for the adopted slice")
+	adoptCmd.Flags().Bool("no-session", false, "Do not create a Slis session for the adopted slice")
 	adoptCmd.Flags().Bool("move", false, "Detach the primary holding the branch (stashing any uncommitted work) so it can move into the worktree")
 	adoptCmd.Flags().Bool("create-missing", false, "In repos that don't have the branch, create it off trunk so the slice spans every repo")
 	adoptCmd.Flags().Bool("allow-from-slice", false, "Allow adopting a separate managed slice from inside another slice")

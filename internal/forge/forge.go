@@ -64,15 +64,19 @@ const (
 
 // Comment represents a single PR comment.
 type Comment struct {
-	Author    string
-	Body      string
-	CreatedAt string
-	URL       string
-	Kind      CommentKind
+	Author    string      `json:"author"`
+	Body      string      `json:"body"`
+	CreatedAt string      `json:"created_at,omitempty"`
+	URL       string      `json:"url"`
+	Kind      CommentKind `json:"kind,omitempty"`
 	// Context labels the comment: the review state ("approved",
 	// "changes_requested", "commented") for a CommentReview, or the diff anchor
 	// ("path:line") for a CommentInline. Empty for a CommentIssue.
-	Context string
+	Context  string `json:"context,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Line     int    `json:"line,omitempty"`
+	Side     string `json:"side,omitempty"`
+	DiffHunk string `json:"diff_hunk,omitempty"`
 }
 
 // PR holds the parsed representation of a GitHub pull request.
@@ -138,6 +142,8 @@ type ghInlineComment struct {
 	Path         string     `json:"path"`
 	Line         int        `json:"line"`
 	OriginalLine int        `json:"original_line"`
+	Side         string     `json:"side"`
+	DiffHunk     string     `json:"diff_hunk"`
 	HTMLURL      string     `json:"html_url"`
 	CreatedAt    string     `json:"created_at"`
 }
@@ -377,7 +383,7 @@ func prForBranchCtx(parent context.Context, repoDir, branch string, includeInlin
 
 func PRsForBranchesCtx(parent context.Context, repoDir string, branches []string) (map[string]*PR, error) {
 	return prsForBranchesCtx(parent, repoDir, branches, func(ctx context.Context, repoDir, branch string) (*PR, error) {
-		return prForBranchCtx(ctx, repoDir, branch, false)
+		return prForBranchCtx(ctx, repoDir, branch, true)
 	})
 }
 
@@ -549,6 +555,10 @@ func ParseInlineComments(data []byte) ([]Comment, error) {
 			URL:       safeterm.Strip(c.HTMLURL),
 			Kind:      CommentInline,
 			Context:   ctx,
+			Path:      safeterm.Strip(c.Path),
+			Line:      line,
+			Side:      safeterm.Strip(c.Side),
+			DiffHunk:  safeterm.Strip(c.DiffHunk),
 		})
 	}
 	return out, nil

@@ -1,12 +1,14 @@
 package review
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/jonnyom/slis/internal/proc"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
@@ -160,6 +162,70 @@ func (s TmuxSession) SendPromptOnce(slice, prompt, deliveryID string) error {
 		}
 	}
 	return tmuxctl.SendPromptOnce(slice, prompt, deliveryID)
+}
+
+type SlisSession struct {
+	Manager       *sessionmanager.Manager
+	AgentCommands []string
+	TabID         string
+	Context       context.Context
+}
+
+func (session SlisSession) sessionContext() context.Context {
+	if session.Context != nil {
+		return session.Context
+	}
+	return context.Background()
+}
+
+func (session SlisSession) Exists(slice string) bool {
+	_, err := session.Manager.Processes(session.sessionContext(), slice, session.TabID)
+	return err == nil
+}
+
+func (session SlisSession) HasAgent(slice string) bool {
+	processes, err := session.Manager.Processes(session.sessionContext(), slice, session.TabID)
+	if err != nil {
+		return false
+	}
+	for _, process := range processes {
+		if commandLineMatchesAgent("", process.Cmd, session.AgentCommands) {
+			return true
+		}
+	}
+	return false
+}
+
+func (session SlisSession) ActivateAgent(slice string) bool {
+	return session.HasAgent(slice)
+}
+
+func (session SlisSession) SendPrompt(slice, prompt string) error {
+	if !session.HasAgent(slice) {
+		return ErrNoAgent
+	}
+	history, err := session.Manager.History(session.sessionContext(), slice, session.TabID, false)
+	if err != nil {
+		return err
+	}
+	if blocker := agentInputBlocker(history); blocker != "" {
+		return fmt.Errorf("%w: %s", ErrAgentNotReady, blocker)
+	}
+	return session.Manager.Send(session.sessionContext(), slice, session.TabID, []byte("\x1b[200~"+prompt+"\x1b[201~\r"))
+}
+
+func (session SlisSession) SendPromptOnce(slice, prompt, deliveryID string) error {
+	if !session.HasAgent(slice) {
+		return ErrNoAgent
+	}
+	history, err := session.Manager.History(session.sessionContext(), slice, session.TabID, false)
+	if err != nil {
+		return err
+	}
+	if blocker := agentInputBlocker(history); blocker != "" {
+		return fmt.Errorf("%w: %s", ErrAgentNotReady, blocker)
+	}
+	return session.Manager.SendOnce(session.sessionContext(), slice, session.TabID, deliveryID, []byte("\x1b[200~"+prompt+"\x1b[201~\r"))
 }
 
 // agentInputBlocker recognizes agent setup screens that require a human choice.

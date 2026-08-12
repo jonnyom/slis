@@ -16,6 +16,7 @@ import type {
   DiffResult,
   DiffScope,
   FileResult,
+  FocusRequest,
   HelloResult,
   LsResult,
   ProcsResult,
@@ -116,6 +117,7 @@ export class SlisRpcClient implements RpcClient {
   // sidecar's work at one of each read at a time.
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private readonly sessionHandlers = new Set<(e: SessionEvent) => void>();
+  private readonly focusHandlers = new Set<(request: FocusRequest) => void>();
   private readonly connectionHandlers = new Set<
     (connected: boolean, error?: Error) => void
   >();
@@ -225,6 +227,9 @@ export class SlisRpcClient implements RpcClient {
     if (note.method === "sessionEvent") {
       const event = note.params as SessionEvent;
       for (const handler of this.sessionHandlers) handler(event);
+    } else if (note.method === "focusSession") {
+      const request = note.params as FocusRequest;
+      for (const handler of this.focusHandlers) handler(request);
     }
   }
 
@@ -421,6 +426,16 @@ export class SlisRpcClient implements RpcClient {
   onSessionEvent(handler: (event: SessionEvent) => void): () => void {
     this.sessionHandlers.add(handler);
     return () => this.sessionHandlers.delete(handler);
+  }
+  onFocusRequest(handler: (request: FocusRequest) => void): () => void {
+    this.focusHandlers.add(handler);
+    return () => this.focusHandlers.delete(handler);
+  }
+  ackFocus(id: string): void {
+    const proc = this.proc;
+    if (!proc) return;
+    proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "focusAck", params: { id } }) + "\n");
+    proc.stdin.flush();
   }
   onConnectionChange(
     handler: (connected: boolean, error?: Error) => void,

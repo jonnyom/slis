@@ -22,6 +22,7 @@ type Options struct {
 	DeleteBranches bool   // also delete each member branch (git branch -d, merged-only)
 	Force          bool   // git worktree remove --force + git branch -D
 	ActiveJournal  string // path to the swap journal; when set, Remove refuses a live slice
+	KillSession    func(string) error
 }
 
 // RepoResult is the per-repo outcome of a removal.
@@ -114,8 +115,14 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 		removeEmptyManagedParents(ws.Root, sl.Name)
 	}
 
-	// Kill the tmux session only when every worktree was removed — a failed or
-	// partial clear must not destroy a session the user may still be working in.
+	var sessionErr error
+	if allRemoved && opts.KillSession != nil {
+		if err := opts.KillSession(sl.Name); err != nil {
+			sessionErr = err
+		} else {
+			rep.SessionKilled = true
+		}
+	}
 	if allRemoved && tmuxctl.Available() {
 		for _, sessionName := range sessionNames {
 			if err := tmuxctl.KillSessionNamed(sessionName); err == nil {
@@ -124,7 +131,7 @@ func Remove(ws config.Workspace, sl model.Slice, opts Options) (Report, error) {
 		}
 	}
 
-	return rep, nil
+	return rep, sessionErr
 }
 
 // removeEmptyManagedParents removes only empty directories left above worktrees

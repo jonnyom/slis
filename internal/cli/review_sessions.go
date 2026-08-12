@@ -17,7 +17,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/internal/reviewrun"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 )
 
 func reviewRunStore() *reviewrun.Store {
@@ -57,20 +57,19 @@ func reviewRunCommand(executable, slice, agent, runID string) string {
 }
 
 func startReviewRunWindow(ws config.Workspace, slice model.Slice, run reviewrun.Run) error {
-	if !tmuxctl.Available() {
-		return errors.New("tmux is required to run a review agent")
+	manager, err := openSessionManager()
+	if err != nil {
+		return err
 	}
-	if err := tmuxctl.EnsureSession(slice.Name, reviewSessionMembers(slice), tmuxctl.SessionOpts{
-		Root: ws.Root, Layout: ws.Sessions.Layout,
-	}); err != nil {
-		return fmt.Errorf("ensure review session: %w", err)
+	if _, err := manager.Ensure(context.Background(), slice.Name, reviewSessionMembers(slice), sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
+		return fmt.Errorf("ensure Slis review session: %w", err)
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve slis executable: %w", err)
 	}
 	command := reviewRunCommand(executable, slice.Name, run.Agent, run.ID)
-	return tmuxctl.StartOrRespawnWindow(slice.Name, run.Window, reviewAgentCwd(slice, ws.Root), command)
+	return manager.StartCommand(context.Background(), slice.Name, sessionmanager.TabSpec{ID: run.Window, Kind: sessionmanager.TabKindReview, Title: run.Agent + " review", CWD: reviewAgentCwd(slice, ws.Root)}, command)
 }
 
 func pendingReviewMessages(detail reviewrun.Detail) []reviewrun.Message {
@@ -110,10 +109,11 @@ func deliverReviewFindings(ws config.Workspace, slice model.Slice, agentName, de
 	if err != nil {
 		return err
 	}
-	if !tmuxctl.Available() {
-		return fmt.Errorf("%s stored %d finding(s), but tmux is unavailable so they could not be delivered", agentName, len(comments))
+	manager, err := openSessionManager()
+	if err != nil {
+		return fmt.Errorf("%s stored %d finding(s), but delivery failed: %w", agentName, len(comments), err)
 	}
-	session := review.TmuxSession{AgentCommands: reviewAgentCommands(ws.Sessions)}
+	session := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: "agent", Context: context.Background()}
 	if err := ensureReviewAgent(ws, slice, session); err != nil {
 		return fmt.Errorf("%s stored %d finding(s), but delivery failed: %w", agentName, len(comments), err)
 	}
@@ -293,7 +293,11 @@ var reviewMessageCmd = &cobra.Command{
 			return err
 		}
 		if current.Status == reviewrun.StatusRunning {
-			running, err := tmuxctl.WindowRunning(current.Slice, current.Window)
+			manager, err := openSessionManager()
+			if err != nil {
+				return err
+			}
+			running, err := manager.Busy(cmd.Context(), current.Slice, current.Window)
 			if err != nil {
 				return err
 			}
@@ -317,7 +321,7 @@ var reviewMessageCmd = &cobra.Command{
 			return persistReviewFailure(store, current.ID, err)
 		}
 		if err := startReviewRunWindow(ws, slice, current.Run); err != nil {
-			if errors.Is(err, tmuxctl.ErrWindowBusy) {
+			if errors.Is(err, sessionmanager.ErrTerminalBusy) {
 				fmt.Fprintf(os.Stdout, "Message queued for %s review %s\n", current.Agent, current.ID)
 				return nil
 			}
@@ -330,17 +334,28 @@ var reviewMessageCmd = &cobra.Command{
 
 var reviewAttachCmd = &cobra.Command{
 	Use:   "attach <run-id>",
-	Short: "Attach to an agent review's tmux window",
+	Short: "Attach to an agent review's terminal tab",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		detail, err := reviewRunStore().Get(args[0])
 		if err != nil {
 			return err
 		}
 		if detail.Window == "" {
-			return fmt.Errorf("review %s has no tmux window", detail.ID)
+			return fmt.Errorf("review %s has no terminal tab", detail.ID)
 		}
-		return tmuxctl.AttachWindow(detail.Slice, detail.Window)
+		manager, err := openSessionManager()
+		if err != nil {
+			return err
+		}
+		attach, err := manager.AttachCommand(cmd.Context(), detail.Slice, detail.Window)
+		if err != nil {
+			return err
+		}
+		attach.Stdin = cmd.InOrStdin()
+		attach.Stdout = cmd.OutOrStdout()
+		attach.Stderr = cmd.ErrOrStderr()
+		return attach.Run()
 	},
 }
 

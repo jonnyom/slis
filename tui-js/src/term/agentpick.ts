@@ -86,6 +86,14 @@ export function agentCmdline(cmd: string[]): string {
   return cmd.map(shellQuote).join(" ");
 }
 
+export function agentTabID(agent: AgentSpec): string {
+  const slug = agent.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `agent-${slug || "custom"}`;
+}
+
 // quickPickIndex maps a "1".."9" digit key to a 0-based index within count, or
 // null when the key isn't a digit or is out of range.
 export function quickPickIndex(name: string, count: number): number | null {

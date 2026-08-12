@@ -19,6 +19,8 @@ import (
 	"github.com/jonnyom/slis/internal/report"
 	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/internal/reviewrun"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
+	"github.com/jonnyom/slis/internal/zmxctl"
 	"github.com/jonnyom/slis/testutil"
 )
 
@@ -498,6 +500,45 @@ func TestSessionEventNotification(t *testing.T) {
 	}
 }
 
+func TestFocusSessionNotification(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	h.call(1, "hello", "")
+	request := sessionmanager.FocusRequest{ID: "focus-1", GroupID: "checkout", TabID: "agent", TimeNS: time.Now().UnixNano()}
+	type focusResult struct {
+		focused bool
+		err     error
+	}
+	result := make(chan focusResult, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() {
+		focused, err := sessionmanager.RequestFrontendFocus(ctx, h.sp.StateDir, request)
+		result <- focusResult{focused: focused, err: err}
+	}()
+	line, err := h.dec.ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Method string                      `json:"method"`
+		Params sessionmanager.FocusRequest `json:"params"`
+	}
+	if err := json.Unmarshal(line, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Method != "focusSession" || got.Params != request {
+		t.Fatalf("notification = %#v, want focusSession %#v", got, request)
+	}
+	h.send(`{"jsonrpc":"2.0","method":"focusAck","params":{"id":"focus-1"}}`)
+	ack := <-result
+	if ack.err != nil {
+		t.Fatal(ack.err)
+	}
+	if !ack.focused {
+		t.Fatal("focus request was not acknowledged")
+	}
+}
+
 func TestCaptureSkipsWithoutTmux(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err == nil {
 		t.Skip("tmux present; this test asserts the no-session fallback")
@@ -509,6 +550,19 @@ func TestCaptureSkipsWithoutTmux(t *testing.T) {
 	if len(got.Lines) != 0 {
 		t.Errorf("capture lines = %v, want empty when no tmux session", got.Lines)
 	}
+}
+
+func TestLegacyReadsFallBackWhenManagedGroupIsMissing(t *testing.T) {
+	h := newHarness(t, makeWorkspace(t))
+	h.srv.sessions = sessionmanager.NewManager(sessionmanager.OpenStore(h.sp.StateDir), zmxctl.New("unused", t.TempDir()))
+
+	captureResponse := h.call(1, "capture", `{"slice":"checkout","lines":10}`)
+	var capture captureResult
+	decodeResult(t, captureResponse, &capture)
+
+	processResponse := h.call(2, "procs", `{"slice":"checkout"}`)
+	var processes procsResult
+	decodeResult(t, processResponse, &processes)
 }
 
 func writeFile(t *testing.T, path, content string) {

@@ -50,7 +50,7 @@ jobs:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
       # GoReleaser publishes the preferred cask above. Keep a formula carrying
-      # the same two binaries as an upgrade bridge for pre-0.7 installations:
+      # the same runtime files as an upgrade bridge for pre-0.7 installations:
       # Homebrew does not automatically migrate an installed formula to a cask.
       - name: Check out Homebrew tap
         uses: actions/checkout@v4

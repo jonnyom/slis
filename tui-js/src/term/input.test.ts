@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   embeddedTerminalInputSequence,
   embeddedTerminalPasteSequence,
+  embeddedTerminalWriteSequence,
 } from "./input";
 
 describe("embeddedTerminalInputSequence", () => {
@@ -9,6 +10,16 @@ describe("embeddedTerminalInputSequence", () => {
     expect(embeddedTerminalInputSequence("\x1b[13;2u")).toBe("\n");
     expect(embeddedTerminalInputSequence("\r")).toBe("\r");
   });
+});
+
+test("sends raw paste when attached terminal did not enable bracketed paste", () => {
+  const bytes = new TextEncoder().encode("paste");
+  expect(embeddedTerminalPasteSequence(bytes, false)).toEqual(bytes);
+});
+
+test("converts paste bytes to one PTY string without changing escapes", () => {
+  const bytes = embeddedTerminalPasteSequence(new TextEncoder().encode("paste"));
+  expect(embeddedTerminalWriteSequence(bytes)).toBe("\x1b[200~paste\x1b[201~");
 });
 
 describe("embeddedTerminalPasteSequence", () => {

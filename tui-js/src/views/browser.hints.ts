@@ -22,7 +22,8 @@ export function listHints(focused: SliceView | undefined, searchActive: boolean)
   const hints: Hint[] = [
     { key: "enter", label: "open" },
     { key: "a", label: waiting ? "answer" : "agent" },
-    { key: "C", label: "launch" },
+    { key: "C", label: "default" },
+    { key: "L", label: "choose" },
     { key: "V", label: "review" },
     { key: "t", label: "shell" },
     { key: "s", label: "sessions" },

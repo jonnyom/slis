@@ -10,7 +10,7 @@
 import { useKeyboard } from "@opentui/react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { DiffRepo, DiffScope, ReviewComment } from "../rpc/types";
+import type { DiffRepo, DiffScope, PrDiffComment, ReviewComment } from "../rpc/types";
 import { parseUnifiedDiff, statusGlyph, type FileDiff } from "../diff/parse";
 import { diffRangeComment, linesWithComments, type DiffSide } from "../review/context";
 import { langForPath } from "../diff/tokenize";
@@ -21,9 +21,10 @@ import {
   type SbsRowR,
   type UnifiedRow,
 } from "../diff/rows";
-import { color, colorForKind, diffColor, glyph, statusColor } from "../theme";
+import { color, colorForKind, diffColor, glyph, statusColor, theme } from "../theme";
 import { normalizeKeyName } from "../util/keys";
 import { shortcutAction } from "../util/shortcut-contract";
+import { indexInlineComments, inlineCommentPreview } from "../pr/comments";
 import { BOLD, DIM } from "./ui";
 
 export type DiffMode = "unified" | "split";
@@ -214,6 +215,41 @@ function SbsLine({
   );
 }
 
+function GithubInlineComments({ comments }: { comments: readonly PrDiffComment[] }): ReactNode {
+  if (comments.length === 0) return null;
+  return (
+    <box flexDirection="column">
+      {comments.map((comment, index) => {
+        const preview = inlineCommentPreview(comment.body);
+        return (
+          <box
+            key={`${comment.url}:${index}`}
+            id={`github-comment-${comment.pr}-${comment.line}-${index}`}
+            flexDirection="column"
+            border={["left"]}
+            borderColor={theme.focusDim}
+            backgroundColor={theme.surfaceAlt}
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <text wrapMode="none">
+              <span fg={theme.focus} attributes={BOLD}>REVIEW</span>
+              <span fg={theme.textBright} attributes={BOLD}>  @{comment.author || "?"}</span>
+              <span fg={theme.textFaint}>  PR #{comment.pr}</span>
+            </text>
+            <text fg={theme.text} wrapMode="word">{preview.body || "(no text)"}</text>
+            {preview.truncated ? (
+              <text fg={theme.textFaint} attributes={DIM} wrapMode="none">
+                ↳ full comment in PR summary · press 2
+              </text>
+            ) : null}
+          </box>
+        );
+      })}
+    </box>
+  );
+}
+
 // ── diff view ──────────────────────────────────────────────────────────────────
 
 // The context DiffView hands up when the user comments on the selected hunk. The
@@ -237,16 +273,19 @@ export interface DiffViewProps {
   height: number;
   // Pending review comments for the slice (F2) — drives the ✎ gutter markers.
   comments: ReviewComment[];
+  githubComments: PrDiffComment[];
   onCycleScope: () => void;
   onToggleMode: () => void;
   onClose: () => void;
   onQuit: () => void;
   onAttach: () => void;
   onLaunchAgent: () => void;
+  onLaunchOtherAgent: () => void;
   onConfigureAgents: () => void;
   // c → comment on the selected line/range; V → open pending review.
   onComment: (target: DiffCommentTarget) => void;
   onReview: () => void;
+  onOpenPrComments: (repo: string, branch: string) => void;
 }
 
 export function DiffView(props: DiffViewProps): ReactNode {
@@ -353,6 +392,43 @@ export function DiffView(props: DiffViewProps): ReactNode {
     () => (selected ? linesWithComments(props.comments, selected.repo, selected.file.path, "new") : new Set<number>()),
     [props.comments, selected],
   );
+  const githubCommentsByLine = useMemo(
+    () => selected
+      ? indexInlineComments(
+          props.githubComments,
+          selected.repo,
+          selected.branch,
+          selected.file.path,
+          selected.file.oldPath,
+        )
+      : { old: new Map<number, PrDiffComment[]>(), new: new Map<number, PrDiffComment[]>() },
+    [props.githubComments, selected],
+  );
+  const selectedPrComments = useMemo(
+    () => selected
+      ? props.githubComments.filter(
+          (comment) => comment.repo === selected.repo && comment.branch === selected.branch,
+        )
+      : [],
+    [props.githubComments, selected],
+  );
+  const selectedInlineCommentCount = selectedPrComments.filter(
+    (comment) => comment.kind === 2,
+  ).length;
+  const fileCommentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of flat) {
+      const count = props.githubComments.filter(
+        (comment) =>
+          comment.kind === 2 &&
+          comment.repo === item.repo &&
+          comment.branch === item.branch &&
+          (comment.path === item.file.path || comment.path === item.file.oldPath),
+      ).length;
+      if (count > 0) counts.set(`${item.repo}\t${item.branch}\t${item.file.path}`, count);
+    }
+    return counts;
+  }, [flat, props.githubComments]);
 
   // Compose a comment target from the exact selected new-file line range.
   const commentOnSelection = () => {
@@ -458,6 +534,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
     if (name === "q") return props.onQuit();
     if (shortcut === "attach-agent") return props.onAttach();
     if (shortcut === "launch-agent") return props.onLaunchAgent();
+    if (shortcut === "launch-other-agent") return props.onLaunchOtherAgent();
     if (pane === "diff" && mode === "split" && (name === "h" || name === "left")) {
       switchDiffSide("old");
       return;
@@ -482,6 +559,10 @@ export function DiffView(props: DiffViewProps): ReactNode {
     if (name === "c") {
       if (pane === "files") return setPane("diff");
       return commentOnSelection();
+    }
+    if (name === "2" && selected) {
+      props.onOpenPrComments(selected.repo, selected.branch);
+      return;
     }
     if (shortcut === "pending-review") return props.onReview();
     if (name === "t") return props.onToggleMode();
@@ -552,7 +633,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           <span fg={color.candidate}>{mode === "split" ? "side-by-side" : "unified"}</span>
         </text>
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          {pane === "files" ? "[enter/tab] select lines" : "[v/space] toggle range  [c] comment"}  [V] review  [a] attach  [C] launch  [esc] back
+          [2] {selectedInlineCommentCount} inline {selectedInlineCommentCount === 1 ? "comment" : "comments"} · {selectedPrComments.length} PR {selectedPrComments.length === 1 ? "comment" : "comments"}
         </text>
       </box>
 
@@ -570,6 +651,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
             height={bodyH}
             scrollRef={fileScrollRef}
             focused={pane === "files"}
+            commentCounts={fileCommentCounts}
           />
         </box>
         <box flexGrow={1} flexDirection="column">
@@ -602,25 +684,28 @@ export function DiffView(props: DiffViewProps): ReactNode {
                       {"   " + row.header}
                     </text>
                   ) : (
-                    <SbsLine
-                      key={i}
-                      row={row}
-                      half={half}
-                      markedOld={markedOldLines.has(row.left.oldNumber ?? -1)}
-                      markedNew={markedNewLines.has(row.right.newNumber ?? -1)}
-                      cursorSide={
-                        pane === "diff" && activeLine?.renderIndex === i
-                          ? activeLine.side
-                          : undefined
-                      }
-                      selectedOld={
-                        pane === "diff" && diffSide === "old" && selectedRenderRows.has(i)
-                      }
-                      selectedNew={
-                        pane === "diff" && diffSide === "new" && selectedRenderRows.has(i)
-                      }
-                      rowIndex={i}
-                    />
+                    <box key={i} flexDirection="column">
+                      <SbsLine
+                        row={row}
+                        half={half}
+                        markedOld={markedOldLines.has(row.left.oldNumber ?? -1) || githubCommentsByLine.old.has(row.left.oldNumber ?? -1)}
+                        markedNew={markedNewLines.has(row.right.newNumber ?? -1) || githubCommentsByLine.new.has(row.right.newNumber ?? -1)}
+                        cursorSide={
+                          pane === "diff" && activeLine?.renderIndex === i
+                            ? activeLine.side
+                            : undefined
+                        }
+                        selectedOld={
+                          pane === "diff" && diffSide === "old" && selectedRenderRows.has(i)
+                        }
+                        selectedNew={
+                          pane === "diff" && diffSide === "new" && selectedRenderRows.has(i)
+                        }
+                        rowIndex={i}
+                      />
+                      <GithubInlineComments comments={githubCommentsByLine.old.get(row.left.oldNumber ?? -1) ?? []} />
+                      <GithubInlineComments comments={githubCommentsByLine.new.get(row.right.newNumber ?? -1) ?? []} />
+                    </box>
                   ),
                 )
               ) : (
@@ -630,18 +715,26 @@ export function DiffView(props: DiffViewProps): ReactNode {
                       {"  " + row.header}
                     </text>
                   ) : (
-                    <UnifiedLine
-                      key={i}
-                      row={row}
-                      marked={
-                        row.lineType === "del"
-                          ? markedOldLines.has(row.oldNumber ?? -1)
-                          : markedNewLines.has(row.newNumber ?? -1)
-                      }
-                      cursor={pane === "diff" && activeLine?.renderIndex === i}
-                      selected={pane === "diff" && selectedRenderRows.has(i)}
-                      rowIndex={i}
-                    />
+                    <box key={i} flexDirection="column">
+                      <UnifiedLine
+                        row={row}
+                        marked={
+                          row.lineType === "del"
+                            ? markedOldLines.has(row.oldNumber ?? -1) || githubCommentsByLine.old.has(row.oldNumber ?? -1)
+                            : markedNewLines.has(row.newNumber ?? -1) || githubCommentsByLine.new.has(row.newNumber ?? -1)
+                        }
+                        cursor={pane === "diff" && activeLine?.renderIndex === i}
+                        selected={pane === "diff" && selectedRenderRows.has(i)}
+                        rowIndex={i}
+                      />
+                      <GithubInlineComments
+                        comments={
+                          row.lineType === "del"
+                            ? githubCommentsByLine.old.get(row.oldNumber ?? -1) ?? []
+                            : githubCommentsByLine.new.get(row.newNumber ?? -1) ?? []
+                        }
+                      />
+                    </box>
                   ),
                 )
               )}
@@ -657,7 +750,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           {pane === "files"
             ? "j/k file · enter/tab review lines · c start comment"
             : `j/k ${activeLine?.side ?? diffSide} line${activeLine ? ` ${activeLine.line}` : ""}${mode === "split" ? " · h/l old/new side" : ""} · v/space range · c comment · n/p hunk`}
-          {hunkCount ? ` (${hunkCount})` : ""} · V review · a attach · C launch · t unified/split · b scope · esc back
+          {hunkCount ? ` (${hunkCount})` : ""} · 2 PR comments · V review · a attach · C/L default/choose · t unified/split · b scope · esc back
         </text>
       </box>
     </box>
@@ -674,6 +767,7 @@ function FileListScroller({
   height,
   scrollRef,
   focused,
+  commentCounts,
 }: {
   groups: RepoGroup[];
   flat: FlatFile[];
@@ -682,6 +776,7 @@ function FileListScroller({
   height: number;
   scrollRef: React.RefObject<ScrollBoxRenderable | null>;
   focused: boolean;
+  commentCounts: ReadonlyMap<string, number>;
 }): ReactNode {
   return (
     <box
@@ -724,24 +819,40 @@ function FileListScroller({
               g.files.map((f) => {
                 const idx = flat.findIndex((x) => x.file === f);
                 const selected = idx === sel;
+                const commentCount = commentCounts.get(`${g.repo}\t${g.branch}\t${f.path}`) ?? 0;
                 return (
-                  <text key={f.path} id={`file-${idx}`} wrapMode="none">
-                    <span fg={color.cursorBar}>
-                      {selected && focused ? glyph.focusBar : " "}
-                    </span>
-                    <span fg={statusColor(f.status)} attributes={BOLD}>
-                      {statusGlyph(f.status)}{" "}
-                    </span>
-                    <span fg={selected ? color.white : color.fg}>{f.path}</span>
-                    {f.binary ? (
-                      <span fg={color.dim}> bin</span>
-                    ) : (
-                      <>
-                        <span fg={diffColor.add}> +{f.added}</span>
-                        <span fg={diffColor.del}> -{f.deleted}</span>
-                      </>
-                    )}
-                  </text>
+                  <box
+                    key={f.path}
+                    id={`file-${idx}`}
+                    width="100%"
+                    flexDirection="row"
+                    backgroundColor={selected ? theme.surfaceAlt : undefined}
+                  >
+                    <text flexShrink={0} wrapMode="none">
+                      <span fg={color.cursorBar}>
+                        {selected && focused ? glyph.focusBar : " "}
+                      </span>
+                      <span fg={statusColor(f.status)} attributes={BOLD}>
+                        {statusGlyph(f.status)}{" "}
+                      </span>
+                    </text>
+                    <box flexGrow={1} flexShrink={1} overflow="hidden">
+                      <text fg={selected ? color.white : color.fg} wrapMode="none">{f.path}</text>
+                    </box>
+                    <text flexShrink={0} wrapMode="none">
+                      {commentCount > 0 ? (
+                        <span fg={theme.focus} attributes={BOLD}> {glyph.comment}{commentCount}</span>
+                      ) : null}
+                      {f.binary ? (
+                        <span fg={color.dim}> bin</span>
+                      ) : (
+                        <>
+                          <span fg={diffColor.add}> +{f.added}</span>
+                          <span fg={diffColor.del}> -{f.deleted}</span>
+                        </>
+                      )}
+                    </text>
+                  </box>
                 );
               })
             )}

@@ -9,8 +9,10 @@
 // Run: bun run src/review/e2e.ts
 
 import { PersistentTerminal } from "ghostty-opentui";
+import { resolve } from "node:path";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const projectRoot = resolve(import.meta.dir, "../../..");
 
 interface Size {
   cols: number;
@@ -21,7 +23,13 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const vt = new PersistentTerminal({ cols: size.cols, rows: size.rows });
   const app: any = Bun.spawn(["bun", "run", "src/index.tsx"], {
     cwd: `${import.meta.dir}/../..`,
-    env: { ...process.env, TERM: "xterm-256color", SLIS_FAKE: "1" },
+    env: {
+      ...process.env,
+      TERM: "xterm-256color",
+      SLIS_FAKE: "1",
+      SLIS_BIN: `${projectRoot}/slis`,
+      SLIS_ZMX_BINARY: `${projectRoot}/zmx`,
+    },
     terminal: {
       cols: size.cols,
       rows: size.rows,
@@ -51,11 +59,23 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
   const cockpit = vt.getText();
   const sawBadge = cockpit.includes("✎"); // seed comment → breadcrumb ✎ 1
 
+  pty.write("2");
+  await sleep(700);
+  const prSummary = vt.getText();
+  const sawPrCommentSummary =
+    prSummary.includes("reviewer") &&
+    prSummary.includes("This breaks the empty-cart case.") &&
+    prSummary.includes("Please add coverage for the empty cart.") &&
+    prSummary.includes("+   return <List");
+  pty.write("1");
+  await sleep(400);
+
   pty.write("\r"); // enter → rich diff (member branch)
   await sleep(900);
   const diff = vt.getText();
   const sawDiff = diff.includes("cart.tsx");
   const sawGutterMarker = diff.includes("✎"); // seed comment on cart.tsx line 12
+  const sawGithubInlineComment = diff.includes("@reviewer") && diff.includes("This breaks the empty-cart case.");
 
   // c focuses diff lines; v starts a range; j extends it; c opens composer.
   pty.write("c");
@@ -120,8 +140,10 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
     browser_paints_slice_list: sawBrowser,
     browser_V_opens_pending_reviews: browserVReview,
     cockpit_breadcrumb_comment_badge: sawBadge,
+    pr_summary_shows_review_comments_and_code: sawPrCommentSummary,
     rich_diff_opens: sawDiff,
     gutter_marker_visible: sawGutterMarker,
+    github_comment_visible_on_code: sawGithubInlineComment,
     range_opens_comment_composer: sawComposer,
     submit_shows_add_toast: sawAddToast,
     V_lists_pending_comments: sawList,

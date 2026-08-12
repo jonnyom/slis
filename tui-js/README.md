@@ -14,8 +14,8 @@ The UI has two main views:
   navigation, unified and side-by-side rendering, range selection, and review
   comments that can be sent to the slice's agent.
 
-Slice sessions and interactive commands run in embedded terminal tabs backed
-by tmux. Tabs stay mounted while open, so switching back to the UI does not
+Slice sessions and interactive commands run in embedded terminal tabs managed
+by Slis. Tabs stay mounted while open, so switching back to the UI does not
 stop the shell, agent, or command.
 
 ## How it talks to the Go core
@@ -30,7 +30,7 @@ Mutations remain behind the Go CLI's existing safety checks:
 - Non-interactive actions run as captured one-shot `slis` processes.
 - Commands that may prompt, including submit, sync, merge, adopt, and fix-CI,
   run in an embedded PTY tab.
-- tmux is the persistence layer for slice shells and coding-agent sessions.
+- Slis owns persistence for slice shells and coding-agent sessions.
 
 The sidecar reconnects with backoff after a crash. The UI shows a disconnect
 banner and refreshes workspace state once the connection returns.
@@ -39,8 +39,7 @@ banner and refreshes workspace state once the connection returns.
 
 - **Bun 1.3.14 or newer.** Older Bun compilers can produce a standalone binary
   that crashes while OpenTUI loads its embedded worker assets.
-- A built `slis` Go binary for real workspace data and mutations.
-- `tmux` for embedded session tabs, agent launch, and review delivery.
+- A complete local Slis build for real workspace data, mutations, and sessions.
 
 `gh`, `gt`, a configured editor, and a coding-agent CLI enable their
 corresponding PR, stack, editor, and agent features but are not required to
@@ -48,9 +47,11 @@ start the UI.
 
 ## Run from source
 
-Install the locked dependencies, then point the front-end at the Go binary:
+Build Slis, install the locked dependencies, then point the front-end at the Go
+binary:
 
 ```sh
+make build
 cd tui-js
 bun install --frozen-lockfile
 SLIS_BIN=../slis bun run start
@@ -71,8 +72,7 @@ SLIS_TUI_DIR="$PWD/tui-js" ./slis
 ```
 
 Bare `slis` and `slis ui` otherwise look for a compiled `slis-ui` next to the
-Go binary. Bare `slis` falls back to the legacy Go TUI when the OpenTUI binary
-is unavailable; `SLIS_TUI=go` selects that fallback explicitly.
+Go binary. Slis reports an installation error if the matching UI is missing.
 
 ## Build
 
@@ -161,8 +161,7 @@ Arrow keys work alongside the documented Vim-style motions.
 In the rich diff, `tab`/`enter` moves focus between the file list and diff,
 `[`/`]` or `p`/`n` jumps between hunks, `v`/`space` starts a line range, and
 `c` comments on the current line or range. In an embedded terminal, all input
-goes to the PTY; `ctrl+q` returns to the UI, while tmux's own detach binding is
-`ctrl+b d`.
+goes to the PTY; `ctrl+q` returns to the UI.
 
 ## Tests
 
@@ -171,14 +170,14 @@ goes to the PTY; `ctrl+q` returns to the UI, while tmux's own detach binding is
 bun run typecheck
 bun test
 
-# PTY smoke tests (tmux is required for terminal tests)
+# PTY smoke tests (a complete local Slis build is required)
 bun run term:e2e
 bun run term:picker:e2e
 bun run review:e2e
 ```
 
 The normal test suite covers state derivation, diffs, themes, overlays,
-reviews, process handling, tmux setup, and keyboard behavior. The smoke tests
+reviews, process handling, session setup, and keyboard behavior. The smoke tests
 drive the real app inside a PTY.
 
 ## Source map
@@ -197,7 +196,7 @@ src/
   rpc/                  JSON-RPC client, fixtures, types, mutation runners
   review/               inline-review context and end-to-end coverage
   state/                derived states, grouping, selection, stack/file navigation
-  term/                 tmux setup, PTY sessions, command sessions, terminal tabs
+  term/                 Slis session bridge, PTY sessions, command sessions, terminal tabs
   proc/                 process trees, sampling history, sorting, sparklines, kills
   editor/               editor discovery and selection
 ```

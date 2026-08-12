@@ -31,10 +31,6 @@ jobs:
           git config --global user.name "slis ci"
           git config --global init.defaultBranch main
 
-      - name: Install tmux (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y tmux
-
       - name: Build
         run: CGO_ENABLED=0 go build ./...
 
@@ -61,6 +57,12 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Set up Go
+        if: vars.RUN_TUI_E2E == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -70,10 +72,15 @@ jobs:
       - name: Test
         run: bun test
 
-      - name: Install tmux (for term e2e)
+      - name: Build Slis session runtime
         if: vars.RUN_TUI_E2E == 'true'
-        run: sudo apt-get update && sudo apt-get install -y tmux
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p /tmp/slis-e2e
+          ./scripts/fetch-zmx.sh
+          go build -o /tmp/slis-e2e/slis ./cmd/slis
+          cp third_party/zmx/dist/linux-amd64/zmx /tmp/slis-e2e/zmx
 
       - name: Terminal embed e2e
         if: vars.RUN_TUI_E2E == 'true'
-        run: bun run src/term/e2e.ts
+        run: SLIS_BIN=/tmp/slis-e2e/slis bun run src/term/e2e.ts

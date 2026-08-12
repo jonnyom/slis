@@ -828,6 +828,10 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, "agent-launch");
       return;
     }
+    if (shortcut === "launch-other-agent") {
+      if (focusedSlice) props.onOpenTerm(focusedSlice.slice.name, "agent-pick");
+      return;
+    }
     if (shortcut === "pending-review") {
       if (focusedSlice)
         overlays.review(

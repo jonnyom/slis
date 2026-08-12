@@ -170,6 +170,7 @@ type ciLogResult struct {
 // captureParams selects how many trailing lines the `capture` method returns.
 type captureParams struct {
 	Slice string `json:"slice"`
+	Tab   string `json:"tab,omitempty"`
 	Lines int    `json:"lines"`
 }
 
@@ -186,6 +187,7 @@ type procResult struct {
 	Cmd  string  `json:"cmd"`
 	CPU  float64 `json:"cpu"`
 	Mem  float64 `json:"mem"`
+	Tab  string  `json:"tab,omitempty"`
 }
 
 // sliceProcsResult holds one slice's processes plus its total CPU.

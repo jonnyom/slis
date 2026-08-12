@@ -6,7 +6,8 @@ export function embeddedTerminalInputSequence(sequence: string): string {
   return sequence === KITTY_SHIFT_ENTER ? "\n" : sequence;
 }
 
-export function embeddedTerminalPasteSequence(bytes: Uint8Array): Uint8Array {
+export function embeddedTerminalPasteSequence(bytes: Uint8Array, bracketed = true): Uint8Array {
+  if (!bracketed) return bytes;
   const sequence = new Uint8Array(
     BRACKETED_PASTE_START.length + bytes.length + BRACKETED_PASTE_END.length,
   );
@@ -14,4 +15,8 @@ export function embeddedTerminalPasteSequence(bytes: Uint8Array): Uint8Array {
   sequence.set(bytes, BRACKETED_PASTE_START.length);
   sequence.set(BRACKETED_PASTE_END, BRACKETED_PASTE_START.length + bytes.length);
   return sequence;
+}
+
+export function embeddedTerminalWriteSequence(data: string | Uint8Array): string {
+  return typeof data === "string" ? data : new TextDecoder().decode(data);
 }

@@ -378,21 +378,22 @@ type SessionPane struct {
 	Session string
 	Path    string
 	Command string
+	Target  string
 }
 
 func ListSessionPanes() ([]SessionPane, error) {
-	format := "#{session_name}\t#{pane_current_path}\t#{pane_current_command}"
+	format := "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_name}:#{window_index}.#{pane_index}"
 	out, err := exec.Command("tmux", "list-panes", "-a", "-F", format).Output()
 	if err != nil {
 		return nil, fmt.Errorf("tmux list-panes: %w", err)
 	}
 	var panes []SessionPane
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) != 3 || (!strings.HasPrefix(parts[0], "slis/") && !strings.HasPrefix(parts[0], "slis-shell/")) {
+		parts := strings.SplitN(line, "\t", 4)
+		if len(parts) != 4 || (!strings.HasPrefix(parts[0], "slis/") && !strings.HasPrefix(parts[0], "slis-shell/")) {
 			continue
 		}
-		panes = append(panes, SessionPane{Session: parts[0], Path: parts[1], Command: parts[2]})
+		panes = append(panes, SessionPane{Session: parts[0], Path: parts[1], Command: parts[2], Target: parts[3]})
 	}
 	return panes, nil
 }

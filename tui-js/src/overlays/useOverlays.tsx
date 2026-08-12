@@ -74,6 +74,7 @@ import {
   StackActionsOverlay,
   SummaryOverlay,
   SwapOverlay,
+  TerminalCloseOverlay,
   WorkingOverlay,
 } from "./overlays";
 import { AdoptOverlay } from "./adopt";
@@ -88,6 +89,7 @@ type Overlay =
   | { kind: "stack"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "stackHelp"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "remove"; slices: string[] }
+  | { kind: "terminalClose"; title: string; onConfirm: () => void }
   | {
       kind: "agentBusy";
       slice: string;
@@ -147,6 +149,7 @@ export interface OverlayApi {
   swap(slice: string, active: boolean): void;
   stack(slices: string[], conflictWith: string[], gatherable: boolean): void;
   remove(slices: string[]): void;
+  terminalClose(title: string, onConfirm: () => void): void;
   // A live agent from another session is already working in this slice's
   // worktrees: attach to it, or launch a second one deliberately.
   agentBusy(
@@ -488,6 +491,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     stack: (slices, conflictWith, gatherable) =>
       setOverlay({ kind: "stack", slices, conflictWith, gatherable }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
+    terminalClose: (title, onConfirm) => setOverlay({ kind: "terminalClose", title, onConfirm }),
     agentBusy: (slice, session, path, onAttach, onLaunch) =>
       setOverlay({ kind: "agentBusy", slice, session, path, onAttach, onLaunch }),
     ciRerun: (slice) => setOverlay({ kind: "ciRerun", slice }),
@@ -655,6 +659,13 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
             runSequential(overlay.slices, (s) => removeSlice(s, true)),
           );
         else if (name === "n" || isCancel) close();
+        return;
+      case "terminalClose":
+        if (isEnter) {
+          const onConfirm = overlay.onConfirm;
+          close();
+          onConfirm();
+        } else if (isCancel || name === "n") close();
         return;
       case "ciRerun":
         if (name === "y" || isEnter)
@@ -993,6 +1004,8 @@ function renderOverlay(
       );
     case "remove":
       return <RemoveOverlay slices={overlay.slices} />;
+    case "terminalClose":
+      return <TerminalCloseOverlay title={overlay.title} />;
     case "agentBusy":
       return (
         <AgentBusyOverlay slice={overlay.slice} session={overlay.session} path={overlay.path} />

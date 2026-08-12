@@ -1,20 +1,23 @@
-// TermSession: one attached tmux client per slice, backed by a Bun native PTY.
-//
-// We spawn `tmux attach -t <session>` inside a Bun pseudo-terminal (Bun ≥ 1.3.5).
-// The child is a tmux *client* — closing it (or killing this process) detaches;
-// the tmux session (Claude/codex) keeps running. We NEVER kill the session here.
-//
-// The `data` callback delivers raw VT bytes; the caller feeds them to a ghostty
-// renderable. `write` forwards raw keystrokes; `resize` propagates the pane size.
-
-import { agentLaunchLine, activePaneCommand, ensureSession, isShellCmd, sessionName, sendKeys, type SessionKind, type SessionOpts, type TermMember } from "./tmux";
+import { agentLaunchLine, type SessionKind, type SessionOpts, type TermMember } from "./tmux";
+import {
+  ensureSlisSession,
+  ensureSlisTab,
+  startSlisCommand,
+  sessionAttachArgv,
+  sessionLegacyAttachArgv,
+  slisSessionBusy,
+} from "./slis";
+import { TerminalModeTracker, TerminalQueryResponder } from "./responses";
+import { embeddedTerminalPasteSequence, embeddedTerminalWriteSequence } from "./input";
 
 /** User intent when opening a terminal from the TUI. */
-export type OpenTermMode = "agent" | "agent-launch" | "shell";
+export type OpenTermMode = "agent" | "agent-launch" | "agent-pick" | "shell";
 
 export interface TermSessionOpts {
   slice: string;
   kind: SessionKind;
+  tabID: string;
+  tabTitle: string;
   members: TermMember[];
   active: boolean;
   wsRoot: string;
@@ -42,6 +45,7 @@ export class TermSession {
   private proc: { terminal: PtyHandle; kill(): void; exited: Promise<number> } | null = null;
   private detached = false;
   private readonly exitHandlers = new Set<() => void>();
+  private readonly terminalModes = new TerminalModeTracker();
 
   constructor(slice: string) {
     this.slice = slice;
@@ -51,51 +55,61 @@ export class TermSession {
     return this.proc !== null && !this.detached;
   }
 
-  /**
-   * Ensure the tmux session exists (creating windows the Go-TUI way), optionally
-   * launch the agent, then attach a fresh PTY. Idempotent: a second call while
-   * already attached is a no-op.
-   */
   async attach(cols: number, rows: number, onData: (bytes: Uint8Array) => void, opts: TermSessionOpts): Promise<void> {
     if (this.attached) return;
 
-    if (!opts.targetSession) {
-      await ensureSession(opts.slice, opts.members, opts.sessionOpts, opts.kind);
-    }
-
-    // Only type a launch line at a shell prompt — never into a running agent.
-    if (!opts.targetSession && opts.kind === "agent" && opts.launchAgent && isShellCmd(await activePaneCommand(opts.slice, opts.kind))) {
-      await sendKeys(
-        opts.slice,
-        agentLaunchLine({
+    let attachArgv: string[];
+    if (opts.targetSession) {
+      attachArgv = sessionLegacyAttachArgv(opts.targetSession);
+    } else {
+      await ensureSlisSession(opts.slice);
+      const tabID = opts.tabID;
+      if (opts.kind === "agent" || opts.kind === "shell") {
+        await ensureSlisTab(opts.slice, tabID, opts.kind);
+      }
+      if (opts.kind === "agent" && opts.launchAgent && !(await slisSessionBusy(opts.slice, tabID))) {
+        const launch = agentLaunchLine({
           agent: opts.agent,
           harness: opts.harness,
           slice: opts.slice,
           members: opts.members,
           active: opts.active,
           wsRoot: opts.wsRoot,
-        }),
-        opts.kind,
-      );
+        });
+        await startSlisCommand(opts.slice, tabID, launch);
+      }
+      attachArgv = sessionAttachArgv(opts.slice, tabID);
     }
 
     // Bun native PTY (Bun ≥ 1.3.5): the `terminal` option is not yet in
     // @types/bun, so the options object is typed loosely here.
+    const responder = new TerminalQueryResponder();
+    const pendingResponses: string[] = [];
+    let attachedProcess: { terminal: PtyHandle } | undefined;
     const spawnOpts = {
       env: { ...process.env, TERM: "xterm-256color" },
       terminal: {
         cols: Math.max(2, cols),
         rows: Math.max(2, rows),
-        data: (_t: unknown, bytes: Uint8Array) => onData(bytes),
+        data: (_t: unknown, bytes: Uint8Array) => {
+          this.terminalModes.observe(bytes);
+          for (const response of responder.observe(bytes)) {
+            if (attachedProcess) attachedProcess.terminal.write(response);
+            else pendingResponses.push(response);
+          }
+          onData(bytes);
+        },
       },
     } as unknown as Parameters<typeof Bun.spawn>[1];
-    const proc = Bun.spawn(["tmux", "attach", "-t", opts.targetSession ?? sessionName(opts.slice, opts.kind)], spawnOpts) as unknown as {
+    const proc = Bun.spawn(attachArgv, spawnOpts) as unknown as {
       terminal: PtyHandle;
       kill(): void;
       exited: Promise<number>;
     };
 
     this.proc = proc;
+    attachedProcess = proc;
+    for (const response of pendingResponses) proc.terminal.write(response);
     this.detached = false;
     // If the attached client dies (e.g. session killed elsewhere), notify.
     proc.exited.then(() => {
@@ -108,15 +122,15 @@ export class TermSession {
   }
 
   write(data: string | Uint8Array): void {
-    this.proc?.terminal.write(data);
+    this.proc?.terminal.write(embeddedTerminalWriteSequence(data));
+  }
+
+  paste(bytes: Uint8Array): void {
+    this.write(embeddedTerminalPasteSequence(bytes, this.terminalModes.bracketedPaste));
   }
 
   resize(cols: number, rows: number): void {
-    try {
-      this.proc?.terminal.resize(Math.max(2, cols), Math.max(2, rows));
-    } catch {
-      // A resize racing a just-exited client is harmless; the client is gone.
-    }
+    this.proc?.terminal.resize(Math.max(2, cols), Math.max(2, rows));
   }
 
   onExit(handler: () => void): () => void {
@@ -130,15 +144,7 @@ export class TermSession {
     this.detached = true;
     const proc = this.proc;
     this.proc = null;
-    try {
-      proc?.terminal.close?.();
-    } catch {
-      // Best-effort: closing an already-gone PTY is fine.
-    }
-    try {
-      proc?.kill();
-    } catch {
-      // Best-effort: killing an already-exited client is fine.
-    }
+    proc?.terminal.close?.();
+    proc?.kill();
   }
 }

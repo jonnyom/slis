@@ -52,3 +52,15 @@ test("reports stderr when it closes with the process", async () => {
 
   expect(error.message).toBe("diagnostic");
 });
+
+test("delivers frontend focus notifications", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "slis-rpc-focus-"));
+  const script = join(directory, "fake-sidecar");
+  writeFileSync(script, "#!/bin/sh\nsleep 0.05\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"method\":\"focusSession\",\"params\":{\"id\":\"focus-1\",\"group_id\":\"feature\",\"tab_id\":\"agent\",\"time_ns\":1}}'\nsleep 1\n");
+  chmodSync(script, 0o755);
+  client = new SlisRpcClient({ bin: script });
+  const request = await new Promise<{ id: string; group_id: string; tab_id: string; time_ns: number }>((resolve) => {
+    client!.onFocusRequest(resolve);
+  });
+  expect(request).toEqual({ id: "focus-1", group_id: "feature", tab_id: "agent", time_ns: 1 });
+});

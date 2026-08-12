@@ -5,11 +5,39 @@
 package proc
 
 import (
+	"fmt"
+	"os/exec"
 	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 
 	goproc "github.com/shirou/gopsutil/v4/process"
 )
+
+func TerminalHasForegroundCommand(pid int) (bool, error) {
+	output, err := exec.Command("ps", "-o", "pgid=,tpgid=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return false, fmt.Errorf("read terminal process groups for %d: %w", pid, err)
+	}
+	return parseTerminalProcessGroups(string(output))
+}
+
+func parseTerminalProcessGroups(output string) (bool, error) {
+	fields := strings.Fields(output)
+	if len(fields) != 2 {
+		return false, fmt.Errorf("unexpected terminal process group output %q", strings.TrimSpace(output))
+	}
+	processGroup, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return false, fmt.Errorf("parse process group %q: %w", fields[0], err)
+	}
+	foregroundProcessGroup, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return false, fmt.Errorf("parse foreground process group %q: %w", fields[1], err)
+	}
+	return processGroup != foregroundProcessGroup, nil
+}
 
 // ProcInfo holds snapshot data for a single process.
 type ProcInfo struct {

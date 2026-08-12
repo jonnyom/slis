@@ -6,6 +6,7 @@ import {
   isShellCmd,
   killTmuxSession,
   listTmuxSessions,
+  sessionDisplayName,
   tmuxSessionClaimableBySlice,
   tmuxSessionOwnedBySlice,
   tmuxSessionRelatedToMembers,
@@ -30,7 +31,7 @@ export function SessionCloseConfirmation({ target }: { target: string }): ReactN
       ]}
     >
       <text fg={theme.bad} attributes={BOLD}>
-        This will stop every process running in this tmux session.
+        This will stop every process running in this Slis session.
       </text>
     </Card>
   );
@@ -143,7 +144,8 @@ export function SessionOverlay({
         const target = pendingKill;
         killTmuxSession(target).then((closed) => {
           setPendingKill(null);
-          setStatus(closed ? `Closed ${target}` : `Could not close ${target}`);
+          const label = sessionDisplayName(target);
+          setStatus(closed ? `Closed ${label}` : `Could not close ${label}`);
           if (closed) setSessions((current) => current.filter((session) => session.name !== target));
         });
       } else if (name === "n" || name === "escape") {
@@ -199,12 +201,12 @@ export function SessionOverlay({
         <scrollbox flexGrow={1} scrollbarOptions={{ visible: true }}>
           {rows.length === 0 ? (
             <text fg={color.dim} attributes={DIM}>
-              (no running Slis tmux sessions)
+              (no running Slis sessions)
             </text>
           ) : (
             rows.map(({ session, slice, recovery }, index) => {
               const running = session?.panes.some((pane) => !isShellCmd(pane.command)) ?? false;
-              const label = session?.name ?? `claude/${recovery?.session_id?.slice(0, 8)}`;
+              const label = session ? sessionDisplayName(session.name) : `claude/${recovery?.session_id?.slice(0, 8)}`;
               return (
                 <box key={session?.name ?? recovery?.session_id} flexDirection="column">
                   <text wrapMode="none">
@@ -237,7 +239,7 @@ export function SessionOverlay({
           <text fg={status.startsWith("Closed") ? theme.good : theme.bad}>{status}</text>
         ) : null}
       </box>
-      {pendingKill ? <SessionCloseConfirmation target={pendingKill} /> : null}
+      {pendingKill ? <SessionCloseConfirmation target={sessionDisplayName(pendingKill)} /> : null}
     </box>
   );
 }

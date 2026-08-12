@@ -9,7 +9,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/report"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 )
 
 // statusTestPaths returns a config.Paths pointing at fresh temp dirs so the
@@ -105,15 +105,11 @@ func TestReadStatusSingleSlice(t *testing.T) {
 	}
 }
 
-func TestSliceStatusFallsBackToLiveTmuxSession(t *testing.T) {
-	if !tmuxctl.Available() {
-		t.Skip("tmux not on PATH")
-	}
+func TestSliceStatusFallsBackToPersistentSlisSession(t *testing.T) {
 	const slice = "status-live-fallback-test"
-	_ = tmuxctl.KillSession(slice)
-	t.Cleanup(func() { _ = tmuxctl.KillSession(slice) })
-	if err := tmuxctl.EnsureSession(slice, nil, tmuxctl.SessionOpts{}); err != nil {
-		t.Fatalf("EnsureSession: %v", err)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := sessionmanager.OpenStore(config.StatePaths().StateDir).Save(sessionmanager.Group{ID: slice}); err != nil {
+		t.Fatal(err)
 	}
 
 	sp := statusTestPaths(t)

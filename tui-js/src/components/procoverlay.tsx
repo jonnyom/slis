@@ -133,7 +133,7 @@ export function AllSlicesProcOverlay({
         <scrollbox flexGrow={1} scrollbarOptions={{ visible: true }}>
           {selectable.length === 0 ? (
             <text fg={color.dim} attributes={DIM}>
-              (no tmux sessions / no processes)
+              (no Slis sessions / no processes)
             </text>
           ) : (
             groups.map((g) => {

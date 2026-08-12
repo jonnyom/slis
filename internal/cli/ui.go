@@ -37,17 +37,6 @@ func regularFileExists(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func chooseDefaultUI(slisTUIEnv string, resolveErr error) (launchJS bool, notice string) {
-	if slisTUIEnv == "go" {
-		return false, ""
-	}
-	if resolveErr != nil {
-		return false, "slis: JS UI unavailable; launching the Go TUI instead " +
-			"(set SLIS_TUI=go to skip this check, or install slis-ui / set SLIS_TUI_DIR for the JS front-end)"
-	}
-	return true, ""
-}
-
 func execJSUI(binPath string, launch uiLaunch) error {
 	argv0, err := exec.LookPath(launch.name)
 	if err != nil {
@@ -80,6 +69,19 @@ func execJSUI(binPath string, launch uiLaunch) error {
 	return execErr
 }
 
+func runUI() error {
+	binPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot locate the slis binary: %w", err)
+	}
+	migrateExistingHooksBestEffort(binPath)
+	launch, err := resolveUILaunch(binPath, os.Getenv("SLIS_TUI_DIR"), regularFileExists)
+	if err != nil {
+		return err
+	}
+	return execJSUI(binPath, launch)
+}
+
 func migrateExistingHooksBestEffort(binPath string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -90,25 +92,14 @@ func migrateExistingHooksBestEffort(binPath string) {
 
 var uiCmd = &cobra.Command{
 	Use:   "ui",
-	Short: "Launch the JS (OpenTUI) front-end",
-	Long: "Launch the OpenTUI/Bun front-end. Looks for a compiled\n" +
+	Short: "Launch the Slis terminal app",
+	Long: "Launch the Slis terminal app. Looks for a compiled\n" +
 		"`slis-ui` binary next to the `slis` binary; falls back to `bun run` against\n" +
 		"the tui-js source when SLIS_TUI_DIR points at it. Bare `slis` launches this\n" +
-		"same front-end by default (set SLIS_TUI=go for the legacy Go TUI).",
+		"same app by default.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		binPath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("cannot locate the slis binary: %w", err)
-		}
-		migrateExistingHooksBestEffort(binPath)
-
-		launch, err := resolveUILaunch(binPath, os.Getenv("SLIS_TUI_DIR"), regularFileExists)
-		if err != nil {
-			return err
-		}
-
-		return execJSUI(binPath, launch)
+		return runUI()
 	},
 }
 

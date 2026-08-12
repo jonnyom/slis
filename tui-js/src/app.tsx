@@ -32,20 +32,37 @@ import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { TermManager } from "./term/manager";
-import { TerminalLayer, tabKey, type TabEntry } from "./term/tabs";
+import {
+  nextSessionTabID,
+  sessionTabKeyForSlice,
+  TerminalLayer,
+  terminalPresentation,
+  tabKey,
+  type TabEntry,
+} from "./term/tabs";
 import {
   liveForeignAgentInMembers,
   listTmuxSessions,
+  managedSessionTarget,
+  parseManagedSessionTarget,
   resumeClaudeSession,
-  tmuxAvailable,
+  slisSessionAvailable,
   type TermMember,
 } from "./term/tmux";
 import type { OpenTermMode, TermSessionOpts } from "./term/session";
+import {
+  activateSlisTab,
+  ensureSlisSession,
+  ensureSlisTab,
+  killSlisTab,
+  listSlisSessions,
+} from "./term/slis";
 import {
   availableAgents,
   findPreferredAgent,
   pickableAgents,
   agentCmdline,
+  agentTabID,
 } from "./term/agentpick";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
@@ -127,9 +144,30 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   if (!managerRef.current) managerRef.current = new TermManager();
   const manager = managerRef.current;
   const [tabs, setTabs] = useState<TabEntry[]>([]);
+  const tabsRef = useRef<TabEntry[]>(tabs);
+  tabsRef.current = tabs;
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [dockedSessionTab, setDockedSessionTab] = useState<string | null>(null);
+  const dockedSessionBySliceRef = useRef(new Map<string, string>());
+  const hiddenDockSlicesRef = useRef(new Set<string>());
+  const restoredSessionsRef = useRef(false);
   const [termMode, setTermMode] = useState(false);
   const nextCmdIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!dockedSessionTab) return;
+    const entry = tabs.find((tab) => tabKey(tab) === dockedSessionTab);
+    if (entry?.kind === "session") {
+      dockedSessionBySliceRef.current.set(entry.slice, dockedSessionTab);
+    }
+  }, [dockedSessionTab, tabs]);
+
+  const hideSessionDock = useCallback(() => {
+    const entry = tabsRef.current.find((tab) => tabKey(tab) === dockedSessionTab);
+    if (entry?.kind === "session") hiddenDockSlicesRef.current.add(entry.slice);
+    setDockedSessionTab(null);
+    setTermMode(false);
+  }, [dockedSessionTab]);
 
   const bulkPhaseRef = useRef<BulkPhase>("unprompted");
   const loadedRef = useRef<Set<string>>(new Set());
@@ -263,6 +301,14 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const onFocusSlice = useCallback(
     (name: string) => {
       browserFocusRef.current = name;
+      const docked = hiddenDockSlicesRef.current.has(name)
+        ? null
+        : sessionTabKeyForSlice(
+            tabsRef.current,
+            name,
+            dockedSessionBySliceRef.current.get(name),
+          );
+      setDockedSessionTab(docked);
       if (bulkPhaseRef.current === "lazy" && !loadedRef.current.has(name)) loadSlice(name);
     },
     [loadSlice],
@@ -399,6 +445,15 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // so Shift+T works under both legacy and modern kitty keyboard protocols.
   useKeyboard((key) => {
     const enabled = !overlays.active && !procsOpen && bulkPromptCount === null && !termMode;
+    if (
+      enabled &&
+      dockedSessionTab &&
+      key.ctrl === true &&
+      normalizeKeyName(key).toLowerCase() === "q"
+    ) {
+      hideSessionDock();
+      return;
+    }
     if (!enabled || normalizeKeyName(key) !== "T") return;
     const index = THEME_PREFERENCES.indexOf(themePreferenceRef.current);
     const next = THEME_PREFERENCES[(index + 1) % THEME_PREFERENCES.length]!;
@@ -498,6 +553,15 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const onEnter = useCallback(
     (slice: string, entry?: CockpitEntry) => {
       if (bulkPhaseRef.current === "lazy" && !loadedRef.current.has(slice)) loadSlice(slice);
+      setDockedSessionTab(
+        hiddenDockSlicesRef.current.has(slice)
+          ? null
+          : sessionTabKeyForSlice(
+              tabsRef.current,
+              slice,
+              dockedSessionBySliceRef.current.get(slice),
+            ),
+      );
       setCockpitEntry(entry ?? null);
       setCurrent(slice);
       setView("cockpit");
@@ -528,45 +592,167 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       return {
         slice,
         kind,
+        tabID: kind,
+        tabTitle: kind,
         members,
         active: v.slice.active,
         wsRoot,
         sessionOpts: { root: wsRoot, layout: sessions?.layout ?? "" },
-        launchAgent: kind === "agent" && (mode === "agent-launch" || (sessions?.autostart ?? false)),
+        launchAgent: kind === "agent" && (mode === "agent-launch" || mode === "agent-pick" || (sessions?.autostart ?? false)),
         agent: selectedAgent ? agentCmdline(selectedAgent.cmd) : sessions?.agent || "claude",
         harness: sessions?.harness || "claude",
-        agentLabel: selectedAgent?.name,
+        agentLabel: kind === "agent" ? selectedAgent?.name : undefined,
       };
     },
     [views, hello, preferredAgent],
   );
 
+  useEffect(() => {
+    if (restoredSessionsRef.current || !hello || !ls || !slisSessionAvailable()) return;
+    restoredSessionsRef.current = true;
+    void listSlisSessions().then(
+      (groups) => {
+        const restoredTabs = groups.flatMap((group): TabEntry[] => {
+          return group.tabs.flatMap((tab): TabEntry[] => {
+            const kind = tab.kind === "agent" || tab.kind === "review" ? "agent" : "shell";
+            const baseOpts = buildTermOpts(group.id, kind);
+            if (!baseOpts) return [];
+            return [{
+              kind: "session",
+              slice: group.id,
+              opts: {
+                ...baseOpts,
+                kind,
+                tabID: tab.id,
+                tabTitle: tab.title,
+                launchAgent: false,
+                agentLabel: kind === "agent" ? tab.title : undefined,
+              },
+            }];
+          });
+        });
+        const existing = new Set(tabsRef.current.map(tabKey));
+        const merged = [
+          ...tabsRef.current,
+          ...restoredTabs.filter((tab) => !existing.has(tabKey(tab))),
+        ];
+        tabsRef.current = merged;
+        setTabs(merged);
+        const focusedSlice = currentRef.current ?? browserFocusRef.current ?? ls.slices[0]?.name;
+        if (!focusedSlice || hiddenDockSlicesRef.current.has(focusedSlice)) return;
+        const group = groups.find((candidate) => candidate.id === focusedSlice);
+        const preferredKey = group?.active_tab_id
+          ? `session:${focusedSlice}:${group.active_tab_id}`
+          : dockedSessionBySliceRef.current.get(focusedSlice);
+        setDockedSessionTab(sessionTabKeyForSlice(merged, focusedSlice, preferredKey));
+      },
+      (error) => pushToast(`Could not restore terminal tabs: ${String(error)}`, "ci-fail"),
+    );
+  }, [buildTermOpts, hello, ls, pushToast]);
+
   // Open (or reuse) the slice's terminal tab, attaching a tmux client and — when
   // launching an agent — running the picked (or default) agent in it.
   const launchTermTab = useCallback(
-    (slice: string, mode: OpenTermMode, choice?: AgentSpec) => {
-      const opts = buildTermOpts(slice, mode, choice);
-      if (!opts) return;
-      const key = `${opts.kind}:${slice}`;
+    async (slice: string, mode: OpenTermMode, choice?: AgentSpec) => {
+      const baseOpts = buildTermOpts(slice, mode, choice);
+      if (!baseOpts) return;
+      let group = await ensureSlisSession(slice);
+      const selectedAgent = choice ?? preferredAgent;
+      const createsNewTab = mode === "shell" || mode === "agent-launch" || mode === "agent-pick";
+      const baseTabID = baseOpts.kind === "agent" && selectedAgent
+        ? agentTabID(selectedAgent)
+        : baseOpts.tabID;
+      const selectedTabID = createsNewTab
+        ? nextSessionTabID(baseTabID, group.tabs.map((tab) => tab.id))
+        : baseTabID;
+      const suffix = selectedTabID === baseTabID ? "" : ` ${selectedTabID.slice(baseTabID.length + 1)}`;
+      const baseTitle = baseOpts.kind === "agent"
+        ? selectedAgent?.name ?? baseOpts.tabTitle
+        : baseOpts.tabTitle;
+      const tabTitle = `${baseTitle}${suffix}`;
+      const opts = {
+        ...baseOpts,
+        tabID: selectedTabID,
+        tabTitle,
+        agentLabel: baseOpts.kind === "agent" ? tabTitle : undefined,
+      };
+      group = await ensureSlisTab(slice, opts.tabID, opts.kind, opts.tabTitle);
+      await activateSlisTab(slice, opts.tabID);
+      const entries: TabEntry[] = group.tabs.map((tab) => ({
+        kind: "session",
+        slice,
+        opts: {
+          ...opts,
+          kind: tab.kind === "agent" ? "agent" : "shell",
+          tabID: tab.id,
+          tabTitle: tab.title,
+          launchAgent: tab.id === opts.tabID && opts.launchAgent,
+          agentLabel: tab.kind === "agent" ? tab.title : undefined,
+        },
+      }));
+      const key = `session:${slice}:${opts.tabID}`;
       setTabs((prev) => {
-        if (prev.some((t) => t.kind === "session" && t.slice === slice && t.opts.kind === opts.kind)) {
-          return prev; // reuse the matching agent/shell tab; the other kind stays open
+        const existing = new Set(prev.map(tabKey));
+        const missing = entries.filter((entry) => !existing.has(tabKey(entry)));
+        if (missing.length === 0) {
+          return prev;
         }
-        return [...prev, { kind: "session", slice, opts }];
+        return [...prev, ...missing];
       });
       setActiveTab(key);
+      hiddenDockSlicesRef.current.delete(slice);
+      setDockedSessionTab(key);
       setTermMode(true);
     },
-    [buildTermOpts],
+    [buildTermOpts, preferredAgent],
   );
 
   const openTerm = useCallback(
     (slice: string, mode: OpenTermMode) => {
-      if (!tmuxAvailable()) {
+      const dockedEntry = tabs.find((tab) => tabKey(tab) === dockedSessionTab);
+      if (
+        mode === "agent" &&
+        dockedEntry?.kind === "session" &&
+        dockedEntry.opts.kind === "agent" &&
+        dockedEntry.slice === slice
+      ) {
+        hiddenDockSlicesRef.current.add(slice);
+        setDockedSessionTab(null);
+        setTermMode(false);
+        return;
+      }
+      if (mode === "agent") {
+        const existingAgent = tabs.find(
+          (tab) => tab.kind === "session" && tab.slice === slice && tab.opts.kind === "agent",
+        );
+        if (existingAgent) {
+          const key = tabKey(existingAgent);
+          hiddenDockSlicesRef.current.delete(slice);
+          setDockedSessionTab(key);
+          setActiveTab(key);
+          setTermMode(true);
+          return;
+        }
+      }
+      if (!slisSessionAvailable()) {
         overlays.info(
           "Terminal unavailable",
-          "tmux is not on PATH — install tmux to use session tabs.",
+          "Slis session runtime is unavailable — reinstall Slis to restore terminal tabs.",
         );
+        return;
+      }
+      if (mode === "agent-pick") {
+        const choices = pickableAgents(agentList);
+        if (choices.length > 1) {
+          overlays.agentPicker(
+            slice,
+            choices,
+            (choice) => launchTermTab(slice, "agent-pick", choice),
+            savedAgent?.name ?? preferredAgent?.name,
+          );
+          return;
+        }
+        launchTermTab(slice, "agent-pick", agentList[0]);
         return;
       }
       // With more than one configured agent, a launch (C / autostart) first asks
@@ -594,11 +780,35 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       }
       launchTermTab(slice, mode);
     },
-    [launchTermTab, overlays, agentList, preferredAgent, rememberAgent, savedAgent],
+    [launchTermTab, overlays, agentList, preferredAgent, rememberAgent, savedAgent, tabs, dockedSessionTab],
   );
 
   const openExistingSession = useCallback(
     (slice: string | null, targetSession: string) => {
+      const managed = parseManagedSessionTarget(targetSession);
+      if (managed) {
+        const opts = buildTermOpts(managed.groupID, "agent");
+        if (!opts) return false;
+        const kind = managed.tabID.startsWith("agent") || managed.tabID.startsWith("review-") ? "agent" : "shell";
+        const entry: TabEntry = {
+          kind: "session",
+          slice: managed.groupID,
+          opts: {
+            ...opts,
+            kind,
+            tabID: managed.tabID,
+            tabTitle: managed.tabID.replace(/^repo:/, ""),
+            launchAgent: false,
+          },
+        };
+        const key = tabKey(entry);
+        setTabs((previous) => previous.some((tab) => tabKey(tab) === key) ? previous : [...previous, entry]);
+        setActiveTab(key);
+        hiddenDockSlicesRef.current.delete(managed.groupID);
+        setDockedSessionTab(key);
+        setTermMode(true);
+        return true;
+      }
       const kind = targetSession.startsWith("slis-shell/") ? "shell" : "agent";
       const displaySlice = slice ?? targetSession.replace(/^slis(?:-shell)?\//, "");
       const opts: TermSessionOpts | null = slice
@@ -606,6 +816,8 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         : {
             slice: displaySlice,
             kind,
+            tabID: kind,
+            tabTitle: displaySlice,
             members: [],
             active: false,
             wsRoot: hello?.workspaceRoot ?? "",
@@ -614,7 +826,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
             agent: "",
             harness: hello?.sessions.harness || "claude",
           };
-      if (!opts) return;
+      if (!opts) return false;
       const targetOpts = { ...opts, launchAgent: false, targetSession };
       const entry: TabEntry = { kind: "session", slice: displaySlice, opts: targetOpts };
       const key = tabKey(entry);
@@ -622,10 +834,23 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         previous.some((tab) => tabKey(tab) === key) ? previous : [...previous, entry],
       );
       setActiveTab(key);
+      hiddenDockSlicesRef.current.delete(displaySlice);
+      setDockedSessionTab(key);
       setTermMode(true);
+      return true;
     },
     [buildTermOpts, hello],
   );
+
+  useEffect(() => {
+    return client.onFocusRequest((request) => {
+      const opened = openExistingSession(
+        request.group_id,
+        managedSessionTarget(request.group_id, request.tab_id),
+      );
+      if (opened) client.ackFocus(request.id);
+    });
+  }, [client, openExistingSession]);
 
   const resumeExistingClaudeSession = useCallback(
     (entry: StatusEntry) => {
@@ -639,11 +864,11 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         members: opts.members,
         sessionOpts: opts.sessionOpts,
       }).then(
-        (target) => openExistingSession(entry.slice, target),
+        () => launchTermTab(entry.slice, "agent"),
         (error) => overlays.info("Could not resume Claude", String(error)),
       );
     },
-    [buildTermOpts, openExistingSession, overlays],
+    [buildTermOpts, launchTermTab, overlays],
   );
 
   // Guard against a second agent in a worktree that already has one. Two agents
@@ -699,17 +924,65 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       let wasCommand = false;
       setTabs((prev) => {
         wasCommand = prev.some((t) => t.kind === "command" && t.id === key);
+        const closed = prev.find((t) => tabKey(t) === key);
         const next = prev.filter((t) => tabKey(t) !== key);
         setActiveTab((cur) => {
           if (cur !== key) return cur;
+          if (closed?.kind === "session") {
+            return sessionTabKeyForSlice(
+              next,
+              closed.slice,
+              dockedSessionBySliceRef.current.get(closed.slice),
+            );
+          }
           return next.length > 0 ? tabKey(next[next.length - 1]!) : null;
         });
+        if (closed?.kind === "session") {
+          setDockedSessionTab((currentDock) => {
+            if (currentDock !== key) return currentDock;
+            const nextDock = sessionTabKeyForSlice(
+              next,
+              closed.slice,
+              dockedSessionBySliceRef.current.get(closed.slice),
+            );
+            if (!nextDock) setTermMode(false);
+            return nextDock;
+          });
+        }
         if (next.length === 0) setTermMode(false);
         return next;
       });
       if (wasCommand) refresh();
     },
     [refresh],
+  );
+
+  const killTerminalTab = useCallback(
+    (key: string) => {
+      const entry = tabsRef.current.find((tab) => tabKey(tab) === key);
+      if (!entry || entry.kind !== "session" || entry.opts.targetSession) return;
+      killSlisTab(entry.slice, entry.opts.tabID).then(
+        (killed) => {
+          if (!killed) {
+            overlaysRef.current?.error("Close terminal — failed", `${entry.opts.tabTitle} did not close.`);
+            return;
+          }
+          closeTab(key);
+          pushToast(`Closed ${entry.opts.tabTitle}`, "ci-pass");
+        },
+        (error) => overlaysRef.current?.error("Close terminal — failed", String(error)),
+      );
+    },
+    [closeTab, pushToast],
+  );
+
+  const requestTerminalTabClose = useCallback(
+    (key: string) => {
+      const entry = tabsRef.current.find((tab) => tabKey(tab) === key);
+      if (!entry || entry.kind !== "session" || entry.opts.targetSession) return;
+      overlays.terminalClose(entry.opts.tabTitle, () => killTerminalTab(key));
+    },
+    [killTerminalTab, overlays],
   );
 
   // A command process exited: mark its tab so the tab bar shows the status glyph
@@ -730,9 +1003,27 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       closeTab(active.id);
       return;
     }
-    setTermMode(false);
+    const docked = tabs.find((tab) => tabKey(tab) === dockedSessionTab);
+    if (active?.kind === "session" && docked?.kind === "session") hideSessionDock();
+    else setTermMode(false);
     void refreshDiscovery();
-  }, [tabs, activeTab, closeTab, refreshDiscovery]);
+  }, [tabs, activeTab, dockedSessionTab, closeTab, hideSessionDock, refreshDiscovery]);
+
+  const selectTerminalTab = useCallback((key: string) => {
+    const entry = tabs.find((tab) => tabKey(tab) === key);
+    setActiveTab(key);
+    if (entry?.kind === "session") {
+      hiddenDockSlicesRef.current.delete(entry.slice);
+      setDockedSessionTab(key);
+    }
+    setTermMode(true);
+  }, [tabs]);
+
+  useEffect(() => {
+    const active = tabs.find((tab) => tabKey(tab) === activeTab);
+    if (!active || active.kind !== "session" || active.opts.targetSession) return;
+    void activateSlisTab(active.slice, active.opts.tabID);
+  }, [activeTab, tabs]);
 
   if (!ls) {
     return <InitialScreen connected={connected} error={initialError} onQuit={quit} />;
@@ -740,9 +1031,26 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
 
   const bulkPromptOpen = bulkPromptCount !== null;
   const overlayEnabled = !overlays.active && !procsOpen && !sessionsOpen && !bulkPromptOpen;
+  const activeEntry = tabs.find((tab) => tabKey(tab) === activeTab);
+  const dockedSessionEntry = tabs.find((tab) => tabKey(tab) === dockedSessionTab);
+  const activeTabIsSession = activeEntry?.kind === "session";
+  const hasDockedSession = dockedSessionEntry?.kind === "session";
+  const modalActive = overlays.active || procsOpen || sessionsOpen || bulkPromptOpen;
+  const terminalLayout = terminalPresentation(width, hasDockedSession, termMode, activeTabIsSession, modalActive);
+  const presentedTerminalTab = terminalLayout.docked ? dockedSessionTab : activeTab;
+  const dockTabBarTabs = dockedSessionEntry?.kind === "session"
+    ? tabs.filter((tab) => tab.kind === "session" && tab.slice === dockedSessionEntry.slice)
+    : tabs;
 
   return (
     <box width="100%" height="100%" backgroundColor={theme.bg}>
+      <box
+        width={terminalLayout.contentWidth}
+        height="100%"
+        onMouseDown={() => {
+          if (terminalLayout.docked && termMode) setTermMode(false);
+        }}
+      >
       {view === "browser" || !currentView ? (
         <Browser
           enabled={overlayEnabled && !termMode && view === "browser"}
@@ -753,7 +1061,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           ls={ls}
           conflicts={conflicts}
           overlays={overlays}
-          width={width}
+          width={terminalLayout.contentWidth}
           height={height}
           agents={agentList}
           preferredAgent={preferredAgent?.name}
@@ -776,7 +1084,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           client={client}
           view={currentView}
           overlays={overlays}
-          width={width}
+          width={terminalLayout.contentWidth}
           height={height}
           gatherable={isGatherableStackSlice(views, currentView.slice.name)}
           knownSlices={views.map((entry) => entry.slice.name)}
@@ -798,16 +1106,29 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onQuit={quit}
         />
       )}
+      </box>
 
       <TerminalLayer
         tabs={tabs}
-        active={activeTab}
-        focused={termMode}
+        tabBarTabs={terminalLayout.docked ? dockTabBarTabs : undefined}
+        active={presentedTerminalTab}
+        shown={terminalLayout.shown}
+        focused={termMode && !modalActive}
         statuses={statuses}
-        width={width}
+        width={terminalLayout.terminalWidth}
         height={height}
+        left={terminalLayout.terminalLeft}
         manager={manager}
         onBack={termBack}
+        onHide={terminalLayout.docked ? () => {
+          hideSessionDock();
+        } : undefined}
+        onSelectTab={selectTerminalTab}
+        onCloseTab={requestTerminalTabClose}
+        onFocus={() => {
+          if (presentedTerminalTab) setActiveTab(presentedTerminalTab);
+          setTermMode(true);
+        }}
         onSessionExit={closeTab}
         onCommandExit={markCommandExited}
       />

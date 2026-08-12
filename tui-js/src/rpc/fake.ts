@@ -12,6 +12,7 @@ import type {
   DiffResult,
   DiffScope,
   FileResult,
+  FocusRequest,
   HelloResult,
   LsResult,
   ProcsResult,
@@ -142,6 +143,26 @@ const PR_STACK: Record<string, PrStackEntry[]> = {
       ci_pass: 5,
       ci_fail: 2,
       ci_pending: 0,
+      comments: [
+        {
+          author: "reviewer",
+          body: "This breaks the empty-cart case.",
+          url: "https://github.com/acme/web/pull/8107#discussion_r1",
+          kind: 2,
+          context: "src/checkout/cart.tsx:12",
+          path: "src/checkout/cart.tsx",
+          line: 12,
+          side: "RIGHT",
+          diff_hunk: "@@ -10,7 +10,9 @@ export function Cart() {\n   const items = useCart();\n-  return <List items={items} />;\n+  const totals = useTotals(items);\n+  return <List items={items} totals={totals} />;\n }",
+        },
+        {
+          author: "lead",
+          body: "Please add coverage for the empty cart.",
+          url: "https://github.com/acme/web/pull/8107#pullrequestreview-1",
+          kind: 1,
+          context: "CHANGES_REQUESTED",
+        },
+      ],
     },
     {
       repo: "api",
@@ -424,6 +445,7 @@ const PROCS: ProcsResult = {
 
 export class FakeRpcClient implements RpcClient {
   private readonly sessionHandlers = new Set<(e: SessionEvent) => void>();
+  private readonly focusHandlers = new Set<(request: FocusRequest) => void>();
   private readonly connectionHandlers = new Set<(c: boolean) => void>();
   private readonly statusMap: Record<string, SessionStatus> = { ...STATUS };
   private ticker: ReturnType<typeof setInterval> | null = null;
@@ -453,7 +475,7 @@ export class FakeRpcClient implements RpcClient {
       sessions: { harness: "claude", agent: "claude", layout: "", autostart: false },
       agents: [
         { name: "claude", cmd: ["claude"] },
-        { name: "codex", cmd: ["codex", "--full-auto"] },
+        { name: "codex", cmd: ["codex"] },
       ],
     });
   }
@@ -652,6 +674,11 @@ export class FakeRpcClient implements RpcClient {
     this.sessionHandlers.add(handler);
     return () => this.sessionHandlers.delete(handler);
   }
+  onFocusRequest(handler: (request: FocusRequest) => void): () => void {
+    this.focusHandlers.add(handler);
+    return () => this.focusHandlers.delete(handler);
+  }
+  ackFocus(_id: string): void {}
   onConnectionChange(handler: (connected: boolean) => void): () => void {
     this.connectionHandlers.add(handler);
     // Fake is always "connected".

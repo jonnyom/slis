@@ -10,13 +10,13 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { SessionStatus } from "../rpc/types";
 import { color, sessionBadge, theme } from "../theme";
 import { BOLD, DIM } from "../components/ui";
+import { Divider } from "../components/divider";
 import { TermManager } from "./manager";
 import { tmuxWheelSequence } from "./mouse";
 import type { TermSessionOpts } from "./session";
 import { TerminalFeedBuffer } from "./feed";
 import {
   embeddedTerminalInputSequence,
-  embeddedTerminalPasteSequence,
 } from "./input";
 import { requestTerminalFullRepaint } from "./repaint";
 import { EmbeddedTerminalRenderable } from "./embedded";
@@ -54,8 +54,8 @@ export type TabEntry =
 export function tabKey(t: TabEntry): string {
   return t.kind === "session"
     ? t.opts.targetSession
-      ? `tmux:${t.opts.targetSession}`
-      : `${t.opts.kind}:${t.slice}`
+      ? `legacy:${t.opts.targetSession}`
+      : `session:${t.slice}:${t.opts.tabID}`
     : t.id;
 }
 
@@ -63,8 +63,85 @@ export function tabKey(t: TabEntry): string {
 export function tabLabel(t: TabEntry): string {
   if (t.kind !== "session") return t.title;
   if (t.opts.targetSession) return t.opts.targetSession.replace(/^slis(?:-shell)?\//, "");
-  if (t.opts.kind === "shell") return `${t.slice} · shell`;
-  return t.opts.agentLabel ? `${t.slice} · ${t.opts.agentLabel}` : t.slice;
+  return `${t.slice} · ${t.opts.agentLabel ?? t.opts.tabTitle}`;
+}
+
+export function tabBarLabel(tab: TabEntry, tabs: TabEntry[]): string {
+  if (tab.kind !== "session" || tab.opts.targetSession) return tabLabel(tab);
+  const sessionTabs = tabs.filter(
+    (entry): entry is Extract<TabEntry, { kind: "session" }> =>
+      entry.kind === "session" && !entry.opts.targetSession,
+  );
+  if (sessionTabs.length > 0 && sessionTabs.every((entry) => entry.slice === tab.slice)) {
+    return tab.opts.agentLabel ?? tab.opts.tabTitle;
+  }
+  return tabLabel(tab);
+}
+
+export function adjacentTabKey(tabs: TabEntry[], active: string | null, direction: -1 | 1): string | null {
+  if (tabs.length === 0) return null;
+  const current = tabs.findIndex((tab) => tabKey(tab) === active);
+  const index = current < 0 ? 0 : (current + direction + tabs.length) % tabs.length;
+  return tabKey(tabs[index]!);
+}
+
+export function sessionTabKeyForSlice(
+  tabs: TabEntry[],
+  slice: string,
+  preferredKey?: string | null,
+): string | null {
+  const sessions = tabs.filter(
+    (tab): tab is Extract<TabEntry, { kind: "session" }> =>
+      tab.kind === "session" && tab.slice === slice,
+  );
+  const preferred = sessions.find((tab) => tabKey(tab) === preferredKey);
+  const canonical = sessions.find((tab) => tab.opts.tabID === "agent");
+  const selected = preferred ?? canonical ?? sessions[0];
+  return selected ? tabKey(selected) : null;
+}
+
+export function nextSessionTabID(baseID: string, existingIDs: string[]): string {
+  const existing = new Set(existingIDs);
+  if (!existing.has(baseID)) return baseID;
+  let suffix = 2;
+  while (existing.has(`${baseID}-${suffix}`)) suffix += 1;
+  return `${baseID}-${suffix}`;
+}
+
+export function terminalPresentation(
+  appWidth: number,
+  hasDockedSession: boolean,
+  terminalFocused: boolean,
+  activeTabIsSession: boolean,
+  modalActive = false,
+): {
+  shown: boolean;
+  docked: boolean;
+  contentWidth: number;
+  terminalLeft: number;
+  terminalWidth: number;
+} {
+  if (modalActive) {
+    return {
+      shown: false,
+      docked: false,
+      contentWidth: appWidth,
+      terminalLeft: 0,
+      terminalWidth: appWidth,
+    };
+  }
+  const canDock = appWidth >= 100;
+  const docked = hasDockedSession && canDock && (!terminalFocused || activeTabIsSession);
+  const shown = docked || terminalFocused;
+  const terminalWidth = docked ? Math.max(48, Math.floor(appWidth * 0.42)) : appWidth;
+  const contentWidth = docked ? appWidth - terminalWidth : appWidth;
+  return {
+    shown,
+    docked,
+    contentWidth,
+    terminalLeft: docked ? contentWidth : 0,
+    terminalWidth,
+  };
 }
 
 // ── one terminal ─────────────────────────────────────────────────────────────
@@ -72,19 +149,23 @@ export function tabLabel(t: TabEntry): string {
 function TermTab({
   entry,
   manager,
-  visible,
+  shown,
+  focused,
   cols,
   rows,
   top,
+  onFocus,
   onSessionExit,
   onCommandExit,
 }: {
   entry: TabEntry;
   manager: TermManager;
-  visible: boolean;
+  shown: boolean;
+  focused: boolean;
   cols: number;
   rows: number;
   top: number;
+  onFocus: () => void;
   /** A tmux client died (session killed elsewhere) → close the tab. */
   onSessionExit: (key: string) => void;
   /** A command process exited → mark the tab exited (kept open for the user). */
@@ -92,8 +173,8 @@ function TermTab({
 }): ReactNode {
   const renderer = useRenderer();
   const ref = useRef<EmbeddedTerminalRenderable>(null);
-  const visibleRef = useRef(visible);
-  visibleRef.current = visible;
+  const visibleRef = useRef(shown);
+  visibleRef.current = shown;
 
   const key = tabKey(entry);
 
@@ -155,13 +236,14 @@ function TermTab({
   useEffect(() => {
     const term = ref.current;
     if (!term) return;
-    if (visible) term.focus();
+    if (focused) term.focus();
     else term.blur();
-  }, [visible]);
+  }, [focused]);
 
   return (
     <ghosttyTerminal
       ref={ref}
+      id={`term-pane-${key}`}
       position="absolute"
       left={0}
       top={top}
@@ -170,14 +252,17 @@ function TermTab({
       cols={cols}
       rows={rows}
       bg={EMBEDDED_TERMINAL_BACKGROUND}
-      visible={visible}
+      visible={shown}
       zIndex={101}
       persistent
       showCursor
       focusable
       selectable={EMBEDDED_TERMINAL_SELECTABLE}
+      onMouseDown={() => {
+        if (shown) onFocus();
+      }}
       onMouseScroll={(event) => {
-        if (!visible || entry.kind !== "session") return;
+        if (!shown || entry.kind !== "session") return;
         const direction = event.scroll?.direction;
         if (!direction) return;
 
@@ -202,22 +287,31 @@ export function TabBar({
   active,
   statuses,
   onBack,
+  onHide,
+  onSelectTab,
+  onCloseTab,
+  onFocus,
 }: {
   tabs: TabEntry[];
   active: string | null;
   statuses: Record<string, SessionStatus>;
   onBack: () => void;
+  onHide?: () => void;
+  onSelectTab: (key: string) => void;
+  onCloseTab?: (key: string) => void;
+  onFocus: () => void;
 }): ReactNode {
   return (
-    <box flexDirection="row" width="100%" height={1} zIndex={102}>
-      <text wrapMode="none">
-        <span fg={color.title} attributes={BOLD}>
-          {" term "}
-        </span>
+    <box flexDirection="column" width="100%" height={2} zIndex={102} overflow="hidden">
+      <box flexDirection="row" width="100%" height={1} backgroundColor={theme.surface} overflow="hidden">
+        <box paddingLeft={1} paddingRight={1}>
+          <text wrapMode="none" fg={theme.textFaint} attributes={BOLD}>TERM</text>
+        </box>
+        <text wrapMode="none" fg={theme.hairline}>│</text>
         {tabs.map((t) => {
           const key = tabKey(t);
           const on = key === active;
-          const glyph =
+          const badge =
             t.kind === "session"
               ? t.opts.kind === "shell"
                 ? { glyph: "›", color: color.live }
@@ -227,32 +321,78 @@ export function TabBar({
                   color: t.exited ? (t.code === 0 ? color.live : color.missing) : color.title,
                 };
           return (
-            <span key={key}>
-              <span fg={color.dim}> </span>
-              <span fg={glyph.color} attributes={BOLD}>
-                {glyph.glyph}
-              </span>
-              <span fg={on ? color.white : color.fg} attributes={on ? BOLD : 0}>
-                {" "}
-                {tabLabel(t)}{" "}
-              </span>
-            </span>
+            <box
+              key={key}
+              height={1}
+              backgroundColor={on ? theme.surfaceAlt : theme.surface}
+              flexDirection="row"
+            >
+              <text
+                id={`term-tab-${key}`}
+                wrapMode="none"
+                onMouseDown={(event) => {
+                  onSelectTab(key);
+                  onFocus();
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                <span fg={on ? theme.focus : theme.hairline} attributes={BOLD}>{on ? "▎" : " "}</span>
+                <span fg={badge.color} attributes={BOLD}>{` ${badge.glyph}`}</span>
+                <span fg={on ? color.white : theme.textDim} attributes={on ? BOLD : 0}>
+                  {` ${tabBarLabel(t, tabs)} `}
+                </span>
+              </text>
+              {onCloseTab && t.kind === "session" && on ? (
+                <text
+                  id={`term-close-${key}`}
+                  fg={theme.textDim}
+                  attributes={BOLD}
+                  wrapMode="none"
+                  onMouseDown={(event) => {
+                    onCloseTab(key);
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  {"× "}
+                </text>
+              ) : null}
+              <text wrapMode="none" fg={theme.hairline}>│</text>
+            </box>
           );
         })}
-      </text>
-      <text
-        id="term-back"
-        fg={color.dim}
-        attributes={DIM}
-        wrapMode="none"
-        onMouseDown={(event) => {
-          onBack();
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        {"   ctrl+q back "}
-      </text>
+        <box flexGrow={1} flexDirection="row" justifyContent="flex-end" paddingRight={1}>
+          <text
+            id="term-back"
+            fg={theme.textFaint}
+            attributes={DIM}
+            wrapMode="none"
+            onMouseDown={(event) => {
+              onBack();
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            {onHide ? "ctrl+q" : "ctrl+q back"}
+          </text>
+          {onHide ? (
+            <text
+              id="term-hide"
+              fg={theme.textDim}
+              wrapMode="none"
+              onMouseDown={(event) => {
+                onHide();
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              {"  hide ×"}
+            </text>
+          ) : null}
+        </box>
+      </box>
+      <Divider />
     </box>
   );
 }
@@ -261,29 +401,45 @@ export function TabBar({
 
 export function TerminalLayer({
   tabs,
+  tabBarTabs,
   active,
+  shown,
   focused,
   statuses,
   width,
   height,
+  left,
   manager,
   onBack,
+  onHide,
+  onSelectTab,
+  onCloseTab,
+  onFocus,
   onSessionExit,
   onCommandExit,
 }: {
   tabs: TabEntry[];
+  tabBarTabs?: TabEntry[];
   active: string | null;
+  shown: boolean;
   /** True when the terminal has raw input focus (overlaying the browser). */
   focused: boolean;
   statuses: Record<string, SessionStatus>;
   width: number;
   height: number;
+  left: number;
   manager: TermManager;
   onBack: () => void;
+  onHide?: () => void;
+  onSelectTab: (key: string) => void;
+  onCloseTab?: (key: string) => void;
+  onFocus: () => void;
   onSessionExit: (key: string) => void;
   onCommandExit: (id: string, code: number) => void;
 }): ReactNode {
   const renderer = useRenderer();
+  const mountedTabKeysRef = useRef(new Set<string>());
+  if (active) mountedTabKeysRef.current.add(active);
 
   // Keep the raw-input handler stable but reading live focus/active via refs.
   const focusedRef = useRef(focused);
@@ -299,9 +455,7 @@ export function TerminalLayer({
     if (!focusedRef.current) return;
     const key = activeRef.current;
     if (key) {
-      managerRef.current
-        .get(key)
-        ?.write(embeddedTerminalPasteSequence(event.bytes));
+      managerRef.current.get(key)?.paste(event.bytes);
     }
     event.preventDefault();
     event.stopPropagation();
@@ -324,31 +478,42 @@ export function TerminalLayer({
 
   if (tabs.length === 0) return null;
 
-  const termRows = Math.max(2, height - 1); // row 0 is the tab bar
+  const termRows = Math.max(2, height - 2);
 
   return (
     <box
       position="absolute"
-      left={0}
+      left={left}
       top={0}
       width={width}
       height={height}
       backgroundColor={theme.bg}
-      visible={focused}
+      visible={shown}
       zIndex={100}
     >
-      <TabBar tabs={tabs} active={active} statuses={statuses} onBack={onBack} />
-      {tabs.map((t) => {
+      <TabBar
+        tabs={tabBarTabs ?? tabs}
+        active={active}
+        statuses={statuses}
+        onBack={onBack}
+        onHide={onHide}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        onFocus={onFocus}
+      />
+      {tabs.filter((tab) => mountedTabKeysRef.current.has(tabKey(tab))).map((t) => {
         const key = tabKey(t);
         return (
           <TermTab
             key={key}
             entry={t}
             manager={manager}
-            visible={focused && key === active}
+            shown={shown && key === active}
+            focused={focused && key === active}
             cols={width}
             rows={termRows}
-            top={1}
+            top={2}
+            onFocus={onFocus}
             onSessionExit={onSessionExit}
             onCommandExit={onCommandExit}
           />

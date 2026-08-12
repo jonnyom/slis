@@ -24,6 +24,10 @@ func TestSetPRPopulatesCIRollup(t *testing.T) {
 			{Name: "lint", State: forge.CheckPass},
 			{Name: "test", State: forge.CheckFail},
 		},
+		Comments: []forge.Comment{{
+			Author: "reviewer", Body: "Fix this", Kind: forge.CommentInline,
+			Path: "src/cart.ts", Line: 42, Side: "RIGHT", DiffHunk: "+broken()",
+		}},
 	}
 	var row PRStackRowDTO
 	row.SetPR(pr)
@@ -36,6 +40,9 @@ func TestSetPRPopulatesCIRollup(t *testing.T) {
 	}
 	if row.CIPass != 2 || row.CIFail != 1 || row.CIPending != 0 {
 		t.Errorf("counts = pass %d fail %d pending %d, want 2/1/0", row.CIPass, row.CIFail, row.CIPending)
+	}
+	if len(row.Comments) != 1 || row.Comments[0].Path != "src/cart.ts" || row.Comments[0].Line != 42 {
+		t.Errorf("comments not copied: %+v", row.Comments)
 	}
 }
 

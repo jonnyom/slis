@@ -4,7 +4,7 @@
 feature across several Git repositories.
 
 It groups the feature's branches and worktrees into a single **slice**, then
-puts its diffs, stacked branches, pull requests, CI, tmux sessions, processes,
+puts its diffs, stacked branches, pull requests, CI, terminal sessions, processes,
 and coding agents in one place. The OpenTUI interface is backed by a Go CLI, so
 the same workflows are available interactively, from scripts, or to an agent.
 
@@ -92,7 +92,7 @@ Slis is a good fit when:
   together;
 - you use stacked branches or stacked pull requests, particularly with
   Graphite;
-- you want a separate tmux session—or coding-agent session—for each feature;
+- you want a separate terminal or coding-agent session for each feature;
 - you need to review changed files, PR status, CI, and local processes without
   visiting several tools;
 - your development servers run from primary checkouts and you want to swap a
@@ -124,7 +124,7 @@ Slis is probably the wrong tool when:
 - you need a graphical desktop application rather than a terminal interface;
 - you require Windows binaries. Current releases target macOS and Linux;
 - you expect every integration without installing its tool. Graphite, GitHub,
-  tmux, and coding-agent features degrade independently when their binaries are
+  and coding-agent features degrade independently when their binaries are
   unavailable.
 
 You also do not need Slis merely to use an AI coding agent. Its value comes from
@@ -139,18 +139,9 @@ brew trust --cask jonnyom/tap/slis
 brew install jonnyom/homebrew-tap/slis
 ```
 
-The Homebrew release includes matching `slis` and `slis-ui` binaries for macOS
-and Linux. Bare `slis` launches the OpenTUI interface.
-
-### Go
-
-```sh
-go install github.com/jonnyom/slis/cmd/slis@latest
-```
-
-This installs the Go CLI and legacy Bubble Tea TUI. If a matching `slis-ui`
-binary is not installed beside it, Slis explains the fallback and opens the
-legacy interface.
+The Homebrew release includes the complete Slis app for macOS and Linux,
+including its private session runtime. Bare `slis` launches the OpenTUI
+interface. No separate terminal multiplexer is required.
 
 ### Optional integrations
 
@@ -159,7 +150,6 @@ them:
 
 | Tool | Enables |
 |---|---|
-| `tmux` | Per-slice terminal and agent sessions |
 | `gh` | Pull-request, review-comment, and CI views |
 | `gt` | Graphite stack reading, restacking, submission, sync, and merge |
 | Claude Code or Codex | Agent sessions, AI summaries, and `fix-ci` |
@@ -223,7 +213,7 @@ slis create checkout
 
 Use `--dry-run` to inspect the plan first. Slis records only worktrees that were
 actually created, so a partial failure does not invent nonexistent slice
-members or tmux panes.
+members or session tabs.
 
 To bring existing work into Slis instead:
 
@@ -259,7 +249,7 @@ The cockpit has four operational areas:
 |---|---|
 | Stack | Current worktree branch, downstack ancestry, health, summary, and changed files |
 | PRs | Pull requests, reviews, comments, CI, rerun/fix actions, and merge readiness |
-| Session | The slice's tmux or coding-agent session |
+| Session | The slice's terminal and coding-agent sessions |
 | Processes | Processes rooted in the slice, including CPU history and guarded termination |
 
 The Stack area deliberately excludes sibling and upstack branches checked out
@@ -268,30 +258,46 @@ which branches belong to the current slice.
 
 Press `enter` on a stack branch to load its rich diff, or `f` to browse files at
 that revision. Rich diffs support unified and split layouts, syntax-aware
-rendering, line selection, and pending review comments.
+rendering, wrapped source lines, line selection, and pending review comments.
+
+GitHub review comments appear below the lines they refer to. The file list keeps
+the diff totals and comment count visible beside each path, even when the path
+itself is too long to fit. Press `2` from the diff to open the selected PR's full
+comment summary. Long bot comments use a shorter inline preview so they do not
+push the surrounding code off screen.
 
 Useful cockpit keys:
 
 | Key | Action |
 |---|---|
-| `tab` / `1`–`4` | Cycle panels or jump directly to one |
+| `tab` / `1` through `5` | Cycle panels or jump directly to one |
 | `j` / `k` | Move within the focused panel |
 | `enter` / `l` | Open the selected branch's rich diff |
 | `f` | Browse files at the selected revision |
 | `b` | Cycle working-tree, parent, and trunk summary scopes |
-| `c` / `V` | Add a review comment / manage pending comments |
+| `c` / `V` | Add a local review comment / manage comments waiting for the agent |
+| `2` in a diff | Open GitHub comments for the selected PR |
 | `w` | Activate the slice or restore the primaries |
-| `a` / `C` | Attach to the agent terminal / launch the configured agent |
+| `a` / `C` | Open the existing agent tab / launch the default agent |
+| `L` / `t` | Launch another agent type / open a shell tab |
 | `,` | Configure the default launch agent |
 | `T` | Cycle System, Midnight, Violet, and Light themes |
 | `esc` / `h` | Return to the hub |
 
 ### 5. Use a terminal or coding agent
 
-With tmux installed, each slice can have an isolated session rooted at the
-slice directory containing its repo worktrees. From the hub, press `a` to
-attach or `C` to launch the configured agent. Set `sessions.layout: repos` if
-you explicitly want one tmux window per repo instead.
+Each slice has an isolated, persistent Slis session rooted at the directory
+containing its repo worktrees. Slis ships and manages its own session runtime,
+so you do not need to install or configure a terminal multiplexer.
+
+The agent dock follows the slice selected in the hub or cockpit. Press `a` to
+open an existing agent tab, `C` to launch the default agent, `L` to choose a
+different agent, or `t` to open a shell. A slice can keep several agent and
+shell tabs alive at once. Click a tab to switch to it, click its `×` to stop
+that tab, or press `ctrl+q` to hide the dock without stopping anything. New
+shell tabs start with your login shell from `$SHELL`.
+
+Set `sessions.layout: repos` if you want one terminal tab per repository.
 
 The equivalent CLI workflow is available through `slis focus`, `slis status`,
 and the review commands. For example:
@@ -374,7 +380,7 @@ skill in [skills/slis](skills/slis).
 ### 8. Clear completed work
 
 Preview cleanup, then remove the slice's worktrees, merged local branches, and
-tmux session:
+Slis session:
 
 ```sh
 slis rm checkout --dry-run
@@ -433,7 +439,7 @@ sessions:
     - name: Claude
       cmd: [claude, --resume]
     - name: Codex
-      cmd: [codex, --full-auto]
+      cmd: [codex]
 ```
 
 Slis also detects installed `claude`, `codex`, `gemini`, `cursor-agent`, and
@@ -445,8 +451,8 @@ that choice to `sessions.default_agent` in `workspace.yaml`; subsequent presses
 of `C` launch it immediately without reopening the picker.
 The last launched agent is remembered as well. Run `slis agent` to inspect the
 saved choice, or `slis agent clear-default` to return to first-launch selection.
-`layout: repos` creates one tmux window inside each member worktree; `root`
-creates a shared parent window; `both` provides both. Multi-repo slices default
+`layout: repos` creates one terminal tab inside each member worktree; `root`
+creates a shared parent tab; `both` provides both. Multi-repo slices default
 to `repos`, which avoids accidentally running Git or Graphite in an enclosing
 repository outside the workspace.
 
@@ -506,6 +512,7 @@ options.
 | `slis review ...` | Add, list, remove, clear, or send review comments |
 | `slis conflicts` | Find files changed by more than one slice |
 | `slis status [slice]` | Show per-slice agent/session status |
+| `slis session ...` | List, create, focus, inspect, or stop persistent terminal tabs |
 | `slis restack/submit/merge/sync` | Run Graphite stack operations |
 | `slis ci-rerun <slice>` | Rerun failed GitHub Actions jobs |
 | `slis branch-diff/tree/cat` | Inspect stack revisions without checkout |
@@ -600,7 +607,7 @@ When reporting a bug, please include:
 - operating system and installation method;
 - `slis` version;
 - relevant output from `slis doctor`;
-- whether `tmux`, `gh`, or `gt` is involved;
+- whether `gh`, `gt`, or a coding agent is involved;
 - the smallest reproducible repository/worktree layout;
 - screenshots for visual TUI issues, with sensitive repository information
   removed.
@@ -630,11 +637,11 @@ older than 1.3.14.
 
 ### Run locally
 
-Run the Go CLI or legacy TUI:
+Build the Go CLI and private session runtime:
 
 ```sh
-go run ./cmd/slis ls
-SLIS_TUI=go go run ./cmd/slis
+make build
+./slis ls
 ```
 
 Run the OpenTUI source against the built Go sidecar:
@@ -669,7 +676,7 @@ the matching `slis` executable as its Go sidecar.
 ### Test changes
 
 ```sh
-# Go core, CLI, RPC, reports, and legacy TUI
+# Go core, CLI, RPC, reports, and session management
 go test ./...
 CGO_ENABLED=0 go build ./...
 
@@ -678,7 +685,7 @@ cd tui-js
 bun run typecheck
 bun test
 
-# Optional tmux/review smoke tests
+# Optional terminal/review smoke tests
 bun run term:e2e
 bun run term:picker:e2e
 bun run review:e2e
@@ -700,8 +707,9 @@ The main implementation areas are:
 cmd/slis/           Go executable
 internal/cli/       CLI commands
 internal/discovery/ worktree discovery and durable slice membership
-internal/report/    data shared by CLI, RPC, and TUIs
-internal/tui/       legacy Bubble Tea interface
+internal/report/    data shared by CLI, RPC, and UI
+internal/session/   Slis session ownership and lifecycle
+internal/zmxctl/    private session-runtime adapter
 tui-js/src/         OpenTUI front-end
 docs/AGENT.md       JSON and agent automation contract
 ```

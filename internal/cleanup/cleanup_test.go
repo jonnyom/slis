@@ -70,6 +70,27 @@ func TestRemoveDeletesWorktreeAndMergedBranch(t *testing.T) {
 	}
 }
 
+func TestRemoveStopsSlisSessionAfterEveryWorktreeIsRemoved(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	testutil.AddWorktree(t, repo, "feat", wt)
+	ws, sl := sliceFor("r", repo, "feat", wt)
+	var killed string
+
+	rep, err := cleanup.Remove(ws, sl, cleanup.Options{
+		KillSession: func(slice string) error {
+			killed = slice
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if killed != sl.Name || !rep.SessionKilled {
+		t.Fatalf("killed = %q, report = %#v", killed, rep)
+	}
+}
+
 func TestRemoveDeletesEmptyManagedSliceDirectories(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	root := t.TempDir()

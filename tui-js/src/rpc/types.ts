@@ -153,6 +153,7 @@ export interface PrStackEntry {
   ci_pass?: number;
   ci_fail?: number;
   ci_pending?: number;
+  comments?: PrComment[];
 }
 
 // ── ciLog (spec v0) ──────────────────────────────────────────────────────────
@@ -176,6 +177,17 @@ export interface PrComment {
   url: string;
   kind?: number; // 0 issue · 1 review · 2 inline (omitted by the sidecar when 0)
   context?: string; // review state, or path:line for inline comments (omitted when empty)
+  created_at?: string;
+  path?: string;
+  line?: number;
+  side?: string;
+  diff_hunk?: string;
+}
+
+export interface PrDiffComment extends PrComment {
+  repo: string;
+  branch: string;
+  pr: number;
 }
 
 export interface RepoComments {
@@ -348,6 +360,13 @@ export interface SessionEvent {
   status: SessionStatus;
 }
 
+export interface FocusRequest {
+  id: string;
+  group_id: string;
+  tab_id: string;
+  time_ns: number;
+}
+
 // ── the client contract shared by the real sidecar and the fake ──────────────
 
 export interface RpcClient {
@@ -397,6 +416,8 @@ export interface RpcClient {
 
   /** Subscribe to live session-status changes. Returns an unsubscribe fn. */
   onSessionEvent(handler: (event: SessionEvent) => void): () => void;
+  onFocusRequest(handler: (request: FocusRequest) => void): () => void;
+  ackFocus(id: string): void;
 
   /** Fired when the underlying transport drops/reconnects (for a status line). */
   onConnectionChange(

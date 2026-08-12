@@ -57,8 +57,9 @@ const BROWSER_GROUPS: BindingGroup[] = [
   {
     label: "session",
     bindings: [
-      ["a", "open the slice's agent terminal"],
-      ["C", "launch agent + open terminal tab (picks when multiple are available)"],
+      ["a", "show or hide the slice's agent dock"],
+      ["C", "launch the default agent"],
+      ["L", "choose another agent for a separate persistent tab"],
       [",", "configure the default launch agent"],
       ["t", "open a separate persistent shell terminal"],
       ["s", "all running Slis sessions: attach or close"],
@@ -130,8 +131,9 @@ const COCKPIT_GROUPS: BindingGroup[] = [
       ["s", "cycle process sort cpu → mem → pid"],
       ["x / X", "kill process / kill subtree (SIGTERM)"],
       ["P", "processes across all slices"],
-      ["a", "open the slice's agent terminal"],
-      ["C", "launch an available coding agent"],
+      ["a", "show or hide the slice's agent dock"],
+      ["C", "launch the default agent"],
+      ["L", "choose another agent"],
       [",", "configure the default launch agent"],
       ["t", "open a separate persistent shell terminal"],
       ["S", "force AI summary (s: summary outside Processes panel)"],
@@ -146,7 +148,8 @@ const DIFF_BINDINGS: Binding[] = [
   ["v / Space", "toggle multi-line selection, then extend it with j / k"],
   ["c", "comment on the selected diff line / range (feeds the agent)"],
   ["V", "pending-review overlay (list / delete / send)"],
-  ["C", "launch an available coding agent"],
+  ["C", "launch the default agent"],
+  ["L", "choose another agent"],
   [",", "configure the default launch agent"],
   ["a", "attach to the slice agent without leaving the diff"],
   ["h / l", "in side-by-side mode, select old/deleted or new/added side"],
@@ -232,7 +235,7 @@ export function Help({ view }: { view: "browser" | "cockpit" }): ReactNode {
       ) : null}
       <Legend />
       <text fg={theme.textDim} wrapMode="word">
-        in a terminal tab: ctrl+q returns here · tmux detach is C-b d · ? / esc to close
+        in a terminal tab: ctrl+\ / ctrl+] switch tabs · ctrl+q returns here · ? / esc to close
       </text>
     </Card>
   );

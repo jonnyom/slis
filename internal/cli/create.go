@@ -10,7 +10,7 @@ import (
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/model"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -256,24 +256,22 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		// Start a tmux session for the new slice (best-effort; skip if tmux is absent).
 		if !noWorktrees && len(createdPlans) > 0 {
-			if !tmuxctl.Available() {
-				fmt.Println("note: tmux not found — skipping session creation")
-			} else {
-				members := make([]model.SliceMember, 0, len(createdPlans))
-				for _, p := range createdPlans {
-					members = append(members, model.SliceMember{
-						Repo:         p.Repo,
-						WorktreePath: p.Path,
-					})
-				}
-				if err := tmuxctl.EnsureSession(sliceName, members, tmuxctl.SessionOpts{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
-					fmt.Printf("note: could not start tmux session: %v\n", err)
-				} else {
-					fmt.Printf("started tmux session slis/%s\n", sliceName)
-				}
+			members := make([]model.SliceMember, 0, len(createdPlans))
+			for _, p := range createdPlans {
+				members = append(members, model.SliceMember{
+					Repo:         p.Repo,
+					WorktreePath: p.Path,
+				})
 			}
+			manager, err := openSessionManager()
+			if err != nil {
+				return err
+			}
+			if _, err := manager.Ensure(cmd.Context(), sliceName, members, sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
+				return fmt.Errorf("start Slis session: %w", err)
+			}
+			fmt.Printf("started Slis session %s\n", sliceName)
 		}
 
 		if len(failedRepos) > 0 {

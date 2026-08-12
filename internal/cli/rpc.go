@@ -34,7 +34,11 @@ var rpcCmd = &cobra.Command{
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 
-		srv := rpcserver.New(ws, sp, Version)
+		manager, err := openSessionManager()
+		if err != nil {
+			return err
+		}
+		srv := rpcserver.New(ws, sp, Version).WithSessionManager(manager)
 		return srv.Serve(ctx, os.Stdin, os.Stdout)
 	},
 }

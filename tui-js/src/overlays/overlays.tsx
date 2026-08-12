@@ -167,6 +167,23 @@ export function AgentPickerOverlay({
   );
 }
 
+export function TerminalCloseOverlay({ title }: { title: string }): ReactNode {
+  return (
+    <Card
+      title={`Close terminal · ${title}`}
+      width={58}
+      hints={[
+        { key: "enter", label: "close" },
+        { key: "esc", label: "cancel" },
+      ]}
+    >
+      <text fg={theme.text} wrapMode="word">
+        Closing this tab stops its process. Unsaved agent input is lost.
+      </text>
+    </Card>
+  );
+}
+
 export function WorkingOverlay({ text }: { text: string }): ReactNode {
   return (
     <Card title="Working" width={52}>
@@ -364,7 +381,7 @@ export function RemoveOverlay({ slices }: { slices: string[] }): ReactNode {
         <span fg={theme.text}>?</span>
       </text>
       <text fg={theme.textDim} wrapMode="none">
-        Deletes worktrees + merged branches, kills the tmux session.
+        Deletes worktrees + merged branches, stops the Slis session.
       </text>
     </Card>
   );

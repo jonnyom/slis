@@ -67,7 +67,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
       { key: "j/k", label: "move" },
       { key: "^d/u", label: "scroll" },
       { key: "a", label: "agent" },
-      { key: "C", label: "launch" },
+      { key: "C/L", label: "default/choose" },
       { key: "t", label: "shell" },
       { key: "w", label: "swap" },
     ];
@@ -79,7 +79,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
           ...(s.onMember ? [{ key: "e", label: "edit" }] : []),
           { key: "c", label: "comment" },
           { key: "V", label: "review" },
-          { key: "C", label: "launch" },
+          { key: "C/L", label: "default/choose" },
           { key: "^d/u", label: "page" },
           { key: "esc", label: "tree" },
         ];
@@ -90,7 +90,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
           { key: "h", label: "collapse" },
           ...(s.onMember ? [{ key: "e", label: "edit" }] : []),
           { key: "o/E", label: "repo/slice" },
-          { key: "C", label: "launch" },
+          { key: "C/L", label: "default/choose" },
           { key: "esc", label: "diff" },
         ];
       return [
@@ -99,12 +99,12 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         { key: "enter", label: "rich diff" },
         ...(s.onMember ? [{ key: "b", label: `scope: ${s.scope}` }] : []),
         { key: "V", label: "review" },
-        { key: "C", label: "launch" },
+        { key: "C/L", label: "default/choose" },
         { key: "w", label: "swap" },
       ];
     case "prs":
       return [
-        { key: "C", label: "launch" },
+        { key: "C/L", label: "default/choose" },
         { key: "j/k", label: "pr" },
         { key: "enter", label: "zoom" },
         { key: "v", label: "CI log" },
@@ -118,7 +118,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
         { key: "enter", label: "attach" },
         { key: "x", label: "close" },
         { key: "a", label: "agent" },
-        { key: "C", label: "launch" },
+        { key: "C/L", label: "default/choose" },
         { key: "t", label: "shell" },
         { key: "w", label: "swap" },
       ];
@@ -132,7 +132,7 @@ export function cockpitHints(panel: PanelId, s: CockpitHintState): Hint[] {
       ];
     case "procs":
       return [
-        { key: "C", label: "launch" },
+        { key: "C/L", label: "default/choose" },
         { key: "j/k", label: "proc" },
         { key: "h/l", label: "fold" },
         { key: "s", label: "sort" },

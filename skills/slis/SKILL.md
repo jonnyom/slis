@@ -52,7 +52,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 |---|---|---|---|
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
-| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a tmux session is attached. Clicking a banner runs `slis focus <slice>` to jump your tmux client to that slice (terminal-notifier only; set `notify.activate` to a terminal app bundle id to also foreground it) |
+| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a session is attached. Clicking a banner runs `slis focus <slice>` to open that slice in Slis (terminal-notifier only; set `notify.activate` to a terminal app bundle id to also foreground it) |
 | `slis init-skill` | mutate | no | Install this skill (+ `references/AGENT.md`) for an agent harness. `--harness claude\|codex\|both` (default both): claude → `~/.claude/skills/slis/`, codex → `~/.agents/skills/slis/`. Idempotent (content-hash version stamp). Also run by `slis init` unless `--no-skill` |
 | `slis ls` | read | **yes** | List all slices + members + active flag (`● stale` when the active slice's branches advanced past the primaries; `● partial` / `"partial": true` when the active swap covers only some member repos — a crash mid-activate). `--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`; each slice carries optional Graphite `stack_id`/`stack_order` — siblings share a `stack_id` |
 | `slis candidates` | read | **yes** | List discovered-but-unmanaged worktrees awaiting opt-in import |
@@ -82,20 +82,20 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis submit <slice>` | mutate | no | `gt submit` — **force-pushes** the stack + opens/updates PRs |
 | `slis merge <slice>` | mutate | no | `gt merge` — triggers Graphite's **server-side merge queue** |
 | `slis fix-ci <slice>` | mutate | no | Point the harness at failing CI in the worktree — `claude -p` or `codex exec` per `sessions.harness` (`--dry-run` previews) |
-| `slis rm <slice>` | mutate | no | Remove worktrees + kill tmux + delete merged branches (`--force`, `--dry-run`) |
+| `slis rm <slice>` | mutate | no | Remove worktrees + kill the Slis session + delete merged branches (`--force`, `--dry-run`) |
 | `slis group <name> <slice>...` | mutate | no | Manually group slices under one name (writes `overrides.yaml`) |
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
 | `slis gather <name> <slice>` | mutate | yes | Collapse the Graphite stack `<slice>` belongs to into one slice named `<name>`, represented by the stack **tip**; intermediate branches are folded (hidden as their own slices, worktrees untouched). Per repo. `--json` reports `{name, gathered:[{repo,tip,folded,linear}]}` |
 | `slis scatter <name>` | mutate | no | Undo a gather (folded branches reappear as their own slices) |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |
-| `slis focus <slice>` | mutate | no | Switch the active tmux client to the slice's session (creates it if missing); prints `tmux attach -t …` when no client is attached. This is what a clicked desktop notification runs |
+| `slis focus <slice>` | mutate | no | Open the slice's active Slis session tab (creates it if missing). This is what a clicked desktop notification runs |
 | `slis review add <slice>` | mutate | no | Add a pending review comment on a line or range (`--repo --file --line [--end-line] --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
 | `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
 | `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
-| `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active pane, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
-| `slis review agent <slice> --agent <name>` | mutate | no | Start a persistent review conversation in a dedicated slice tmux window; results and clean receipts survive completion |
-| `slis review message <run-id> --body <text>` | mutate | no | Append a follow-up turn; the reviewer receives the complete stored conversation and the same tmux window is resumed |
-| `slis review attach <run-id>` | interactive | no | Attach or switch to the exact review tmux window, including completed scrollback |
+| `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active tab, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
+| `slis review agent <slice> --agent <name>` | mutate | no | Start a persistent review conversation in a dedicated slice session tab; results and clean receipts survive completion |
+| `slis review message <run-id> --body <text>` | mutate | no | Append a follow-up turn; the reviewer receives the complete stored conversation and the same session tab is resumed |
+| `slis review attach <run-id>` | interactive | no | Attach or switch to the exact review session tab, including completed scrollback |
 
 `*` `edit` opens an editor / prints a path; it does not change repo state.
 `slis hook <event>` exists but is hidden and machine-invoked by Claude Code — never call it by hand.
@@ -133,7 +133,7 @@ sessions:
 
 ## SLIS_* environment contract
 
-When slis launches the harness in a slice's tmux session, it prefixes these env
+When slis launches the harness in a slice session, it prefixes these env
 vars onto the launch command. An agent running **inside** a slis session can
 trust them:
 

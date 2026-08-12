@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,7 +12,8 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/internal/reviewrun"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
+	"github.com/jonnyom/slis/internal/zmxctl"
 )
 
 // fakeSession is a test double for review.Session.
@@ -88,8 +91,8 @@ func TestRunReviewSendNoAgentGuidance(t *testing.T) {
 	mustStoreAdd(t, store, review.Comment{Slice: "s", Repo: "web", File: "a.go", Line: 1, Body: "x"})
 
 	_, err := runReviewSend(store, "s", &fakeSession{exists: true}, false)
-	if err == nil || !strings.Contains(err.Error(), "no agent is running in its active pane") {
-		t.Fatalf("expected active-pane agent guidance, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no agent is running in its active tab") {
+		t.Fatalf("expected active-tab agent guidance, got %v", err)
 	}
 	if got, _ := store.List("s"); len(got) != 1 {
 		t.Errorf("no-agent send dropped pending comments: %d left, want 1", len(got))
@@ -216,12 +219,16 @@ func TestStoreAgentFindingsIsIdempotentAcrossDeliveryRetries(t *testing.T) {
 }
 
 func TestEnsureReviewAgentLaunchesConfiguredAgentFromShell(t *testing.T) {
-	if !tmuxctl.Available() {
-		t.Skip("tmux not on PATH")
+	binary := os.Getenv("SLIS_ZMX_BINARY")
+	if binary == "" {
+		t.Skip("SLIS_ZMX_BINARY is not set")
 	}
 	const slice = "review-autostart-test"
-	_ = tmuxctl.KillSession(slice)
-	t.Cleanup(func() { _ = tmuxctl.KillSession(slice) })
+	runtimeDirectory, err := os.MkdirTemp("/tmp", "slis-review-agent-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(runtimeDirectory) })
 
 	worktree := t.TempDir()
 	sl := model.Slice{
@@ -234,10 +241,12 @@ func TestEnsureReviewAgentLaunchesConfiguredAgentFromShell(t *testing.T) {
 		Root:     worktree,
 		Sessions: config.Sessions{Agent: "sleep 30"},
 	}
-	sess := review.TmuxSession{AgentCommands: reviewAgentCommands(ws.Sessions)}
+	manager := sessionmanager.NewManager(sessionmanager.OpenStore(t.TempDir()), zmxctl.New(binary, runtimeDirectory))
+	sess := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: "agent", Context: context.Background()}
 	if err := ensureReviewAgent(ws, sl, sess); err != nil {
 		t.Fatalf("ensureReviewAgent: %v", err)
 	}
+	t.Cleanup(func() { _ = manager.Kill(context.Background(), slice) })
 	if !sess.HasAgent(slice) {
 		t.Fatal("configured agent was not running in the active pane")
 	}

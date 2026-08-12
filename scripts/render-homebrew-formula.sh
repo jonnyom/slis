@@ -57,6 +57,7 @@ class Slis < Formula
   def install
     bin.install "slis"
     bin.install "slis-ui"
+    libexec.install "zmx"
   end
 
   test do

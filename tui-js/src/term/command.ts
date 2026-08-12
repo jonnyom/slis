@@ -15,6 +15,8 @@ interface PtyHandle {
   close?(): void;
 }
 
+import { embeddedTerminalPasteSequence, embeddedTerminalWriteSequence } from "./input";
+
 export class CommandSession {
   readonly id: string;
   readonly title: string;
@@ -70,15 +72,15 @@ export class CommandSession {
 
   write(data: string | Uint8Array): void {
     if (this.exited) return; // no stdin once the command is done
-    this.proc?.terminal.write(data);
+    this.proc?.terminal.write(embeddedTerminalWriteSequence(data));
+  }
+
+  paste(bytes: Uint8Array): void {
+    this.write(embeddedTerminalPasteSequence(bytes));
   }
 
   resize(cols: number, rows: number): void {
-    try {
-      this.proc?.terminal.resize(Math.max(2, cols), Math.max(2, rows));
-    } catch {
-      // A resize racing a just-exited command is harmless; the PTY is gone.
-    }
+    this.proc?.terminal.resize(Math.max(2, cols), Math.max(2, rows));
   }
 
   onExit(handler: (code: number) => void): () => void {
@@ -90,17 +92,9 @@ export class CommandSession {
   detach(): void {
     const proc = this.proc;
     this.proc = null;
-    try {
-      proc?.terminal.close?.();
-    } catch {
-      // Best-effort: closing an already-gone PTY is fine.
-    }
+    proc?.terminal.close?.();
     if (!this.exited) {
-      try {
-        proc?.kill();
-      } catch {
-        // Best-effort: killing an already-exited command is fine.
-      }
+      proc?.kill();
     }
   }
 }

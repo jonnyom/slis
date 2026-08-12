@@ -7,6 +7,7 @@ version: 2
 # Needs `bun` on PATH (the release workflow installs it via oven-sh/setup-bun).
 before:
   hooks:
+    - ./scripts/fetch-zmx.sh
     - ./scripts/build-slis-ui.sh
 
 builds:
@@ -37,6 +38,10 @@ archives:
         strip_parent: true
         info:
           mode: 0755
+      - src: "third_party/zmx/dist/{{ .Os }}-{{ .Arch }}/zmx"
+        strip_parent: true
+        info:
+          mode: 0755
 
 checksum:
   name_template: "checksums.txt"
@@ -49,9 +54,9 @@ checksum:
 # env var (set from a repo secret of the same name in release.yml).
 homebrew_casks:
   - name: slis
-    # Install both the Go CLI/TUI and its compiled JS front-end so bare `slis`
-    # (which prefers a sibling `slis-ui`) launches the JS TUI after `brew install`.
-    binaries: [slis, slis-ui]
+    # Install the Go CLI, compiled JS front-end, and private session runtime so
+    # bare `slis` can launch the full TUI after `brew install`.
+    binaries: [slis, slis-ui, zmx]
     directory: Casks
     repository:
       owner: jonnyom
@@ -76,6 +81,7 @@ homebrew_casks:
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/slis"]
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/slis-ui"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/zmx"]
           end
 
 release:

@@ -39,6 +39,10 @@ describe("isQuitKey", () => {
     expect(isQuitKey({ name: "c", ctrl: true } as KeyEvent)).toBe(true);
   });
 
+  test("reserves ctrl+q for terminal dock hiding", () => {
+    expect(isQuitKey({ name: "q", ctrl: true } as KeyEvent)).toBe(false);
+  });
+
   test("plain c remains the create-slice key", () => {
     expect(isQuitKey(key("c"))).toBe(false);
   });

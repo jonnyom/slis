@@ -3,6 +3,10 @@ import {
   parseTmuxSessions,
   agentLaunchLine,
   liveForeignAgentInMembers,
+  managedSessionInfos,
+  managedSessionTarget,
+  parseManagedSessionTarget,
+  sessionDisplayName,
   preferredRunningAgentSession,
   sessionHasPaneOutsideMembers,
   sessionName,
@@ -13,6 +17,41 @@ import {
   type TermMember,
   type TmuxSessionInfo,
 } from "./tmux";
+import type { SessionGroup } from "./slis";
+
+test("managed session targets preserve separator characters", () => {
+  const target = managedSessionTarget("feature:one", "repo:api");
+  expect(parseManagedSessionTarget(target)).toEqual({
+    groupID: "feature:one",
+    tabID: "repo:api",
+  });
+  expect(parseManagedSessionTarget("slis/legacy")).toBeUndefined();
+  expect(sessionDisplayName(target)).toBe("feature:one · api");
+});
+
+test("managed session inventory exposes each Slis tab without runtime names", async () => {
+  const groups: SessionGroup[] = [{
+    id: "feature:one",
+    active_tab_id: "repo:api",
+    tabs: [
+      { id: "repo:api", kind: "repo", title: "api", cwd: "/wt/api" },
+      { id: "agent", kind: "agent", title: "agent", cwd: "/wt" },
+    ],
+  }];
+  const sessions = await managedSessionInfos(groups, async (_groupID, tabID) => tabID === "agent");
+  expect(sessions).toEqual([
+    {
+      name: managedSessionTarget("feature:one", "repo:api"),
+      kind: "shell",
+      panes: [{ path: "/wt/api", command: "sh", target: managedSessionTarget("feature:one", "repo:api") }],
+    },
+    {
+      name: managedSessionTarget("feature:one", "agent"),
+      kind: "agent",
+      panes: [{ path: "/wt", command: "slis-process", target: managedSessionTarget("feature:one", "agent") }],
+    },
+  ]);
+});
 
 describe("sessionName", () => {
   test("keeps the existing agent namespace for compatibility", () => {

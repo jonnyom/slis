@@ -22,7 +22,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/internal/reviewrun"
-	"github.com/jonnyom/slis/internal/tmuxctl"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 )
 
 // reviewStore opens the pending-review-comment store at its state-dir path.
@@ -46,7 +46,7 @@ var reviewCmd = &cobra.Command{
 	Short: "Manage inline feedback and persistent agent review conversations",
 	Long: "Inline comments accumulate into a pending batch for `review send`.\n" +
 		"`review agent` starts a persistent reviewer conversation whose status,\n" +
-		"messages, findings, and tmux window remain available through runs, show,\n" +
+		"messages, findings, and session tab remain available through runs, show,\n" +
 		"message, and attach.",
 }
 
@@ -205,7 +205,7 @@ func runReviewSend(store *review.Store, slice string, sess review.Session, keep 
 			return 0, fmt.Errorf("slice %q session disappeared before delivery; review comments remain pending — re-run `slis review send %s`", slice, slice)
 		}
 		if errors.Is(err, review.ErrNoAgent) {
-			return 0, fmt.Errorf("slice %q has a tmux session, but no agent is running in its active pane; review comments remain pending", slice)
+			return 0, fmt.Errorf("slice %q has a legacy session, but no agent is running in its active tab; review comments remain pending", slice)
 		}
 		if errors.Is(err, review.ErrAgentNotReady) {
 			return 0, fmt.Errorf("%v; review comments remain pending — press `a`, finish the agent setup, then send again", err)
@@ -293,7 +293,7 @@ func launchReviewAgent(ws config.Workspace, sl model.Slice, agent config.AgentSp
 	if err := startReviewRunWindow(ws, sl, run); err != nil {
 		return persistReviewFailure(store, run.ID, err)
 	}
-	fmt.Printf("%s review %s started in tmux window %q for slice %q\n", agent.Name, run.ID, run.Window, sl.Name)
+	fmt.Printf("%s review %s started in session tab %q for slice %q\n", agent.Name, run.ID, run.Window, sl.Name)
 	return nil
 }
 
@@ -324,59 +324,31 @@ func reviewAgentCwd(sl model.Slice, wsRoot string) string {
 	return parent
 }
 
-func waitForReviewShell(slice string, timeout time.Duration) string {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		command := tmuxctl.ActivePaneCommand(slice)
-		if tmuxctl.IsShellCommand(command) {
-			return command
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return tmuxctl.ActivePaneCommand(slice)
-}
-
-// ensureReviewAgent creates/reuses the slice session and starts the configured
-// agent when its active pane is a shell. A busy non-agent pane gets a dedicated
-// `agent` window so review delivery never overwrites another process.
-func ensureReviewAgent(ws config.Workspace, sl model.Slice, sess review.TmuxSession) error {
-	existed := tmuxctl.SessionExists(sl.Name)
-	if err := tmuxctl.EnsureSession(sl.Name, reviewSessionMembers(sl), tmuxctl.SessionOpts{
-		Root: ws.Root, Layout: ws.Sessions.Layout,
-	}); err != nil {
+func ensureReviewAgent(ws config.Workspace, sl model.Slice, sess review.SlisSession) error {
+	if _, err := sess.Manager.Ensure(context.Background(), sl.Name, reviewSessionMembers(sl), sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
 		return err
 	}
-	if sess.HasAgent(sl.Name) || sess.ActivateAgent(sl.Name) {
+	if _, err := sess.Manager.EnsureTab(context.Background(), sl.Name, sessionmanager.TabSpec{ID: "agent", Kind: sessionmanager.TabKindAgent, Title: "agent", CWD: reviewAgentCwd(sl, ws.Root)}); err != nil {
+		return err
+	}
+	if sess.HasAgent(sl.Name) {
 		return nil
 	}
-	command := tmuxctl.ActivePaneCommand(sl.Name)
-	if !existed {
-		command = waitForReviewShell(sl.Name, 2*time.Second)
+	busy, err := sess.Manager.Busy(context.Background(), sl.Name, "agent")
+	if err != nil {
+		return err
 	}
-
-	if !tmuxctl.IsShellCommand(command) {
-		if err := tmuxctl.SelectOrCreateWindow(sl.Name, "agent", reviewAgentCwd(sl, ws.Root)); err != nil {
-			return err
-		}
-		if sess.HasAgent(sl.Name) {
-			return nil
-		}
-		command = waitForReviewShell(sl.Name, 2*time.Second)
-	}
-	if !tmuxctl.IsShellCommand(command) {
-		return fmt.Errorf("slice %q agent window is busy with %q; review comments remain pending",
-			sl.Name, command)
+	if busy {
+		return fmt.Errorf("slice %q agent terminal is busy; review comments remain pending", sl.Name)
 	}
 
 	agent, harness := defaultReviewAgent(ws.Sessions)
-	if err := tmuxctl.SendKeys(sl.Name, agentlaunch.Line(agent, sl, ws.Root, harness)); err != nil {
+	if err := sess.Manager.StartCommand(context.Background(), sl.Name, sessionmanager.TabSpec{ID: "agent", Kind: sessionmanager.TabKindAgent, Title: "agent", CWD: reviewAgentCwd(sl, ws.Root)}, agentlaunch.Line(agent, sl, ws.Root, harness)); err != nil {
 		return fmt.Errorf("launch review agent: %w", err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if sess.HasAgent(sl.Name) {
-			// Give the agent's interactive input loop a moment to initialise after
-			// its process first appears in the pane tree.
 			time.Sleep(time.Second)
 			return nil
 		}
@@ -395,9 +367,6 @@ var reviewSendCmd = &cobra.Command{
 			return err
 		}
 		keep, _ := cmd.Flags().GetBool("keep")
-		if !tmuxctl.Available() {
-			return fmt.Errorf("tmux not found on PATH — `slis review send` delivers through the slice's tmux session")
-		}
 		store := reviewStore()
 		pending, err := store.List(name)
 		if err != nil {
@@ -414,7 +383,11 @@ var reviewSendCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		sess := review.TmuxSession{AgentCommands: reviewAgentCommands(ws.Sessions)}
+		manager, err := openSessionManager()
+		if err != nil {
+			return err
+		}
+		sess := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: "agent", Context: cmd.Context()}
 		if err := ensureReviewAgent(ws, sl, sess); err != nil {
 			return err
 		}

@@ -22,6 +22,7 @@ describe("shortcut contract", () => {
     const invariant = {
       a: "attach-agent",
       C: "launch-agent",
+      L: "launch-other-agent",
       V: "pending-review",
       ",": "configure-agents",
     };
@@ -36,6 +37,7 @@ describe("shortcut contract", () => {
     for (const context of ["cockpit.file", "cockpit.tree"] as const) {
       expect(shortcutAction(context, "a")).toBe("attach-agent");
       expect(shortcutAction(context, "C")).toBe("launch-agent");
+      expect(shortcutAction(context, "L")).toBe("launch-other-agent");
       expect(shortcutAction(context, "t")).toBe("open-shell");
       expect(shortcutAction(context, "V")).toBe("pending-review");
       expect(shortcutAction(context, ",")).toBe("configure-agents");

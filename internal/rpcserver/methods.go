@@ -3,6 +3,7 @@ package rpcserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jonnyom/slis/internal/review"
 	"github.com/jonnyom/slis/internal/reviewrun"
 	"github.com/jonnyom/slis/internal/safeterm"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
 
@@ -371,7 +373,22 @@ func (s *Server) capture(ctx context.Context, raw json.RawMessage) (interface{},
 	if p.Slice == "" {
 		return nil, invalidParams("slice is required")
 	}
-	text, _ := tmuxctl.CapturePaneCtx(ctx, p.Slice)
+	var text string
+	if s.sessions != nil {
+		var err error
+		if p.Tab == "" {
+			text, err = s.sessions.CaptureGroup(ctx, p.Slice)
+		} else {
+			text, err = s.sessions.History(ctx, p.Slice, p.Tab, false)
+		}
+		if errors.Is(err, sessionmanager.ErrGroupNotFound) && p.Tab == "" {
+			text, _ = tmuxctl.CapturePaneCtx(ctx, p.Slice)
+		} else if err != nil {
+			return nil, serverErr(err.Error(), "")
+		}
+	} else {
+		text, _ = tmuxctl.CapturePaneCtx(ctx, p.Slice)
+	}
 	lines := splitLines(safeterm.StripNonSGR(text))
 	if p.Lines > 0 && len(lines) > p.Lines {
 		lines = lines[len(lines)-p.Lines:]
@@ -401,6 +418,28 @@ func (s *Server) procs(ctx context.Context, raw json.RawMessage) (interface{}, *
 
 	out := make([]sliceProcsResult, 0, len(targets))
 	for _, name := range targets {
+		if s.sessions != nil {
+			group, err := s.sessions.Group(name)
+			if err != nil && !errors.Is(err, sessionmanager.ErrGroupNotFound) {
+				return nil, serverErr(err.Error(), "")
+			}
+			if err == nil {
+				processes := make([]procResult, 0)
+				total := 0.0
+				for _, tab := range group.Tabs {
+					infos, err := s.sessions.Processes(ctx, name, tab.ID)
+					if err != nil {
+						return nil, serverErr(err.Error(), "")
+					}
+					for _, info := range infos {
+						processes = append(processes, procResult{PID: info.PID, PPID: info.PPID, Cmd: info.Cmd, CPU: info.CPU, Mem: info.MemMB, Tab: tab.ID})
+						total += info.CPU
+					}
+				}
+				out = append(out, sliceProcsResult{Slice: name, Procs: processes, TotalCPU: total})
+				continue
+			}
+		}
 		pids, err := tmuxctl.PanePIDsCtx(ctx, name)
 		if err != nil {
 			continue

@@ -5,6 +5,7 @@ import {
   findSavedAgent,
   pickableAgents,
   agentCmdline,
+  agentTabID,
   quickPickIndex,
 } from "./agentpick";
 import type { AgentSpec } from "../rpc/types";
@@ -79,6 +80,13 @@ describe("agentCmdline", () => {
   });
   test("embedded single quote is escaped", () => {
     expect(agentCmdline(["x", "a'b"])).toBe("x 'a'\\''b'");
+  });
+});
+
+describe("agentTabID", () => {
+  test("creates a stable separate tab for an alternate agent", () => {
+    expect(agentTabID({ name: "Claude Code", cmd: ["claude"] })).toBe("agent-claude-code");
+    expect(agentTabID({ name: "My Agent!", cmd: ["custom-agent"] })).toBe("agent-my-agent");
   });
 });
 

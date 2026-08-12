@@ -13,10 +13,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/report"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 )
 
 // gateConcurrency caps how many subprocess-heavy methods (git / gt / gh / tmux /
@@ -67,6 +70,7 @@ type Server struct {
 	diffCacheMu sync.Mutex
 	diffCache   map[diffCacheKey]diffCacheEntry
 	diffBuild   func(context.Context, model.Slice, string, string) (report.DiffResult, error)
+	sessions    *sessionmanager.Manager
 }
 
 // inFlightEntry is one tracked request: its cancel func plus the seq that
@@ -99,6 +103,11 @@ func New(ws config.Workspace, sp config.Paths, version string) *Server {
 		diffCache: make(map[diffCacheKey]diffCacheEntry),
 		diffBuild: report.SliceDiffScopedCtx,
 	}
+}
+
+func (s *Server) WithSessionManager(manager *sessionmanager.Manager) *Server {
+	s.sessions = manager
+	return s
 }
 
 // Serve runs the read-dispatch loop over in/out until stdin reaches EOF or ctx
@@ -274,6 +283,8 @@ func (s *Server) dispatch(ctx context.Context, req request) (interface{}, *rpcEr
 	switch req.Method {
 	case "hello":
 		return s.hello()
+	case "focusAck":
+		return s.focusAck(req.Params)
 	case "testBlock":
 		if s.testHook == nil {
 			return nil, &rpcError{Code: codeMethodNotFound, Message: "method not found: testBlock"}
@@ -353,9 +364,6 @@ func (s *Server) writeMessage(v interface{}) {
 	_, _ = s.out.Write(b)
 }
 
-// startWatcher watches the notify events dir and pushes a sessionEvent whenever
-// a slice's status changes. It returns a stop func; if the watcher cannot be
-// created (no fsnotify, missing dir) it logs to stderr and returns a no-op stop.
 func (s *Server) startWatcher(ctx context.Context) func() {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -367,11 +375,17 @@ func (s *Server) startWatcher(ctx context.Context) func() {
 		_ = w.Close()
 		return func() {}
 	}
+	if err := w.Add(s.sp.StateDir); err != nil {
+		fmt.Fprintln(os.Stderr, "rpc: cannot watch state dir:", err)
+		_ = w.Close()
+		return func() {}
+	}
 
 	watcherDone := make(chan struct{})
 	go func() {
 		defer close(watcherDone)
 		prev := notify.ReadAllStatuses(s.sp.EventsDir)
+		lastFocusID := ""
 		for {
 			select {
 			case <-ctx.Done():
@@ -381,6 +395,7 @@ func (s *Server) startWatcher(ctx context.Context) func() {
 					return
 				}
 				prev = s.emitChangedStatuses(prev)
+				lastFocusID = s.emitFocusRequest(lastFocusID)
 			case _, ok := <-w.Errors:
 				if !ok {
 					return
@@ -395,6 +410,38 @@ func (s *Server) startWatcher(ctx context.Context) func() {
 		_ = w.Close()
 		<-watcherDone
 	}
+}
+
+func (s *Server) emitFocusRequest(lastID string) string {
+	request, err := sessionmanager.ReadFocusRequest(s.sp.StateDir)
+	if errors.Is(err, os.ErrNotExist) || request.ID == lastID {
+		return lastID
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "rpc: read focus request:", err)
+		return lastID
+	}
+	if !request.Fresh(time.Now()) {
+		return request.ID
+	}
+	s.writeMessage(notification{JSONRPC: "2.0", Method: "focusSession", Params: request})
+	return request.ID
+}
+
+func (s *Server) focusAck(raw json.RawMessage) (interface{}, *rpcError) {
+	var params struct {
+		ID string `json:"id"`
+	}
+	if rerr := decodeParams(raw, &params); rerr != nil {
+		return nil, rerr
+	}
+	if params.ID == "" {
+		return nil, invalidParams("id is required")
+	}
+	if err := sessionmanager.WriteFocusAck(s.sp.StateDir, params.ID); err != nil {
+		return nil, serverErr(err.Error(), "")
+	}
+	return struct{}{}, nil
 }
 
 // emitChangedStatuses re-reads the event store, emits a sessionEvent for every

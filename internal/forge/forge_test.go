@@ -357,9 +357,18 @@ func TestParseInlineComments(t *testing.T) {
 	if cs[0].Author != "cubic" {
 		t.Errorf("Author[0]: got %q, want cubic", cs[0].Author)
 	}
+	if cs[0].Path != "src/foo.go" || cs[0].Line != 42 || cs[0].Side != "RIGHT" {
+		t.Errorf("anchor[0]: got %q:%d %q", cs[0].Path, cs[0].Line, cs[0].Side)
+	}
+	if cs[0].DiffHunk != "@@ -39,3 +41,3 @@\n context\n+offByOne()\n next" {
+		t.Errorf("DiffHunk[0]: got %q", cs[0].DiffHunk)
+	}
 	// line == 0 → fall back to original_line (7).
 	if cs[1].Context != "src/bar.go:7" {
 		t.Errorf("Context[1]: got %q, want src/bar.go:7 (original_line fallback)", cs[1].Context)
+	}
+	if cs[1].Line != 7 || cs[1].Side != "LEFT" {
+		t.Errorf("anchor[1]: got line %d side %q", cs[1].Line, cs[1].Side)
 	}
 }
 

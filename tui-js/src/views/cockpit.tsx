@@ -34,6 +34,7 @@ import type {
   DiffStat,
   FileResult,
   PrComment,
+  PrDiffComment,
   PrStackEntry,
   ProcsResult,
   ReviewComment,
@@ -66,6 +67,8 @@ import {
   killTmuxSession,
   isShellCmd,
   listTmuxSessions,
+  managedSessionTarget,
+  sessionDisplayName,
   preferredRunningAgentSession,
   tmuxSessionClaimableBySlice,
   tmuxSessionOwnedByAnotherSlice,
@@ -426,7 +429,7 @@ function SessionSection({
         </text>
       ) : exists ? (
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          {"  tmux session ready"}
+          {"  Slis session ready"}
         </text>
       ) : (
         <text fg={color.dim} attributes={DIM} wrapMode="none">
@@ -605,6 +608,11 @@ function CommentsBlock({
           <text fg={color.title} attributes={BOLD} wrapMode="none">
             {b.header}
           </text>
+          {b.code.map((line, j) => (
+            <text key={`code-${j}`} fg={color.dim} wrapMode="none">
+              {`  ${line}`}
+            </text>
+          ))}
           {b.body.map((l, j) => (
             <text key={j} fg={color.fg} wrapMode="none">
               {l === "" ? " " : l}
@@ -678,9 +686,12 @@ function PrDetailRight({
         </span>
       </text>
       {pr.url ? <TerminalLink url={pr.url} /> : null}
-      {rc ? (
-        <CommentsBlock repo={pr.repo} prNumber={rc.pr} comments={rc.comments} width={width} />
-      ) : null}
+      <CommentsBlock
+        repo={pr.repo}
+        prNumber={pr.number}
+        comments={pr.comments ?? []}
+        width={width}
+      />
     </>
   );
 }
@@ -748,7 +759,7 @@ function SessionRight({
     <>
       <text fg={color.dim} attributes={DIM} wrapMode="none">
         {sessions.length === 0
-          ? "no running Slis tmux sessions"
+          ? "no running Slis sessions"
           : `${sessions.length} running sessions  ·  enter attach  ·  x close`}
       </text>
       {sessions.map((session, index) => {
@@ -777,7 +788,7 @@ function SessionRight({
                 {index === selected ? glyph.focusBar : " "}
               </span>
               <span fg={running ? theme.good : color.dim}>{running ? glyph.live : "·"}</span>
-              <span fg={session.kind === "agent" ? color.fg : color.dim}> {session.name}</span>
+              <span fg={session.kind === "agent" ? color.fg : color.dim}> {sessionDisplayName(session.name)}</span>
               {claimable ? <span fg={theme.focus}>  ‹this slice›</span> : null}
               {foreignHere ? (
                 <span fg={theme.attn}>  ‹other slice, in our worktree›</span>
@@ -792,7 +803,7 @@ function SessionRight({
         );
       })}
       {pendingKill ? (
-        <SessionCloseConfirmation target={pendingKill} />
+        <SessionCloseConfirmation target={sessionDisplayName(pendingKill)} />
       ) : killStatus ? (
         <text fg={killStatus.startsWith("Closed") ? theme.good : theme.bad} wrapMode="none">
           {killStatus}
@@ -850,7 +861,7 @@ function ProcsRight({
   if (!slice || slice.procs.length === 0)
     return (
       <text fg={color.dim} attributes={DIM}>
-        no tmux session / no processes
+        no Slis session / no processes
       </text>
     );
   return (
@@ -1061,13 +1072,13 @@ export function Cockpit(props: CockpitProps): ReactNode {
     const probe = () => {
       listTmuxSessions().then((sessions) => {
         if (!live) return;
-        const agentName = sessionName(slice, "agent");
-        const shellName = sessionName(slice, "shell");
-        const agent = sessions.find((session) => session.name === agentName);
+        const agentNames = [managedSessionTarget(slice, "agent"), sessionName(slice, "agent")];
+        const shellNames = [managedSessionTarget(slice, "shell"), sessionName(slice, "shell")];
+        const agent = sessions.find((session) => agentNames.includes(session.name));
         setTmuxSessions(sessions);
         setSessionSel((selected) => clampSel(selected, sessions.length));
         setHasSession(!!agent);
-        setHasShellSession(sessions.some((session) => session.name === shellName));
+        setHasShellSession(sessions.some((session) => shellNames.includes(session.name)));
         setSessionOutsideRepos(
           !!agent && sessionHasPaneOutsideMembers(agent.panes.map((pane) => pane.path), sessionMembers),
         );
@@ -1357,13 +1368,17 @@ export function Cockpit(props: CockpitProps): ReactNode {
     setPendingKill(null);
   };
 
-  const openAgent = (mode: "agent" | "agent-launch") => {
-    if (panel === "session" && selectedTmuxSession?.kind === "agent") {
+  const openAgent = (mode: "agent" | "agent-launch" | "agent-pick") => {
+    if (mode === "agent") {
+      props.onOpenTerm(slice, mode);
+      return;
+    }
+    if (mode !== "agent-pick" && panel === "session" && selectedTmuxSession?.kind === "agent") {
       props.onOpenExistingSession(slice, selectedTmuxSession.name);
       return;
     }
     const existing = runningAgentSession ?? relatedAgentSessions[0];
-    if (existing && (mode === "agent" || runningAgentSession)) {
+    if (mode !== "agent-pick" && existing && runningAgentSession) {
       props.onOpenExistingSession(slice, existing.name);
       return;
     }
@@ -1389,7 +1404,8 @@ export function Cockpit(props: CockpitProps): ReactNode {
     if (!target) return;
     killTmuxSession(target).then((closed) => {
       setPendingSessionKill(null);
-      setSessionKillStatus(closed ? `Closed ${target}` : `Could not close ${target}`);
+      const label = sessionDisplayName(target);
+      setSessionKillStatus(closed ? `Closed ${label}` : `Could not close ${label}`);
       if (closed) {
         setTmuxSessions((sessions) => sessions.filter((session) => session.name !== target));
         setSessionSel((selected) => clampSel(selected, tmuxSessions.length - 1));
@@ -1561,6 +1577,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (name === "?") return overlays.help();
       if (shortcut === "attach-agent") return openAgent("agent");
       if (shortcut === "launch-agent") return openAgent("agent-launch");
+      if (shortcut === "launch-other-agent") return openAgent("agent-pick");
       if (shortcut === "open-shell") return openShell();
       if (name === "escape" || name === "h") return setReviewMode("tree");
       if (name === "e" && openFile) return editPreviewPath(openFile.path, fileCursor + 1);
@@ -1584,6 +1601,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
       if (name === "?") return overlays.help();
       if (shortcut === "attach-agent") return openAgent("agent");
       if (shortcut === "launch-agent") return openAgent("agent-launch");
+      if (shortcut === "launch-other-agent") return openAgent("agent-pick");
       if (shortcut === "open-shell") return openShell();
       if (shortcut === "pending-review") return openReviewOverlay();
       if (name === "escape") return setReviewMode("diff");
@@ -1619,6 +1637,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
     // C consistently launches an agent everywhere; V owns the review list.
     if (cockpitShortcut === "attach-agent") return openAgent("agent");
     if (cockpitShortcut === "launch-agent") return openAgent("agent-launch");
+    if (cockpitShortcut === "launch-other-agent") return openAgent("agent-pick");
     if (cockpitShortcut === "open-shell") return openShell();
     if (cockpitShortcut === "pending-review") return openReviewOverlay();
     if (name === "e") return overlays.editor(slice);
@@ -1873,6 +1892,20 @@ export function Cockpit(props: CockpitProps): ReactNode {
         ]
       : [];
 
+  const githubComments = useMemo<PrDiffComment[]>(
+    () => (view.prs ?? []).flatMap((pr) =>
+      pr.number === undefined
+        ? []
+        : (pr.comments ?? []).map((comment) => ({
+            ...comment,
+            repo: pr.repo,
+            branch: pr.branch,
+            pr: pr.number!,
+          })),
+    ),
+    [view.prs],
+  );
+
   const cockpitSection =
     panel === "stack" && selectedBranch
       ? `${selectedRepo} ${glyph.arrow} ${selectedBranch}` +
@@ -1893,6 +1926,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
         width={props.width}
         height={props.height}
         comments={reviews}
+        githubComments={githubComments}
         onCycleScope={onMemberBranch ? cycleRichDiffScope : () => {}}
         onToggleMode={() =>
           setDiffMode((mode) => {
@@ -1905,9 +1939,18 @@ export function Cockpit(props: CockpitProps): ReactNode {
         onQuit={props.onQuit}
         onAttach={() => props.onOpenTerm(slice, "agent")}
         onLaunchAgent={() => props.onOpenTerm(slice, "agent-launch")}
+        onLaunchOtherAgent={() => props.onOpenTerm(slice, "agent-pick")}
         onConfigureAgents={props.onConfigureAgents}
         onComment={(target) => overlays.comment({ slice, ...target }, bumpReviews)}
         onReview={openReviewOverlay}
+        onOpenPrComments={(repo, branch) => {
+          const nextPr = (view.prs ?? []).findIndex(
+            (pr) => pr.repo === repo && pr.branch === branch,
+          );
+          if (nextPr >= 0) setPrSel(nextPr);
+          setPanel("prs");
+          setDiffOpen(false);
+        }}
       />
     );
   }

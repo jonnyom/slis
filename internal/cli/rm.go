@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -9,16 +10,17 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/discovery"
 	"github.com/jonnyom/slis/internal/notify"
+	sessionmanager "github.com/jonnyom/slis/internal/session"
 	"github.com/jonnyom/slis/internal/swap"
 )
 
 var rmCmd = &cobra.Command{
 	Use:     "rm <slice>",
 	Aliases: []string{"clean", "done"},
-	Short:   "Remove a finished slice: delete its worktrees, kill its tmux session, delete merged branches",
+	Short:   "Remove a finished slice: delete its worktrees, stop its Slis session, delete merged branches",
 	Long: `Remove a finished slice. For each member repo it removes the git worktree
 (refusing if dirty unless --force), and by default deletes the feature branch
-if it is merged (git branch -d). It also kills the slice's tmux session and
+if it is merged (git branch -d). It also stops the slice's Slis session and
 clears its grouping override, status file, and managed-slice registry entry.
 
 Refuses if the slice is currently live (swapped in) — run 'slis deactivate' first.`,
@@ -56,11 +58,23 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 				}
 				fmt.Println(line)
 			}
-			fmt.Println("  + kill related tmux sessions, clear grouping override + status")
+			fmt.Println("  + stop related Slis sessions, clear grouping override + status")
 			if opts.Force {
 				fmt.Println("  (force: removes dirty worktrees and unmerged branches)")
 			}
 			return nil
+		}
+
+		manager, err := openSessionManager()
+		if err != nil {
+			return err
+		}
+		opts.KillSession = func(slice string) error {
+			err := manager.Kill(cmd.Context(), slice)
+			if errors.Is(err, sessionmanager.ErrGroupNotFound) {
+				return nil
+			}
+			return err
 		}
 
 		rep, err := cleanup.Remove(ws, sl, opts)
@@ -85,7 +99,7 @@ Refuses if the slice is currently live (swapped in) — run 'slis deactivate' fi
 			}
 		}
 		if rep.SessionKilled {
-			fmt.Println("  related tmux sessions killed")
+			fmt.Println("  related Slis sessions stopped")
 		}
 		return nil
 	},

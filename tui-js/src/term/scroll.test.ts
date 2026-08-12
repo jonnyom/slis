@@ -10,7 +10,28 @@ afterEach(() => {
 });
 
 describe("embedded terminal scrolling", () => {
-  test("preserves the horizontal cursor position across a line feed", async () => {
+  test("renders consecutive agent lines at column zero", async () => {
+    setup = await createTestRenderer({ width: 40, height: 6 });
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 40,
+      height: 6,
+      cols: 40,
+      rows: 6,
+      persistent: true,
+    });
+    setup.renderer.root.add(terminal);
+
+    terminal.feed("SLIS_CODEX_FIRST\nSLIS_CODEX_SECOND\n");
+
+    expect(
+      terminal
+        .getText()
+        .split("\n")
+        .filter((line) => line.includes("SLIS_CODEX_")),
+    ).toEqual(["SLIS_CODEX_FIRST", "SLIS_CODEX_SECOND"]);
+  });
+
+  test("returns to column zero across a line feed", async () => {
     setup = await createTestRenderer({ width: 40, height: 6 });
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
       width: 40,
@@ -23,7 +44,7 @@ describe("embedded terminal scrolling", () => {
 
     terminal.feed("\x1b[6G\nX");
 
-    expect(terminal.getText().split("\n")[1]).toBe("     X");
+    expect(terminal.getText().split("\n")[1]).toBe("X");
   });
 
   test("forwards the wheel without scrolling retained Ghostty history", async () => {

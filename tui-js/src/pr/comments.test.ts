@@ -4,6 +4,9 @@ import {
   cleanCommentBody,
   commentBlocks,
   commentKindLabel,
+  diffHunkContext,
+  indexInlineComments,
+  inlineCommentPreview,
   reviewStateLabel,
   wrapText,
 } from "./comments";
@@ -16,6 +19,37 @@ describe("cleanCommentBody", () => {
   });
   test("unescapes entities and collapses whitespace", () => {
     expect(cleanCommentBody("a &amp; b\n\n  c")).toBe("a & b c");
+  });
+});
+
+describe("inlineCommentPreview", () => {
+  test("keeps short comments and truncates long comments for the diff callout", () => {
+    expect(inlineCommentPreview("Short review.")).toEqual({
+      body: "Short review.",
+      truncated: false,
+    });
+    const preview = inlineCommentPreview("review ".repeat(100));
+    expect(preview.truncated).toBe(true);
+    expect(preview.body.endsWith("…")).toBe(true);
+    expect(preview.body.length).toBeLessThanOrEqual(321);
+  });
+});
+
+describe("indexInlineComments", () => {
+  test("groups live GitHub comments by branch, file, side, and line", () => {
+    const indexed = indexInlineComments(
+      [
+        { repo: "web", branch: "feature", pr: 12, author: "a", body: "new", url: "", kind: 2, path: "src/a.ts", line: 14, side: "RIGHT" },
+        { repo: "web", branch: "feature", pr: 12, author: "b", body: "old", url: "", kind: 2, path: "src/old.ts", line: 9, side: "LEFT" },
+        { repo: "web", branch: "other", pr: 13, author: "c", body: "wrong branch", url: "", kind: 2, path: "src/a.ts", line: 14, side: "RIGHT" },
+      ],
+      "web",
+      "feature",
+      "src/a.ts",
+      "src/old.ts",
+    );
+    expect(indexed.new.get(14)?.map((comment) => comment.body)).toEqual(["new"]);
+    expect(indexed.old.get(9)?.map((comment) => comment.body)).toEqual(["old"]);
   });
 });
 
@@ -79,5 +113,24 @@ describe("commentBlocks", () => {
     const blocks = commentBlocks("api", 1, [{ author: "", body: "", url: "" }], 80);
     expect(blocks[0]!.header).toBe("💬  api #1 — ?");
     expect(blocks[0]!.body).toEqual(["(no text)"]);
+  });
+
+  test("includes compact code context for inline comments", () => {
+    const blocks = commentBlocks(
+      "web",
+      8107,
+      [{
+        author: "rev",
+        body: "This breaks.",
+        url: "",
+        kind: 2,
+        path: "src/cart.ts",
+        line: 14,
+        diff_hunk: "@@ -12,3 +12,3 @@\n before\n-const old = 1\n+const next = 2\n after",
+      }],
+      80,
+    );
+    expect(blocks[0]!.code).toEqual(["  before", "- const old = 1", "+ const next = 2", "  after"]);
+    expect(diffHunkContext("@@ header\n+a\n+b\n+c\n+d\n+e\n+f")).toHaveLength(5);
   });
 });
