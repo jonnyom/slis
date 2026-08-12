@@ -8,10 +8,8 @@ puts its diffs, stacked branches, pull requests, CI, terminal sessions, processe
 and coding agents in one place. The OpenTUI interface is backed by a Go CLI, so
 the same workflows are available interactively, from scripts, or to an agent.
 
-> **Demo GIF coming soon**
->
-> The demo will show the hub, a slice cockpit, changed files, a rich diff, and an
-> attached agent session.
+<img width="1539" height="1395" alt="2026-08-12 16 00 29" src="https://github.com/user-attachments/assets/c280c0f3-5707-4521-8cc0-b577667d1b9d" />
+
 
 Slis is primarily a worktree and workspace manager. Coding-agent support is
 useful, but entirely optional.
