@@ -150,7 +150,7 @@ func TestManagerSendOnceSerializesConcurrentDelivery(t *testing.T) {
 	directory := t.TempDir()
 	binary := filepath.Join(directory, "zmx")
 	inputPath := filepath.Join(directory, "input")
-	script := "#!/bin/sh\ncat >> \"$ZMX_TEST_INPUT\"\n"
+	script := "#!/bin/sh\nprintf '%s' \"$3\" >> \"$ZMX_TEST_INPUT\"\n"
 	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
