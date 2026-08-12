@@ -1,0 +1,26 @@
+tui-js/src/app.tsx
+  s_f4c56e9ce5ef15::t_95a44823d63a23 450-454
+  s_f4c56e9ce5ef15::t_51cdb6aa41bcaa 36,455-457
+tui-js/src/term/tabs.tsx
+  s_f4c56e9ce5ef15::t_95a44823d63a23 60,62-63
+  s_f4c56e9ce5ef15::t_51cdb6aa41bcaa 57-59,61
+tui-js/src/term/tabs.test.ts
+  s_f4c56e9ce5ef15::t_58ae6d0f599667 5,82-85
+  s_f4c56e9ce5ef15::t_d3510d100f8eaa 56-81,86-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "a3854d5a3fe20d4648d0c0d3fc0638b9ae452455",
+  "prompts": {},
+  "sessions": {
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
