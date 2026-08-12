@@ -10,13 +10,21 @@ import (
 var ErrRuntimeMissing = errors.New("Slis session runtime is missing")
 
 func ResolveBinary(slisBinary, developmentOverride string) (string, error) {
-	candidates := []string{
-		filepath.Join(filepath.Dir(slisBinary), "zmx"),
-		filepath.Clean(filepath.Join(filepath.Dir(slisBinary), "..", "libexec", "zmx")),
-	}
+	var candidates []string
 	if resolved, err := filepath.EvalSymlinks(slisBinary); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(resolved), "zmx"))
+		resolvedDirectory := filepath.Dir(resolved)
+		candidates = append(
+			candidates,
+			filepath.Join(resolvedDirectory, "zmx"),
+			filepath.Clean(filepath.Join(resolvedDirectory, "..", "libexec", "zmx")),
+		)
 	}
+	binaryDirectory := filepath.Dir(slisBinary)
+	candidates = append(
+		candidates,
+		filepath.Join(binaryDirectory, "zmx"),
+		filepath.Clean(filepath.Join(binaryDirectory, "..", "libexec", "zmx")),
+	)
 	for _, candidate := range candidates {
 		available, err := executableFile(candidate)
 		if err != nil {

@@ -84,3 +84,39 @@ func TestResolveBinaryFindsPrivateLibexecRuntime(t *testing.T) {
 		t.Fatalf("binary = %q, want %q", got, runtimeBinary)
 	}
 }
+
+func TestResolveBinaryFindsPrivateLibexecRuntimeThroughSlisSymlink(t *testing.T) {
+	directory := t.TempDir()
+	prefixBin := filepath.Join(directory, "bin")
+	cellarBin := filepath.Join(directory, "Cellar", "slis", "0.12.0", "bin")
+	cellarLibexec := filepath.Join(directory, "Cellar", "slis", "0.12.0", "libexec")
+	for _, path := range []string{prefixBin, cellarBin, cellarLibexec} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	slisBinary := filepath.Join(cellarBin, "slis")
+	runtimeBinary := filepath.Join(cellarLibexec, "zmx")
+	unrelatedRuntime := filepath.Join(prefixBin, "zmx")
+	for _, path := range []string{slisBinary, runtimeBinary, unrelatedRuntime} {
+		if err := os.WriteFile(path, []byte("binary"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(prefixBin, "slis")
+	if err := os.Symlink(slisBinary, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveBinary(link, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := filepath.EvalSymlinks(runtimeBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != expected {
+		t.Fatalf("binary = %q, want %q", got, expected)
+	}
+}
