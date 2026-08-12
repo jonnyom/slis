@@ -16,22 +16,48 @@ the same workflows are available interactively, from scripts, or to an agent.
 Slis is primarily a worktree and workspace manager. Coding-agent support is
 useful, but entirely optional.
 
-## Contents
+## Quick start
 
-- [The idea](#the-idea)
-- [Why I built it](#why-i-built-it)
-- [Good use cases](#good-use-cases)
-- [Bad use cases](#bad-use-cases)
-- [Install](#install)
-- [How to use Slis](#how-to-use-slis)
-- [Configure Slis](#configure-slis)
-- [Command reference](#command-reference)
-- [Upgrading](#upgrading)
-- [Safety model](#safety-model)
-- [Contributing](#contributing)
-- [Project status](#project-status)
+Slis expects one workspace directory containing your repositories:
 
-## The idea
+```text
+~/work/acme/
+├── web/
+├── api/
+└── worker/
+```
+
+Install Slis, initialize that directory once, then open the TUI:
+
+```sh
+brew trust --cask jonnyom/tap/slis
+brew install jonnyom/homebrew-tap/slis
+
+cd ~/work/acme
+slis init .
+slis
+```
+
+Daily work happens inside the TUI:
+
+1. Press `c` in the hub to create a slice. Enter a feature name such as
+   `checkout`. Slis creates matching branches and worktrees in each repository.
+2. Select the slice with `j` or `k`, then press `enter` to open its cockpit.
+3. Press `C` to launch your default coding agent, `L` to choose another agent,
+   or `t` to open a shell.
+4. Select a branch and press `enter` to review its diff. GitHub review comments
+   appear beside the relevant code when `gh` is installed and authenticated.
+5. Press `d` when the slice is finished. Slis checks the worktrees before it
+   removes anything.
+
+Press `?` in any main view for the keys available there. Press `esc` to move
+back one level.
+
+If your branches use a personal prefix, initialize with
+`slis init . --strip-prefix your-name/`. Slis removes that prefix when it groups
+branches into slices.
+
+## What a slice is
 
 Suppose a feature called `checkout` requires changes in three repositories:
 
@@ -43,18 +69,13 @@ checkout
 ```
 
 Without Slis, those worktrees, pull requests, terminals, and branch states are
-separate things you have to keep aligned yourself. Slis treats them as one unit:
+separate things you have to keep aligned yourself. Slis puts them under one
+entry in the hub. Open that entry to review the whole feature, run its agents,
+swap it into primary checkouts, or clear it when the work is done.
 
-```sh
-slis create checkout
-slis activate checkout
-slis pr checkout
-slis rm checkout
-```
-
-The TUI calls that single-feature view the **cockpit**. It shows an operational
-summary first—stack position, PR and CI state, changed files, session status,
-and processes—then loads a full diff or file browser only when requested.
+The TUI calls that single-feature view the **cockpit**. It first shows stack
+position, PR and CI state, changed files, session status, and processes. It
+loads a full diff or file browser only when requested.
 
 Slis also works in a single repository. The multi-repo workflow is where the
 slice abstraction becomes most useful.
@@ -67,16 +88,16 @@ MCP service, several worktrees, a Graphite stack, a handful of PRs, and one or
 more coding agents. All the individual tools worked, but keeping the whole unit
 of work in my head did not.
 
-Slis is the cockpit I wanted for that workflow. It is deliberately opinionated
-around treating a feature—not a repository or a branch—as the thing I am
-actually working on. It works with coding agents, but they are not the point;
-the worktree and slice model is useful without them.
+Slis is the cockpit I wanted for that workflow. It treats a feature, not a
+repository or branch, as the thing I am working on. It works with coding
+agents, but they are not the point; the worktree and slice model is useful
+without them.
 
 I also want to be completely candid: **I 100% vibe coded this.** I built it with
 coding agents because I had a concrete problem I wanted solved, and at the
 beginning code completeness mattered much less to me than making the workflow
 real. The project has since gained a substantial test suite, safety checks, and
-release tooling because I use it for actual work—but I am not interested in
+release tooling because I use it for actual work. I am not interested in
 pretending it emerged from a solemn, perfectly planned software process.
 
 I am sharing it because other people may have the same problem, and because I
@@ -117,7 +138,7 @@ Slis is probably the wrong tool when:
 
 - you work in one checkout on one branch at a time and Git already feels simple;
 - a monorepo gives you all the isolation you need and you do not use worktrees;
-- you want a shared, hosted project-management system—Slis is a local developer
+- you want a shared, hosted project-management system. Slis is a local developer
   cockpit, not a team planning database;
 - you want Slis to hide Git entirely. It adds guardrails, but worktrees,
   branches, rebases, and dirty files still matter;
@@ -130,23 +151,11 @@ Slis is probably the wrong tool when:
 You also do not need Slis merely to use an AI coding agent. Its value comes from
 managing the surrounding Git and multi-repo workflow.
 
-## Install
+## Integrations
 
-### Homebrew (recommended)
-
-```sh
-brew trust --cask jonnyom/tap/slis
-brew install jonnyom/homebrew-tap/slis
-```
-
-The Homebrew release includes the complete Slis app for macOS and Linux,
-including its private session runtime. Bare `slis` launches the OpenTUI
-interface. No separate terminal multiplexer is required.
-
-### Optional integrations
-
-Slis starts without these tools and hides or disables the features that need
-them:
+The Homebrew package includes Slis and its private session runtime. You do not
+need a separate terminal multiplexer. Slis starts without the tools below and
+hides or disables the features that need them.
 
 | Tool | Enables |
 |---|---|
@@ -154,101 +163,50 @@ them:
 | `gt` | Graphite stack reading, restacking, submission, sync, and merge |
 | Claude Code or Codex | Agent sessions, AI summaries, and `fix-ci` |
 
-## How to use Slis
+## TUI guide
 
-### 1. Initialise a workspace
-
-Point Slis at the directory containing your repositories:
-
-```sh
-slis init ~/your-project
-```
-
-If branches share a personal prefix, tell Slis to remove it when deriving slice
-names:
-
-```sh
-slis init ~/your-project --strip-prefix jonny/
-```
-
-Slis scans for repositories and writes the workspace configuration to
-`$XDG_CONFIG_HOME/slis/workspace.yaml`, normally
-`~/.config/slis/workspace.yaml`.
-
-Check the result before doing anything else:
-
-```sh
-slis ls
-slis doctor
-```
-
-### 2. Open the hub
-
-Run Slis without a subcommand:
-
-```sh
-slis
-```
+### The hub
 
 The **hub** lists every managed slice and highlights work that needs attention,
 is active, is in review, or is ready to clear. Use `j`/`k` to navigate and
 `enter` to open a slice's cockpit. Press `?` anywhere for contextual help.
 
-Unknown worktrees are not silently adopted after initial migration. They appear
-as candidates so you can choose what Slis should manage:
+Unknown worktrees appear as candidates instead of entering the workspace
+silently. Press `i` to import discovered worktrees or `I` to adopt an existing
+branch as a managed slice.
 
-```sh
-slis candidates
-slis import /path/to/worktree
-slis ignore '/path/or/glob/**'
-```
+Useful hub keys:
 
-### 3. Create a slice
+| Key | Action |
+|---|---|
+| `j` / `k` | Move between slices |
+| `enter` | Open the focused slice |
+| `c` | Create a slice |
+| `/` | Search slices |
+| `w` | Swap the slice into or out of primary checkouts |
+| `d` | Clear a finished slice |
+| `C` / `L` / `t` | Launch the default agent, choose an agent, or open a shell |
+| `s` | Browse all running sessions |
+| `R` | Open Graphite stack actions |
 
-Create a new branch and worktree in every configured repository:
+### Create or import a slice
 
-```sh
-slis create checkout
-```
+Press `c` in the hub, enter a name, and confirm. Slis creates one branch and
+worktree in every configured repository. Creation runs in the background, so
+you can keep using the hub while it works.
 
-Use `--dry-run` to inspect the plan first. Slis records only worktrees that were
-actually created, so a partial failure does not invent nonexistent slice
-members or session tabs.
+For work that already exists, press `i` to import discovered worktrees or `I`
+to adopt a branch. Slis shows the candidates before it changes the workspace.
 
-To bring existing work into Slis instead:
+### The cockpit
 
-```sh
-# Create managed worktrees for an existing branch
-slis adopt existing-branch
-
-# Register a worktree that already exists where it is
-slis import /path/to/existing/worktree
-```
-
-Agents launched inside a slice receive `SLIS_SLICE`. In that context,
-`create`, `adopt`, and `import` refuse to register another managed slice by
-default, keeping agent scratch worktrees out of the hub. Use the conventional
-`.claude/worktrees` location for scratch work, or pass `--allow-from-slice` when
-creating a separate managed slice is intentional.
-
-In Graphite-initialised repositories, newly created or adopted branches are
-tracked best-effort. A Graphite failure does not block the Git worktree.
-
-### 4. Work from the cockpit
-
-Open a slice from the hub or inspect it headlessly:
-
-```sh
-slis show checkout
-slis show checkout --json
-```
-
-The cockpit has four operational areas:
+The cockpit has five panels:
 
 | Area | What it shows |
 |---|---|
 | Stack | Current worktree branch, downstack ancestry, health, summary, and changed files |
 | PRs | Pull requests, reviews, comments, CI, rerun/fix actions, and merge readiness |
+| Reviews | Local comments waiting to be sent to an agent |
 | Session | The slice's terminal and coding-agent sessions |
 | Processes | Processes rooted in the slice, including CPU history and guarded termination |
 
@@ -284,7 +242,7 @@ Useful cockpit keys:
 | `T` | Cycle System, Midnight, Violet, and Light themes |
 | `esc` / `h` | Return to the hub |
 
-### 5. Use a terminal or coding agent
+### The agent dock
 
 Each slice has an isolated, persistent Slis session rooted at the directory
 containing its repo worktrees. Slis ships and manages its own session runtime,
@@ -299,98 +257,43 @@ shell tabs start with your login shell from `$SHELL`.
 
 Set `sessions.layout: repos` if you want one terminal tab per repository.
 
-The equivalent CLI workflow is available through `slis focus`, `slis status`,
-and the review commands. For example:
-
-```sh
-slis status checkout --json
-slis review list checkout
-slis review send checkout
-slis review runs checkout --json
-slis review show <run-id>
-slis review message <run-id> --body "Re-check the locking path"
-slis review attach <run-id>
-```
-
-Run this once if you use Claude Code and want per-slice notifications when an
-agent stops or needs input:
-
-```sh
-slis init-hooks
-```
-
 See [Configure coding agents](#configure-coding-agents) for Claude, Codex, and
 custom commands.
 
-### 6. Activate a slice in your primary checkouts
+### Swap a slice into your primary checkouts
 
 Worktrees are ideal for isolation, but a development server may already be
-running from each repository's primary checkout. Activate the slice to move all
-primaries to temporary `slis/live/<slice>` branches at the slice tips:
+running from each repository's primary checkout. Press `w` to swap the focused
+slice into those checkouts. Press `w` again to restore their original branches.
+Slis records the original branch in every repository.
 
-```sh
-slis activate checkout
-```
-
-Slis journals the original branch in every repository. When finished, restore
-all primaries together:
-
-```sh
-slis deactivate
-```
-
-If the slice advances while active, update the primaries with:
-
-```sh
-slis refresh
-```
-
-Activation refuses dirty primary checkouts unless you explicitly pass
-`--stash`. That exact stash entry is restored during deactivation. Slis also
+Slis refuses dirty primary checkouts unless you choose the stash option in the
+confirmation dialog. It restores that exact stash when you swap back. It also
 warns when common lockfiles differ, since your running application may need its
 dependencies reinstalled.
 
-### 7. Review, submit, and monitor the work
+### Review and ship
 
-Use the TUI or the equivalent commands:
+The PRs panel shows review state and CI. Press `v` to inspect failing CI, `F` to
+send the failure to an agent, or `O` to open the focused PR in your browser.
 
-```sh
-slis pr checkout
-slis pr-stack checkout
-slis summary checkout
-slis conflicts
-```
+Press `R` for Graphite actions such as restack, submit, sync, and merge. Slis
+shows the command before it changes remote or repository-wide state.
 
-When Graphite is available:
+In a diff, select code with `v` or `space`, extend the range with `j` or `k`,
+then press `c` to write a note for the agent. Press `V` to inspect, delete, or
+send pending notes. GitHub comments from teammates appear inline beside their
+code and in the PR comment summary.
 
-```sh
-slis restack checkout
-slis submit checkout
-slis merge checkout
-```
+### Clear completed work
 
-`submit`, `merge`, and `sync` can change remote or repo-wide state. Inspect the
-slice and command help before running them.
-
-Every read command supports structured JSON where applicable, allowing an agent
-or script to use the same data as the TUI. The full machine-facing contract is
-documented in [docs/AGENT.md](docs/AGENT.md), and Slis ships an installable agent
-skill in [skills/slis](skills/slis).
-
-### 8. Clear completed work
-
-Preview cleanup, then remove the slice's worktrees, merged local branches, and
-Slis session:
-
-```sh
-slis rm checkout --dry-run
-slis rm checkout
-```
+Press `d` on a finished slice in the hub or cockpit. Slis shows what it will
+remove before it touches the worktrees, local branches, or session.
 
 Cleanup is idempotent. It removes empty Slis-managed parent directories after a
 successful removal, but refuses dirty worktrees, untracked files, locked
-worktrees, and directories Git does not recognise. Use `--force` only after
-inspecting the work that Git would otherwise protect.
+worktrees, and directories Git does not recognise. Force removal remains an
+explicit choice in the confirmation dialog.
 
 PR comments remain cached after cleanup so review history is not lost.
 
@@ -449,8 +352,8 @@ default is marked in the picker. Press `,` from any main TUI view to enter agent
 settings, then press `Enter` to make the focused agent the default. Slis writes
 that choice to `sessions.default_agent` in `workspace.yaml`; subsequent presses
 of `C` launch it immediately without reopening the picker.
-The last launched agent is remembered as well. Run `slis agent` to inspect the
-saved choice, or `slis agent clear-default` to return to first-launch selection.
+The last launched agent is remembered as well. Press `,` whenever you want to
+change the default.
 `layout: repos` creates one terminal tab inside each member worktree; `root`
 creates a shared parent tab; `both` provides both. Multi-repo slices default
 to `repos`, which avoids accidentally running Git or Graphite in an enclosing
@@ -486,48 +389,20 @@ $XDG_STATE_HOME/slis/prefs.json
 Environment variables override saved preferences for that launch. `NO_COLOR`
 always disables chromatic themes.
 
-## Command reference
+## CLI and automation
 
-Most TUI actions have a CLI equivalent. Run `slis <command> --help` for all
-options.
+The CLI backs the TUI and exists for setup, scripts, and coding agents. Most
+people only need it once:
 
-| Command | Purpose |
-|---|---|
-| `slis init [root]` | Scan a workspace and write its configuration |
-| `slis ls` | List managed slices and discovery warnings |
-| `slis show <slice>` | Show slice members and per-repo stack context |
-| `slis create <slice>` | Create a branch and worktree in every repository |
-| `slis adopt [branch]` | Create managed worktrees for existing work |
-| `slis candidates` | List discovered but unmanaged worktrees |
-| `slis import [path]` | Register an existing worktree as a slice |
-| `slis ignore <glob>` | Exclude unknown worktrees from discovery |
-| `slis forget <slice>` | Remove registry ownership without touching Git |
-| `slis activate <slice>` | Put all primaries on the slice tips |
-| `slis deactivate` | Restore every primary to its journalled branch |
-| `slis refresh` | Advance active primaries to newer slice tips |
-| `slis rm <slice>` | Remove completed worktrees, branches, and session |
-| `slis pr <slice>` | Show pull-request and CI status |
-| `slis pr-stack <slice>` | Produce a shareable PR-stack summary |
-| `slis summary <slice>` | Show commit or AI-generated prose summaries |
-| `slis review ...` | Add, list, remove, clear, or send review comments |
-| `slis conflicts` | Find files changed by more than one slice |
-| `slis status [slice]` | Show per-slice agent/session status |
-| `slis session ...` | List, create, focus, inspect, or stop persistent terminal tabs |
-| `slis restack/submit/merge/sync` | Run Graphite stack operations |
-| `slis ci-rerun <slice>` | Rerun failed GitHub Actions jobs |
-| `slis branch-diff/tree/cat` | Inspect stack revisions without checkout |
-| `slis group/ungroup` | Override automatic branch-name grouping |
-| `slis edit <slice>` | Open all member worktrees in one editor workspace |
-| `slis agent` | Show, set, or clear the default coding agent |
-| `slis doctor` | Diagnose configuration and workspace health |
-| `slis init-hooks` | Install Claude Code status hooks |
-| `slis init-skill` | Install the Slis skill for Claude Code or Codex |
-| `slis ui` | Explicitly launch the OpenTUI front-end |
-| `slis rpc` | Run the JSON-RPC sidecar used by the front-end |
+```sh
+slis init ~/work/acme
+slis doctor
+```
 
-Read-oriented commands—including `ls`, `show`, `status`, `pr`, `pr-stack`,
-`summary`, `conflicts`, `comments`, `doctor`, `candidates`, `branch-diff`,
-`tree`, and `cat`—support `--json`.
+Run `slis --help` to see the full command set. Read commands support JSON where
+applicable. The machine-facing contract lives in
+[docs/AGENT.md](docs/AGENT.md), and Slis ships an agent skill in
+[skills/slis](skills/slis).
 
 ## Upgrading
 
@@ -538,9 +413,8 @@ brew update
 brew upgrade slis
 ```
 
-Release archives contain a matching Go core and standalone OpenTUI front-end.
-Keep `slis` and `slis-ui` from the same release together; the front-end starts
-the Go binary as its sidecar.
+Release archives contain a matching Go core, OpenTUI front-end, and private
+session runtime. Keep all three files from the same release together.
 
 ### Existing workspaces
 
@@ -563,7 +437,7 @@ missing worktree, a branch ref, or a commit. Missing external worktrees remain
 visible for manual recovery, including worktrees on temporarily unavailable
 volumes.
 
-Existing workspace configuration—including `sessions.default_agent`—remains in
+Existing workspace configuration, including `sessions.default_agent`, remains in
 the XDG config directory. Theme and diff preferences, plus the legacy agent
 fallback, remain in the XDG state directory and are reused by new releases.
 
@@ -697,7 +571,7 @@ Before opening a pull request:
 - run the relevant Go and OpenTUI suites;
 - update this README or [docs/AGENT.md](docs/AGENT.md) when a user-facing or
   machine-facing contract changes;
-- keep cleanup and migration behavior conservative—never infer permission to
+- keep cleanup and migration behavior conservative. Never infer permission to
   delete branches, commits, non-empty directories, or external worktrees;
 - keep `slis` and `slis-ui` compatibility in mind when changing RPC data.
 
