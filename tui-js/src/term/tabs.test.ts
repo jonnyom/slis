@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   adjacentTabKey,
-  isDockRefocusShortcut,
+  dockRefocusAction,
   nextSessionTabID,
   sessionTabKeyForSlice,
   tabBarLabel,
@@ -53,9 +53,38 @@ describe("Slis terminal tabs", () => {
 
 describe("session terminal presentation", () => {
   test("ctrl+g refocuses a visible session dock", () => {
-    expect(isDockRefocusShortcut("g", true, true)).toBe(true);
-    expect(isDockRefocusShortcut("g", true, false)).toBe(false);
-    expect(isDockRefocusShortcut("g", false, true)).toBe(false);
+    const dock = {
+      kind: "session",
+      slice: "checkout",
+      opts: {
+        slice: "checkout",
+        kind: "agent",
+        tabID: "agent",
+        tabTitle: "agent",
+        members: [],
+        active: false,
+        wsRoot: "/workspace",
+        sessionOpts: {},
+        launchAgent: false,
+        agent: "",
+        harness: "claude",
+      },
+    } satisfies TabEntry;
+    const command = {
+      kind: "command",
+      id: "command:create",
+      title: "create",
+      argv: [],
+      exited: false,
+    } satisfies TabEntry;
+
+    expect(dockRefocusAction("g", true, dock)).toEqual({
+      activeTab: "session:checkout:agent",
+      terminalFocused: true,
+    });
+    expect(dockRefocusAction("g", true, null)).toBeNull();
+    expect(dockRefocusAction("g", false, dock)).toBeNull();
+    expect(dockRefocusAction("g", true, command)).toBeNull();
   });
 
   test("keeps a session dock visible with and without terminal focus", () => {

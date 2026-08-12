@@ -54,8 +54,13 @@ export function tabCycleDirection(sequence: string): -1 | 0 | 1 {
   return 0;
 }
 
-export function isDockRefocusShortcut(name: string, ctrl: boolean, dockVisible: boolean): boolean {
-  return dockVisible && ctrl && name.toLowerCase() === "g";
+export function dockRefocusAction(
+  name: string,
+  ctrl: boolean,
+  dockedTab: TabEntry | null | undefined,
+): { activeTab: string; terminalFocused: true } | null {
+  if (dockedTab?.kind !== "session" || !ctrl || name.toLowerCase() !== "g") return null;
+  return { activeTab: tabKey(dockedTab), terminalFocused: true };
 }
 
 // A tmux-session tab (keyed by slice) or an interactive command tab (keyed by a

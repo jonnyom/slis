@@ -33,7 +33,7 @@ import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { TermManager } from "./term/manager";
 import {
-  isDockRefocusShortcut,
+  dockRefocusAction,
   nextSessionTabID,
   sessionTabKeyForSlice,
   TerminalLayer,
@@ -447,8 +447,14 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   useKeyboard((key) => {
     const enabled = !overlays.active && !procsOpen && bulkPromptCount === null && !termMode;
     const name = normalizeKeyName(key);
-    if (enabled && isDockRefocusShortcut(name, key.ctrl === true, dockedSessionTab !== null)) {
-      setTermMode(true);
+    const refocus = dockRefocusAction(
+      name,
+      key.ctrl === true,
+      tabs.find((tab) => tabKey(tab) === dockedSessionTab),
+    );
+    if (enabled && refocus) {
+      setActiveTab(refocus.activeTab);
+      setTermMode(refocus.terminalFocused);
       return;
     }
     if (
