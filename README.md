@@ -38,6 +38,10 @@ slis init .
 slis
 ```
 
+Each repository needs at least one commit because a Git worktree must start
+from a commit. For an empty test repository, create one with
+`git commit --allow-empty -m "Initial commit"`.
+
 Daily work happens inside the TUI:
 
 1. Press `c` in the hub to create a slice. Enter a feature name such as

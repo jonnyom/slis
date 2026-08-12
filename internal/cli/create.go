@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jonnyom/slis/internal/agentlaunch"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/git"
@@ -131,6 +132,16 @@ func createFreshWorktree(primary, path, branch, start, mergedPRHead string) erro
 	effectiveStart := start
 	if effectiveStart == "" {
 		effectiveStart = "HEAD"
+	}
+	if effectiveStart == "HEAD" {
+		if _, err := git.RevParse(primary, "HEAD"); err != nil {
+			return fmt.Errorf(
+				"repository at %s has no commits; create an initial commit, then retry\n  helper: git -C %s commit --allow-empty -m %s",
+				agentlaunch.ShellSingleQuote(primary),
+				agentlaunch.ShellSingleQuote(primary),
+				agentlaunch.ShellSingleQuote("Initial commit"),
+			)
+		}
 	}
 	if currentBranch, err := git.CurrentBranch(path); err == nil && currentBranch == branch {
 		return nil

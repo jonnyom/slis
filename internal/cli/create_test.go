@@ -3,6 +3,7 @@ package cli
 import (
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/git"
@@ -19,6 +20,27 @@ func gitCreate(t *testing.T, dir string, args ...string) {
 		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestCreateFreshWorktreeExplainsRepositoryWithoutCommits(t *testing.T) {
+	repo := t.TempDir()
+	gitCreate(t, repo, "init", "-q")
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	err := createFreshWorktree(repo, worktree, "test", "", "")
+	if err == nil {
+		t.Fatal("expected createFreshWorktree to reject a repository without commits")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "has no commits") {
+		t.Fatalf("error = %q, want no-commits diagnosis", message)
+	}
+	if !strings.Contains(message, "commit --allow-empty -m 'Initial commit'") {
+		t.Fatalf("error = %q, want initial-commit helper", message)
+	}
+	if strings.Contains(message, "invalid reference") {
+		t.Fatalf("error exposes raw Git failure: %q", message)
 	}
 }
 
