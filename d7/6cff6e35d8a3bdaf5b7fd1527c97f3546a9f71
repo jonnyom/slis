@@ -1,0 +1,82 @@
+tui-js/src/util/keys.ts
+  s_f4c56e9ce5ef15::t_604f55d4d3de45 20-23
+internal/config/paths_test.go
+  s_f4c56e9ce5ef15::t_205f588d246844 13-14,45-46,85,87-166
+  s_f4c56e9ce5ef15::t_3a4d9b24b8c060 74-82
+tui-js/src/views/cockpit.tsx
+  s_f4c56e9ce5ef15::t_4934eab4c35a1f 1554
+tui-js/src/term/tabs.tsx
+  s_f4c56e9ce5ef15::t_367a27913f3083 51,54-56,379,381,468-469,476-477,494-499
+  s_f4c56e9ce5ef15::t_6373b18fc4dde1 5-6,36,47-50,301,311,383,388-389,394,407,431,451,474-475,492,500-501,534
+  s_f4c56e9ce5ef15::t_0abd00860090eb 52-53,380
+  s_f4c56e9ce5ef15::t_4934eab4c35a1f 493
+tui-js/src/components/diffview.tsx
+  s_f4c56e9ce5ef15::t_4934eab4c35a1f 532
+internal/cli/init.go
+  s_f4c56e9ce5ef15::t_36f22fcae99fbe 43,89
+internal/cli/agent_test.go
+  s_f4c56e9ce5ef15::t_205f588d246844 12
+internal/cli/session.go
+  s_f4c56e9ce5ef15::t_d378c67baff1de 361
+docs/AGENT.md
+  s_f4c56e9ce5ef15::t_89fdb78f10b66f 17-18,385-386
+internal/zmxctl/client.go
+  s_f4c56e9ce5ef15::t_f26f7338f585e0 178
+internal/zmxctl/runtime_test.go
+  s_f4c56e9ce5ef15::t_d378c67baff1de 10,29
+  s_f4c56e9ce5ef15::t_3ce0a7927c4648 37-50
+internal/cli/ui.go
+  s_f4c56e9ce5ef15::t_70c23900768030 9,12,47,65,76-84
+  s_f4c56e9ce5ef15::t_e528f10beb9ae0 85-86
+internal/zmxctl/client_test.go
+  s_f4c56e9ce5ef15::t_205f588d246844 194-211
+tui-js/src/term/tabs.mouse.test.tsx
+  s_f4c56e9ce5ef15::t_4b1aed530d2be9 225-252,254-258
+  s_f4c56e9ce5ef15::t_c051ee0a14cbbb 260-287,289-293
+  s_f4c56e9ce5ef15::t_ac93e2e13fbb9c 191-223
+  s_f4c56e9ce5ef15::t_4d4462a02394e2 224,253,259,288
+internal/zmxctl/runtime.go
+  s_f4c56e9ce5ef15::t_d378c67baff1de 4-5,11,14-19
+tui-js/src/app.tsx
+  s_f4c56e9ce5ef15::t_6373b18fc4dde1 1123
+internal/cli/ui_test.go
+  s_f4c56e9ce5ef15::t_205f588d246844 5,9-16
+  s_74ff3d667b5c77::t_1094f85445dc8f 17
+README.md
+  s_f4c56e9ce5ef15::t_0abd00860090eb 257-258
+  s_f4c56e9ce5ef15::t_89fdb78f10b66f 306-309,312-313,316-318,388-389,392-393,447-449
+  s_f4c56e9ce5ef15::t_e301e9d0913dbb 255-256
+tui-js/src/util/keys.test.ts
+  s_f4c56e9ce5ef15::t_7b8ec8fc182d6b 2,50-54
+  s_74ff3d667b5c77::t_d538538574d1d5 55-56
+tui-js/src/views/browser.tsx
+  s_f4c56e9ce5ef15::t_604f55d4d3de45 43,727
+internal/config/paths.go
+  s_f4c56e9ce5ef15::t_cdff49f4b01931 108,179-181
+  s_f4c56e9ce5ef15::t_a756d63c225c5a 4-5,8,13-14,68-70,103-107,109-116,121-137,140-155,157-159,161-166,184-209
+  s_f4c56e9ce5ef15::t_ba695de28c47c6 9-10,117-120,156,160,167-178,182-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "d76cff6e35d8a3bdaf5b7fd1527c97f3546a9f71",
+  "prompts": {},
+  "sessions": {
+    "s_74ff3d667b5c77": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1bb3013b-a1fd-47e9-8947-f6a9711add3b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
