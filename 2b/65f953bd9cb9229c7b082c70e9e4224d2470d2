@@ -1,0 +1,22 @@
+internal/zmxctl/client.go
+  s_f4c56e9ce5ef15::t_7c827ad428a541 36-42
+internal/zmxctl/client_test.go
+  s_f4c56e9ce5ef15::t_7f33d4d92df4c3 194-195,202,204-217
+  s_f4c56e9ce5ef15::t_b44f9e1abb982e 196-201,203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "2b65f953bd9cb9229c7b082c70e9e4224d2470d2",
+  "prompts": {},
+  "sessions": {
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
