@@ -1,0 +1,36 @@
+tui-js/src/term/e2e.ts
+  s_f4c56e9ce5ef15::t_3f225f13c7cb89 229,236-239,242
+  s_f4c56e9ce5ef15::t_710ce3acf0a5cf 180-186,234-235,240
+  s_f4c56e9ce5ef15::t_47594e2c5d2493 25-33,284-285
+  s_f4c56e9ce5ef15::t_555b894c7773e2 71-74,76
+  s_f4c56e9ce5ef15::t_8162f5b277932c 66-70
+  s_f4c56e9ce5ef15::t_5bd376005bb8d6 232-233
+  s_f4c56e9ce5ef15::t_7f0bcaa8ec6ad3 296
+  s_f4c56e9ce5ef15::t_21ea77d65bd580 10,149-150,203,214,248-249,260,274
+  s_f4c56e9ce5ef15::t_fb3ef94731fd2c 151-170
+tui-js/src/term/attachment.test.tsx
+  s_f4c56e9ce5ef15::t_b751a7cb6aaddf 1-39
+  s_f4c56e9ce5ef15::t_dcb609e303df38 40-65
+tui-js/src/term/tabs.tsx
+  s_f4c56e9ce5ef15::t_9a53c89d849c15 23,201,205,216-226,228
+  s_f4c56e9ce5ef15::t_93464d70d204a9 207,237,245,264-266
+  s_f4c56e9ce5ef15::t_aede8f620e7813 204,253,263
+tui-js/src/term/attachment.ts
+  s_f4c56e9ce5ef15::t_8b3ea2d1e970e4 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "027acac3d295dc2620b083a4256840f8b813f440",
+  "prompts": {},
+  "sessions": {
+    "s_f4c56e9ce5ef15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff0e2-cba6-7f23-a474-f50117518996",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
