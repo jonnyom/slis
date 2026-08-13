@@ -191,6 +191,30 @@ func TestClientEnsureRejectsSocketPathTooLong(t *testing.T) {
 	}
 }
 
+func TestClientEnsureExplainsHowToRestoreMissingRuntime(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "libexec", "zmx")
+	runtimeDirectory, err := os.MkdirTemp("/tmp", "slis-missing-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(runtimeDirectory) })
+	client := New(binary, runtimeDirectory)
+
+	err = client.Ensure(context.Background(), "group-root", t.TempDir())
+	if !errors.Is(err, ErrRuntimeMissing) {
+		t.Fatalf("error = %v, want ErrRuntimeMissing", err)
+	}
+	for _, expected := range []string{
+		binary,
+		"Reinstall Slis so slis, slis-ui, and zmx come from the same release.",
+		"brew reinstall --formula jonnyom/tap/slis",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("error = %q, want text %q", err, expected)
+		}
+	}
+}
+
 func TestRuntimeEnvironmentDoesNotLeakWorkspaceSelection(t *testing.T) {
 	t.Setenv("SLIS_WORKSPACE_CONFIG", "/workspace/one/workspace.yaml")
 	t.Setenv("ZMX_DIR", "/old/runtime")

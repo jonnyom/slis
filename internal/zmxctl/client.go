@@ -33,6 +33,13 @@ func (client *Client) Ensure(ctx context.Context, name, directory string) error 
 	cmd.Dir = directory
 	cmd.Stdin = strings.NewReader("\x1c")
 	if output, err := cmd.CombinedOutput(); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf(
+				"%w at %q. Reinstall Slis so slis, slis-ui, and zmx come from the same release. Homebrew: brew reinstall --formula jonnyom/tap/slis",
+				ErrRuntimeMissing,
+				client.binary,
+			)
+		}
 		return fmt.Errorf("session runtime ensure %s: %s: %w", name, strings.TrimSpace(string(output)), err)
 	}
 	return nil
