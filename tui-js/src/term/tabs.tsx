@@ -20,6 +20,7 @@ import {
 } from "./input";
 import { requestTerminalFullRepaint } from "./repaint";
 import { EmbeddedTerminalRenderable } from "./embedded";
+import { useDelayedSessionAttachment } from "./attachment";
 
 // Register <ghosttyTerminal> as an OpenTUI intrinsic element.
 extend({ ghosttyTerminal: EmbeddedTerminalRenderable });
@@ -197,15 +198,13 @@ function TermTab({
   visibleRef.current = shown;
 
   const key = tabKey(entry);
+  const attachmentActive = useDelayedSessionAttachment(shown, entry.kind === "session");
 
-  // Attach the PTY once; detach on unmount (tab close / app quit). A tmux
-  // session is never killed — detach only drops its client; a command PTY is
-  // killed by detach only if still running.
   useEffect(() => {
-    const term = ref.current;
-    if (!term) return;
+    const terminal = ref.current;
+    if (!terminal || !attachmentActive) return;
     const feedBuffer = new TerminalFeedBuffer((bytes) => {
-      term.feed(bytes);
+      terminal.feed(bytes);
       if (visibleRef.current) requestTerminalFullRepaint(renderer);
     });
     const feed = (bytes: Uint8Array) => {
@@ -214,11 +213,19 @@ function TermTab({
     if (entry.kind === "session") {
       const session = manager.session(key, entry.slice);
       const offExit = session.onExit(() => onSessionExit(key));
-      session.attach(cols, rows, feed, entry.opts).catch((err) => {
-        term.feed(`\r\n[slis] failed to attach session: ${String(err)}\r\n`);
-        renderer.requestRender();
-      });
+      let disposed = false;
+      void session.attach(cols, rows, feed, entry.opts).then(
+        () => {
+          if (disposed) session.detach();
+        },
+        (err) => {
+          if (disposed) return;
+          terminal.feed(`\r\n[slis] failed to attach session: ${String(err)}\r\n`);
+          renderer.requestRender();
+        },
+      );
       return () => {
+        disposed = true;
         feedBuffer.cancel();
         offExit();
         manager.detach(key);
@@ -227,7 +234,7 @@ function TermTab({
     const cmd = manager.command(key, entry.title, entry.argv, entry.cwd);
     const offExit = cmd.onExit((code) => {
       const ok = code === 0;
-      term.feed(
+      terminal.feed(
         `\r\n[slis] ${entry.title} ${ok ? "finished" : `exited (code ${code})`}` +
           ` — press ctrl+q to close\r\n`,
       );
@@ -235,7 +242,7 @@ function TermTab({
       onCommandExit(key, code);
     });
     cmd.attach(cols, rows, feed).catch((err) => {
-      term.feed(`\r\n[slis] failed to run ${entry.title}: ${String(err)}\r\n`);
+      terminal.feed(`\r\n[slis] failed to run ${entry.title}: ${String(err)}\r\n`);
       renderer.requestRender();
     });
     return () => {
@@ -243,8 +250,7 @@ function TermTab({
       offExit();
       manager.detach(key);
     };
-    // Attach once on mount; size/visibility are driven by the effects below.
-  }, []);
+  }, [attachmentActive]);
 
   // Propagate size changes to the PTY (the renderable's own cols/rows are set
   // via props on re-render).
@@ -254,10 +260,10 @@ function TermTab({
 
   // Cursor rendering is gated on focus; only the visible tab is focused.
   useEffect(() => {
-    const term = ref.current;
-    if (!term) return;
-    if (focused) term.focus();
-    else term.blur();
+    const terminal = ref.current;
+    if (!terminal) return;
+    if (focused) terminal.focus();
+    else terminal.blur();
   }, [focused]);
 
   return (
