@@ -85,7 +85,7 @@ export function tabKey(t: TabEntry): string {
 export function tabLabel(t: TabEntry): string {
   if (t.kind !== "session") return t.title;
   if (t.opts.targetSession) return t.opts.targetSession.replace(/^slis(?:-shell)?\//, "");
-  return `${t.slice} · ${t.opts.agentLabel ?? t.opts.tabTitle}`;
+  return `${t.slice} · ${t.opts.runtimeLabel ?? t.opts.agentLabel ?? t.opts.tabTitle}`;
 }
 
 export function tabBarLabel(tab: TabEntry, tabs: TabEntry[]): string {
@@ -95,7 +95,7 @@ export function tabBarLabel(tab: TabEntry, tabs: TabEntry[]): string {
       entry.kind === "session" && !entry.opts.targetSession,
   );
   if (sessionTabs.length > 0 && sessionTabs.every((entry) => entry.slice === tab.slice)) {
-    return tab.opts.agentLabel ?? tab.opts.tabTitle;
+    return tab.opts.runtimeLabel ?? tab.opts.agentLabel ?? tab.opts.tabTitle;
   }
   return tabLabel(tab);
 }
@@ -179,6 +179,7 @@ function TermTab({
   onFocus,
   onRenderable,
   onSessionExit,
+  onSessionActivity,
   onCommandExit,
 }: {
   entry: TabEntry;
@@ -192,6 +193,7 @@ function TermTab({
   onRenderable: (key: string, terminal: EmbeddedTerminalRenderable | null) => void;
   /** A tmux client died (session killed elsewhere) → close the tab. */
   onSessionExit: (key: string) => void;
+  onSessionActivity?: () => void;
   /** A command process exited → mark the tab exited (kept open for the user). */
   onCommandExit: (id: string, code: number) => void;
 }): ReactNode {
@@ -223,6 +225,7 @@ function TermTab({
     );
     const feed = (bytes: Uint8Array) => {
       feedBuffer.write(bytes);
+      if (entry.kind === "session") onSessionActivity?.();
     };
     if (entry.kind === "session") {
       const session = manager.session(key, entry.slice);
@@ -463,6 +466,7 @@ export function TerminalLayer({
   onCloseTab,
   onFocus,
   onSessionExit,
+  onSessionActivity,
   onCommandExit,
 }: {
   tabs: TabEntry[];
@@ -483,6 +487,7 @@ export function TerminalLayer({
   onCloseTab?: (key: string) => void;
   onFocus: () => void;
   onSessionExit: (key: string) => void;
+  onSessionActivity?: () => void;
   onCommandExit: (id: string, code: number) => void;
 }): ReactNode {
   const renderer = useRenderer();
@@ -593,6 +598,7 @@ export function TerminalLayer({
             onFocus={onFocus}
             onRenderable={registerTerminalRenderable}
             onSessionExit={onSessionExit}
+            onSessionActivity={onSessionActivity}
             onCommandExit={onCommandExit}
           />
         );

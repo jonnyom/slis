@@ -54,14 +54,7 @@ func ResolveAgent(sessions config.Sessions, name string, lookPath LookPath) (con
 		}
 	}
 
-	known := []config.AgentSpec{
-		{Name: "Claude Code", Cmd: []string{"claude"}},
-		{Name: "Codex", Cmd: []string{"codex"}},
-		{Name: "Gemini CLI", Cmd: []string{"gemini"}},
-		{Name: "Cursor Agent", Cmd: []string{"cursor-agent"}},
-		{Name: "OpenCode", Cmd: []string{"opencode"}},
-	}
-	for _, agent := range known {
+	for _, agent := range KnownAgents() {
 		if !strings.EqualFold(agent.Name, selectedName) && !strings.EqualFold(agent.Cmd[0], selectedName) {
 			continue
 		}
@@ -73,6 +66,16 @@ func ResolveAgent(sessions config.Sessions, name string, lookPath LookPath) (con
 		return agent, nil
 	}
 	return config.AgentSpec{}, fmt.Errorf("unknown reviewer agent %q", selectedName)
+}
+
+func KnownAgents() []config.AgentSpec {
+	return []config.AgentSpec{
+		{Name: "Claude Code", Cmd: []string{"claude"}},
+		{Name: "Codex", Cmd: []string{"codex"}},
+		{Name: "Gemini CLI", Cmd: []string{"gemini"}},
+		{Name: "Cursor Agent", Cmd: []string{"cursor-agent"}},
+		{Name: "OpenCode", Cmd: []string{"opencode"}},
+	}
 }
 
 func Run(ctx context.Context, cwd string, slice model.Slice, agent config.AgentSpec, execute Execute) ([]Finding, error) {

@@ -46,6 +46,7 @@ type ProcInfo struct {
 	CPU   float64 // cumulative CPU percent since process start (non-blocking)
 	MemMB float64 // RSS in MiB
 	Cmd   string  // command line (may be truncated)
+	CWD   string
 }
 
 // SliceProcs returns all processes in the descendant trees of the given pane
@@ -110,6 +111,10 @@ func snapshot(p *goproc.Process) ProcInfo {
 
 	if cmd, err := p.Cmdline(); err == nil {
 		info.Cmd = cmd
+	}
+
+	if cwd, err := p.Cwd(); err == nil {
+		info.CWD = cwd
 	}
 
 	return info

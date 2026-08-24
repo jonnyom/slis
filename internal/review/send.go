@@ -66,10 +66,10 @@ type TmuxSession struct {
 // Exists reports whether the slice's tmux session is live.
 func (TmuxSession) Exists(slice string) bool { return tmuxctl.SessionExists(slice) }
 
-// commandLineMatchesAgent reports whether the active command or one process
+// CommandLineMatchesAgent reports whether the active command or one process
 // command line in its pane tree belongs to a configured agent. Script-backed
 // CLIs are covered (for example `node .../@anthropic-ai/claude-code/cli.js`).
-func commandLineMatchesAgent(current, cmdline string, agents []string) bool {
+func CommandLineMatchesAgent(current, cmdline string, agents []string) bool {
 	current = strings.ToLower(filepath.Base(current))
 	line := strings.ToLower(cmdline)
 	for _, configured := range agents {
@@ -109,11 +109,11 @@ func (s TmuxSession) HasAgent(slice string) bool {
 	processes, _ := proc.SliceProcs([]int{pid})
 	current := tmuxctl.ActivePaneCommand(slice)
 	for _, p := range processes {
-		if commandLineMatchesAgent(current, p.Cmd, s.AgentCommands) {
+		if CommandLineMatchesAgent(current, p.Cmd, s.AgentCommands) {
 			return true
 		}
 	}
-	return commandLineMatchesAgent(current, "", s.AgentCommands)
+	return CommandLineMatchesAgent(current, "", s.AgentCommands)
 }
 
 // ActivateAgent finds a configured agent anywhere in the slice session and
@@ -126,11 +126,11 @@ func (s TmuxSession) ActivateAgent(slice string) bool {
 	for _, pane := range panes {
 		processes, _ := proc.SliceProcs([]int{pane.PID})
 		for _, p := range processes {
-			if commandLineMatchesAgent(pane.Command, p.Cmd, s.AgentCommands) {
+			if CommandLineMatchesAgent(pane.Command, p.Cmd, s.AgentCommands) {
 				return tmuxctl.SelectPane(pane.Target) == nil
 			}
 		}
-		if commandLineMatchesAgent(pane.Command, "", s.AgentCommands) {
+		if CommandLineMatchesAgent(pane.Command, "", s.AgentCommands) {
 			return tmuxctl.SelectPane(pane.Target) == nil
 		}
 	}
@@ -189,7 +189,7 @@ func (session SlisSession) HasAgent(slice string) bool {
 		return false
 	}
 	for _, process := range processes {
-		if commandLineMatchesAgent("", process.Cmd, session.AgentCommands) {
+		if CommandLineMatchesAgent("", process.Cmd, session.AgentCommands) {
 			return true
 		}
 	}

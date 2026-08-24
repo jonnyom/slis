@@ -65,6 +65,7 @@ import {
   agentCmdline,
   agentTabID,
 } from "./term/agentpick";
+import { applySessionRuntimeLabels } from "./term/runtime";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
@@ -152,8 +153,14 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const dockedSessionBySliceRef = useRef(new Map<string, string>());
   const hiddenDockSlicesRef = useRef(new Set<string>());
   const restoredSessionsRef = useRef(false);
+  const runtimeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runtimeLastActivityRef = useRef(0);
   const [termMode, setTermMode] = useState(false);
   const nextCmdIdRef = useRef(0);
+
+  useEffect(() => () => {
+    if (runtimeRefreshTimeoutRef.current) clearTimeout(runtimeRefreshTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     if (!dockedSessionTab) return;
@@ -177,6 +184,23 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
 
   // Transient toasts (spec §3.5) + non-blocking create (spec D2).
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const refreshSessionRuntime = useCallback(() => {
+    runtimeLastActivityRef.current = Date.now();
+    if (runtimeRefreshTimeoutRef.current) return;
+    const refreshAfterQuietPeriod = () => {
+      const remainingMilliseconds = 250 - (Date.now() - runtimeLastActivityRef.current);
+      if (remainingMilliseconds > 0) {
+        runtimeRefreshTimeoutRef.current = setTimeout(refreshAfterQuietPeriod, remainingMilliseconds);
+        return;
+      }
+      runtimeRefreshTimeoutRef.current = null;
+      void listSlisSessions(true).then(
+        (groups) => setTabs((currentTabs) => applySessionRuntimeLabels(currentTabs, groups)),
+        (error) => pushToast(`Could not refresh terminal labels: ${String(error)}`, "ci-fail"),
+      );
+    };
+    runtimeRefreshTimeoutRef.current = setTimeout(refreshAfterQuietPeriod, 250);
+  }, [pushToast]);
   const [createState, dispatchCreate] = useReducer(createReducer, initialCreateState);
   const [browserFocusRequest, setBrowserFocusRequest] = useState<{
     id: number;
@@ -622,7 +646,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   useEffect(() => {
     if (restoredSessionsRef.current || !hello || !ls || !slisSessionAvailable()) return;
     restoredSessionsRef.current = true;
-    void listSlisSessions().then(
+    void listSlisSessions(true).then(
       (groups) => {
         const restoredTabs = groups.flatMap((group): TabEntry[] => {
           return group.tabs.flatMap((tab): TabEntry[] => {
@@ -639,6 +663,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
                 tabTitle: tab.title,
                 launchAgent: false,
                 agentLabel: kind === "agent" ? tab.title : undefined,
+                runtimeLabel: tab.label,
               },
             }];
           });
@@ -1143,6 +1168,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           setTermMode(true);
         }}
         onSessionExit={closeTab}
+        onSessionActivity={refreshSessionRuntime}
         onCommandExit={markCommandExited}
       />
 

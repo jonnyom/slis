@@ -25,6 +25,12 @@ type Manager struct {
 	client *zmxctl.Client
 }
 
+type TabRuntime struct {
+	GroupID   string
+	TabID     string
+	Processes []proc.ProcInfo
+}
+
 func NewManager(store *Store, client *zmxctl.Client) *Manager {
 	return &Manager{store: store, client: client}
 }
@@ -243,6 +249,32 @@ func (manager *Manager) CaptureGroup(ctx context.Context, groupID string) (strin
 func (manager *Manager) Processes(ctx context.Context, groupID, tabID string) ([]proc.ProcInfo, error) {
 	_, processes, err := manager.terminalProcesses(ctx, groupID, tabID)
 	return processes, err
+}
+
+func (manager *Manager) Runtimes(ctx context.Context, groups []Group) ([]TabRuntime, error) {
+	sessions, err := manager.client.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pids := make(map[string]int, len(sessions))
+	for _, runtimeSession := range sessions {
+		pids[runtimeSession.Name] = runtimeSession.PID
+	}
+	runtimes := make([]TabRuntime, 0)
+	for _, group := range groups {
+		for _, tab := range group.Tabs {
+			pid := pids[tab.PersistenceName]
+			if pid <= 0 {
+				continue
+			}
+			processes, processErr := proc.SliceProcs([]int{pid})
+			if processErr != nil {
+				return nil, processErr
+			}
+			runtimes = append(runtimes, TabRuntime{GroupID: group.ID, TabID: tab.ID, Processes: processes})
+		}
+	}
+	return runtimes, nil
 }
 
 func (manager *Manager) terminalProcesses(ctx context.Context, groupID, tabID string) (int, []proc.ProcInfo, error) {

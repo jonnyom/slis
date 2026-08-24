@@ -7,6 +7,9 @@ export interface SessionTab {
   kind: SessionTabKind;
   title: string;
   cwd: string;
+  agent?: string;
+  current_directory?: string;
+  label?: string;
 }
 
 export interface SessionGroup {
@@ -74,8 +77,8 @@ export function sessionLegacySendArgv(name: string): string[] {
   return [BIN, "session", "legacy-send", name];
 }
 
-export function sessionListArgv(): string[] {
-  return [BIN, "session", "list"];
+export function sessionListArgv(live = false): string[] {
+  return live ? [BIN, "session", "list", "--live"] : [BIN, "session", "list"];
 }
 
 export function sessionKillArgv(groupID: string): string[] {
@@ -114,8 +117,8 @@ export async function listLegacySessions(): Promise<LegacySession[]> {
   return JSON.parse(await run(sessionLegacyListArgv())) as LegacySession[];
 }
 
-export async function listSlisSessions(): Promise<SessionGroup[]> {
-  return JSON.parse(await run(sessionListArgv())) as SessionGroup[];
+export async function listSlisSessions(live = false): Promise<SessionGroup[]> {
+  return JSON.parse(await run(sessionListArgv(live))) as SessionGroup[];
 }
 
 export async function killLegacySession(name: string): Promise<boolean> {

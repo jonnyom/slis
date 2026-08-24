@@ -84,6 +84,7 @@ describe("Slis terminal commands", () => {
       "slis/feature",
     ]);
     expect(sessionListArgv()).toEqual(["slis", "session", "list"]);
+    expect(sessionListArgv(true)).toEqual(["slis", "session", "list", "--live"]);
     expect(sessionKillArgv("feature")).toEqual(["slis", "session", "kill", "feature"]);
     expect(sessionKillTabArgv("feature", "agent-2")).toEqual([
       "slis",

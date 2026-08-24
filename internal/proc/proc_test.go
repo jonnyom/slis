@@ -40,9 +40,13 @@ func TestSliceProcsFindsBusyChild(t *testing.T) {
 
 	// Verify the burner PID is present (key behaviour).
 	found := false
+	foundWorkingDirectory := false
 	for _, p := range procs {
 		if p.PID == burnerPID {
 			found = true
+		}
+		if p.PID == os.Getpid() && p.CWD != "" {
+			foundWorkingDirectory = true
 		}
 		// Sanity: every entry must have a non-negative CPU value.
 		if p.CPU < 0 {
@@ -51,6 +55,9 @@ func TestSliceProcsFindsBusyChild(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("burner PID %d not found in SliceProcs result (got %d entries)", burnerPID, len(procs))
+	}
+	if !foundWorkingDirectory {
+		t.Fatal("test process working directory was not captured")
 	}
 
 	// Verify sorted by CPU descending (allow ties).

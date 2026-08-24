@@ -42,6 +42,17 @@ describe("Slis terminal tabs", () => {
     expect(adjacentTabKey([root, entry], tabKey(root), 1)).toBe(tabKey(entry));
     expect(adjacentTabKey([root, entry], tabKey(root), -1)).toBe(tabKey(entry));
     expect(tabBarLabel(entry, [root, entry])).toBe("api");
+
+    const runningCodex = {
+      ...root,
+      opts: { ...root.opts, runtimeLabel: "Codex" },
+    } satisfies TabEntry;
+    const idleClaude = {
+      ...entry,
+      opts: { ...entry.opts, runtimeLabel: "~/nory/web-app" },
+    } satisfies TabEntry;
+    expect(tabBarLabel(runningCodex, [runningCodex, idleClaude])).toBe("Codex");
+    expect(tabBarLabel(idleClaude, [runningCodex, idleClaude])).toBe("~/nory/web-app");
   });
 
   test("allocates another stable id for repeated agent and shell tabs", () => {

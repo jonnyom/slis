@@ -91,7 +91,7 @@ func TestCommandLineMatchesAgent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := commandLineMatchesAgent(tt.current, tt.cmdline, tt.agents); got != tt.want {
+			if got := CommandLineMatchesAgent(tt.current, tt.cmdline, tt.agents); got != tt.want {
 				t.Errorf("commandLineMatchesAgent(%q, %q, %v) = %v, want %v", tt.current, tt.cmdline, tt.agents, got, tt.want)
 			}
 		})

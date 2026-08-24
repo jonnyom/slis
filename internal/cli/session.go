@@ -19,10 +19,13 @@ import (
 )
 
 type sessionTabOutput struct {
-	ID    string                 `json:"id"`
-	Kind  sessionmanager.TabKind `json:"kind"`
-	Title string                 `json:"title"`
-	CWD   string                 `json:"cwd"`
+	ID               string                 `json:"id"`
+	Kind             sessionmanager.TabKind `json:"kind"`
+	Title            string                 `json:"title"`
+	CWD              string                 `json:"cwd"`
+	Agent            string                 `json:"agent,omitempty"`
+	CurrentDirectory string                 `json:"current_directory,omitempty"`
+	Label            string                 `json:"label,omitempty"`
 }
 
 type sessionGroupOutput struct {
@@ -47,6 +50,7 @@ var sessionHistoryVT bool
 var sessionTabKind string
 var sessionTabTitle string
 var sessionTabCWD string
+var sessionListLive bool
 
 var sessionCmd = &cobra.Command{
 	Use:   "session",
@@ -88,9 +92,30 @@ var sessionListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		var runtimes []sessionmanager.TabRuntime
+		var agentSpecs []config.AgentSpec
+		if sessionListLive {
+			manager, managerErr := openSessionManager()
+			if managerErr != nil {
+				return managerErr
+			}
+			runtimes, err = manager.Runtimes(cmd.Context(), groups)
+			if err != nil {
+				return err
+			}
+			ws, workspaceErr := config.LoadWorkspace(config.WorkspacePath())
+			if workspaceErr != nil {
+				return workspaceErr
+			}
+			agentSpecs = detectableAgentSpecs(ws.Sessions)
+		}
 		output := make([]sessionGroupOutput, 0, len(groups))
 		for _, group := range groups {
-			output = append(output, sessionGroupForOutput(group))
+			if sessionListLive {
+				output = append(output, sessionGroupForOutputWithRuntime(group, runtimes, agentSpecs))
+			} else {
+				output = append(output, sessionGroupForOutput(group))
+			}
 		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(output)
 	},
@@ -388,6 +413,7 @@ func validLegacySessionName(name string) bool {
 }
 
 func init() {
+	sessionListCmd.Flags().BoolVar(&sessionListLive, "live", false, "Include live agent and directory labels")
 	sessionHistoryCmd.Flags().BoolVar(&sessionHistoryVT, "vt", false, "return reconstructed terminal state")
 	sessionEnsureTabCmd.Flags().StringVar(&sessionTabKind, "kind", "shell", "terminal tab kind: agent, shell, or review")
 	sessionEnsureTabCmd.Flags().StringVar(&sessionTabTitle, "title", "", "terminal tab title")

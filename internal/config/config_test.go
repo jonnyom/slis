@@ -118,9 +118,9 @@ func TestSessionsAgentListDefault(t *testing.T) {
 		wantName string
 		wantCmd  []string
 	}{
-		{"empty → claude", Sessions{}, "claude", []string{"claude"}},
-		{"codex harness", Sessions{Harness: "codex"}, "codex", []string{"codex"}},
-		{"explicit agent with args", Sessions{Agent: "claude --resume"}, "claude", []string{"claude", "--resume"}},
+		{"empty → Claude Code", Sessions{}, "Claude Code", []string{"claude"}},
+		{"codex harness", Sessions{Harness: "codex"}, "Codex", []string{"codex"}},
+		{"explicit agent with args", Sessions{Agent: "claude --resume"}, "Claude Code", []string{"claude", "--resume"}},
 	}
 	for _, c := range cases {
 		got := c.s.AgentList()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -59,6 +60,31 @@ func TestManagerActivatePersistsExplicitTab(t *testing.T) {
 	}
 	if reloaded.ActiveTabID != "repo-api" {
 		t.Fatalf("active tab = %q, want repo-api", reloaded.ActiveTabID)
+	}
+}
+
+func TestManagerRuntimesMapEveryPersistentTab(t *testing.T) {
+	directory := t.TempDir()
+	binary := filepath.Join(directory, "zmx")
+	pid := strconv.Itoa(os.Getpid())
+	script := "#!/bin/sh\nif [ \"$1\" = \"list\" ]; then printf 'name=terminal-root\\tpid=" + pid + "\\nname=terminal-agent\\tpid=" + pid + "\\n'; fi\n"
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	group := Group{ID: "feature", Tabs: []Tab{
+		{ID: "root", PersistenceName: "terminal-root"},
+		{ID: "agent", PersistenceName: "terminal-agent"},
+	}}
+	manager := NewManager(OpenStore(directory), zmxctl.New(binary, directory))
+	runtimes, err := manager.Runtimes(context.Background(), []Group{group})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runtimes) != 2 || runtimes[0].TabID != "root" || runtimes[1].TabID != "agent" {
+		t.Fatalf("runtimes = %#v", runtimes)
+	}
+	if len(runtimes[0].Processes) == 0 || len(runtimes[1].Processes) == 0 {
+		t.Fatalf("runtime processes = %#v", runtimes)
 	}
 }
 

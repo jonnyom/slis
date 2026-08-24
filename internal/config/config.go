@@ -90,7 +90,7 @@ type AgentSpec struct {
 // AgentList returns the selectable agents. Explicitly configured agents win;
 // otherwise a single default is derived from the resolved AgentCommand (harness
 // / agent), so callers always get at least one entry. The default's name is the
-// command's first token so "claude --resume" reads as "claude" in a picker.
+// command's first token. Known harnesses use their canonical display name.
 func (s Sessions) AgentList() []AgentSpec {
 	if len(s.Agents) > 0 {
 		return s.Agents
@@ -99,6 +99,16 @@ func (s Sessions) AgentList() []AgentSpec {
 	name := "claude"
 	if len(fields) > 0 {
 		name = fields[0]
+	}
+	knownNames := map[string]string{
+		"claude":       "Claude Code",
+		"codex":        "Codex",
+		"gemini":       "Gemini CLI",
+		"cursor-agent": "Cursor Agent",
+		"opencode":     "OpenCode",
+	}
+	if canonicalName := knownNames[filepath.Base(name)]; canonicalName != "" {
+		name = canonicalName
 	}
 	return []AgentSpec{{Name: name, Cmd: fields}}
 }

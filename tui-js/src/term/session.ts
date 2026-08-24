@@ -29,6 +29,7 @@ export interface TermSessionOpts {
   // Display name of the picked agent, shown in the tab label. Set only when the
   // agent picker chose one (>1 configured); undefined keeps the plain slice label.
   agentLabel?: string;
+  runtimeLabel?: string;
   targetSession?: string;
 }
 
