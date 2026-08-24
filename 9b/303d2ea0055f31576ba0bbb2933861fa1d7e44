@@ -1,0 +1,49 @@
+tui-js/src/rpc/mutate.ts
+  s_c7b36a62b6243d::t_e10f80f2f6b4ca 289-297,306
+tui-js/src/term/feedback.test.ts
+  s_c7b36a62b6243d::t_1c2f7fc5b653c0 3
+  s_c7b36a62b6243d::t_97c3c4e62eceaa 1-2,4-21
+tui-js/src/overlays/useOverlays.tsx
+  s_c7b36a62b6243d::t_efce51a8eb8dae 21-22,125,137-138,407
+  s_c7b36a62b6243d::t_fd99e0273c4558 949-959
+  s_c7b36a62b6243d::t_febe1c37be02bd 746,756-759
+  s_c7b36a62b6243d::t_d7849cd909d702 879-889,892-926,948,960-971
+  s_c7b36a62b6243d::t_e9f4372256182d 123
+  s_c7b36a62b6243d::t_6d05d94df156be 1115-1116
+tui-js/src/term/feedback.ts
+  s_c7b36a62b6243d::t_bbf53e21e2db51 1-14
+tui-js/src/review/e2e.ts
+  s_c7b36a62b6243d::t_fd99e0273c4558 107,110-111,113,150-151
+tui-js/src/rpc/mutate.test.ts
+  s_c7b36a62b6243d::t_912b799cc80d02 9,66-82,84-85
+  s_f7af310cefa089::t_59ed34359ad2f1 83,86-87
+tui-js/src/overlays/overlays.tsx
+  s_c7b36a62b6243d::t_aa3d9b3d7c47af 10,551-552,558-559,564,567,570-571,575-584
+  s_c7b36a62b6243d::t_156a7c7cc7a540 121,129,137-139,152
+tui-js/src/rpc/fakereviews.test.ts
+  s_c7b36a62b6243d::t_a155ba03c4d7c4 49,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "9b303d2ea0055f31576ba0bbb2933861fa1d7e44",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_f7af310cefa089": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3656a0b-46d9-41d1-8d9f-94cd43f56ac4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
