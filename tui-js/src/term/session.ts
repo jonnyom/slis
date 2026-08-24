@@ -55,6 +55,10 @@ export class TermSession {
     return this.proc !== null && !this.detached;
   }
 
+  get applicationHandlesMouse(): boolean {
+    return this.terminalModes.applicationHandlesMouse;
+  }
+
   async attach(cols: number, rows: number, onData: (bytes: Uint8Array) => void, opts: TermSessionOpts): Promise<void> {
     if (this.attached) return;
 

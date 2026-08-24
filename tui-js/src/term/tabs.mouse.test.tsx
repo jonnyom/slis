@@ -333,6 +333,7 @@ test("scrolling a Claude Code session sends wheel input to the terminal", async 
   const manager = {
     session: () => session,
     get: () => session,
+    sessionApplicationHandlesMouse: () => true,
     detach() {},
   } as unknown as TermManager;
   flushSync(() =>
@@ -365,7 +366,7 @@ test("scrolling a Claude Code session sends wheel input to the terminal", async 
   expect(writes).toEqual(["\x1b[<64;3;3M"]);
 });
 
-test("scrolling a restored Codex session uses bounded local history", async () => {
+test("scrolling a generic zmx session uses bounded local history without mouse mode", async () => {
   setup = await createTestRenderer({ width: 80, height: 12 });
   root = createRoot(setup.renderer);
   const writes: string[] = [];
@@ -388,12 +389,13 @@ test("scrolling a restored Codex session uses bounded local history", async () =
   const manager = {
     session: () => session,
     get: () => session,
+    sessionApplicationHandlesMouse: () => false,
     detach() {},
   } as unknown as TermManager;
   flushSync(() =>
     root!.render(
       <TerminalLayer
-        tabs={[sessionEntry("agent", "codex")]}
+        tabs={[sessionEntry("root", "claude")]}
         active="session:feature:agent"
         shown
         focused
@@ -449,6 +451,7 @@ test("typing after scrolling returns the session terminal to live output", async
   const manager = {
     session: () => session,
     get: () => session,
+    sessionApplicationHandlesMouse: () => false,
     detach() {},
   } as unknown as TermManager;
   const entry = sessionEntry("codex");

@@ -100,20 +100,6 @@ export function tabBarLabel(tab: TabEntry, tabs: TabEntry[]): string {
   return tabLabel(tab);
 }
 
-function sessionUsesCodex(entry: TabEntry): boolean {
-  if (entry.kind !== "session") return false;
-  return [entry.opts.agentLabel, entry.opts.harness, entry.opts.agent].some(
-    (agentName) => agentName?.trim().toLowerCase().startsWith("codex"),
-  );
-}
-
-function sessionApplicationHandlesWheel(entry: TabEntry): boolean {
-  if (entry.kind !== "session") return false;
-  if (entry.opts.targetSession) return true;
-  if (entry.opts.kind !== "agent") return false;
-  return !sessionUsesCodex(entry);
-}
-
 export function adjacentTabKey(tabs: TabEntry[], active: string | null, direction: -1 | 1): string | null {
   if (tabs.length === 0) return null;
   const current = tabs.findIndex((tab) => tabKey(tab) === active);
@@ -306,7 +292,7 @@ function TermTab({
       cols={cols}
       rows={rows}
       bg={EMBEDDED_TERMINAL_BACKGROUND}
-      limit={sessionUsesCodex(entry) ? EMBEDDED_TERMINAL_HISTORY_LIMIT : undefined}
+      limit={entry.kind === "session" ? EMBEDDED_TERMINAL_HISTORY_LIMIT : undefined}
       visible={shown}
       zIndex={101}
       persistent
@@ -318,7 +304,7 @@ function TermTab({
       }}
       onMouseScroll={(event) => {
         if (!shown) return;
-        if (sessionApplicationHandlesWheel(entry)) {
+        if (entry.kind === "session" && manager.sessionApplicationHandlesMouse(key)) {
           const direction = event.scroll?.direction;
           if (!direction) return;
           const column = Math.min(cols, Math.max(1, event.x + 1));

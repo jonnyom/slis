@@ -39,6 +39,10 @@ export class TermManager {
     return this.sessions.get(key) ?? this.commands.get(key);
   }
 
+  sessionApplicationHandlesMouse(key: string): boolean {
+    return this.sessions.get(key)?.applicationHandlesMouse ?? false;
+  }
+
   has(slice: string): boolean {
     return this.sessions.has(slice);
   }

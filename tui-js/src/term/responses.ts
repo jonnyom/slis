@@ -33,13 +33,21 @@ export class TerminalQueryResponder {
 export class TerminalModeTracker {
   private pending = "";
   private readonly decoder = new TextDecoder();
+  private readonly enabledMouseModes = new Set<number>();
   bracketedPaste = false;
+  applicationHandlesMouse = false;
 
   observe(bytes: Uint8Array): void {
     this.pending += this.decoder.decode(bytes, { stream: true });
     const enabled = this.pending.lastIndexOf("\x1b[?2004h");
     const disabled = this.pending.lastIndexOf("\x1b[?2004l");
     if (enabled >= 0 || disabled >= 0) this.bracketedPaste = enabled > disabled;
+    for (const match of this.pending.matchAll(/\x1b\[\?(1000|1002|1003)(h|l)/g)) {
+      const mode = Number(match[1]);
+      if (match[2] === "h") this.enabledMouseModes.add(mode);
+      else this.enabledMouseModes.delete(mode);
+    }
+    this.applicationHandlesMouse = this.enabledMouseModes.size > 0;
     if (this.pending.length > 15) this.pending = this.pending.slice(-15);
   }
 }
