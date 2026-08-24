@@ -1,0 +1,38 @@
+internal/agentlaunch/launch.go
+  s_c7b36a62b6243d::t_450244e4e72e09 93-97
+skills/slis/SKILL.md
+  s_c7b36a62b6243d::t_1d34f4498bd1df 95
+internal/agentlaunch/launch_test.go
+  s_c7b36a62b6243d::t_450244e4e72e09 3-13
+  s_c7b36a62b6243d::t_765d03aee0289d 1-2,14-15
+internal/cli/review_sessions.go
+  s_c7b36a62b6243d::t_61f004e8657aba 116-117
+internal/cli/review_feedback.go
+  s_c7b36a62b6243d::t_6fb263a8bbbf76 1-187
+internal/cli/review_test.go
+  s_c7b36a62b6243d::t_61f004e8657aba 279-282
+  s_c7b36a62b6243d::t_364fbd0c516368 221,242,245-251,254-256
+  s_c7b36a62b6243d::t_4b2cc6a3935ef8 277-278,283-303,308-309
+  s_c7b36a62b6243d::t_765d03aee0289d 304-307
+  s_c7b36a62b6243d::t_d74a24a662ff38 310
+docs/AGENT.md
+  s_c7b36a62b6243d::t_1d34f4498bd1df 232-239
+internal/cli/review.go
+  s_c7b36a62b6243d::t_c408e8aa83bebe 245,344-355,358-371,458-459
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "f8b662e3350a804d2faec319b4d6b0208aef5827",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
