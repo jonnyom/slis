@@ -286,7 +286,15 @@ export function reviewRm(slice: string, id: string): Promise<MutateResult> {
   return spawnCapture([BIN, "review", "rm", slice, id]);
 }
 
-export function reviewSend(slice: string): Promise<MutateResult> {
+export type ReviewSendTarget = { tabID: string } | { newAgent: string };
+
+export function reviewSendArgs(slice: string, target: ReviewSendTarget): string[] {
+  return "tabID" in target
+    ? ["review", "send", slice, "--tab", target.tabID]
+    : ["review", "send", slice, "--new-agent", target.newAgent];
+}
+
+export function reviewSend(slice: string, target: ReviewSendTarget): Promise<MutateResult> {
   if (fake()) {
     const n = fakeReviewSend(slice);
     return Promise.resolve(
@@ -295,7 +303,7 @@ export function reviewSend(slice: string): Promise<MutateResult> {
         : { code: 1, stdout: "", stderr: `no pending review comments for slice "${slice}"` },
     );
   }
-  return spawnCapture([BIN, "review", "send", slice]);
+  return spawnCapture([BIN, ...reviewSendArgs(slice, target)]);
 }
 
 export function reviewAgentArgs(slice: string, agent: string): string[] {

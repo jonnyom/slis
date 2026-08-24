@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { AgentSpec, Candidate, ConflictsResult, ReviewComment } from "../rpc/types";
 import type { CommentContext } from "../review/context";
 import { agentCmdline } from "../term/agentpick";
+import type { FeedbackTarget } from "../term/feedback";
 import type { EditorSpec } from "../editor/detect";
 import { glyph, theme, type ResultStatus } from "../theme";
 import { Card } from "../components/card";
@@ -117,7 +118,7 @@ export function AgentPickerOverlay({
   slice,
   preferredAgent,
 }: {
-  mode: "launch" | "configure" | "review";
+  mode: "launch" | "configure" | "review" | "feedback";
   agents: AgentSpec[];
   sel: number;
   slice?: string;
@@ -125,6 +126,7 @@ export function AgentPickerOverlay({
 }): ReactNode {
   const configuring = mode === "configure";
   const reviewing = mode === "review";
+  const feedback = mode === "feedback";
   return (
     <Card
       title={
@@ -132,7 +134,9 @@ export function AgentPickerOverlay({
           ? "Agent settings"
           : reviewing
             ? "Review with which agent?"
-            : "Launch which agent?"
+            : feedback
+              ? "Launch which feedback agent?"
+              : "Launch which agent?"
       }
       subtitle={configuring ? "Choose the default launch agent" : slice}
       width={58}
@@ -145,7 +149,7 @@ export function AgentPickerOverlay({
         : [
             { key: "1-9", label: "quick pick" },
             { key: "↑/↓", label: "select" },
-            { key: "enter", label: reviewing ? "review" : "launch" },
+            { key: "enter", label: reviewing ? "review" : feedback ? "launch feedback agent" : "launch" },
             { key: "esc", label: "cancel" },
           ]}
     >
@@ -544,37 +548,40 @@ export function ReviewListOverlay({
   slice,
   comments,
   sel,
-  confirmSend,
+  feedbackTargets,
+  targetSel,
   height,
 }: {
   slice: string;
   comments: ReviewComment[] | null;
   sel: number;
-  confirmSend: boolean;
+  feedbackTargets?: FeedbackTarget[] | null;
+  targetSel: number;
   height: number;
 }): ReactNode {
   const list = comments ?? [];
 
-  if (confirmSend) {
+  if (feedbackTargets !== undefined) {
     return (
       <Card
-        title={`Send review · ${slice}`}
+        title={`Send ${list.length} feedback comment${list.length === 1 ? "" : "s"}`}
         width={64}
         hints={[
-          { key: "y", label: "send" },
+          { key: "↑/↓", label: "select" },
+          { key: "enter", label: "send" },
           { key: "esc", label: "cancel" },
         ]}
       >
-        <text wrapMode="word">
-          <span fg={theme.text}>Send </span>
-          <span fg={theme.textBright} attributes={BOLD}>
-            {list.length} comment{list.length === 1 ? "" : "s"}
-          </span>
-          <span fg={theme.text}> to {slice}'s agent session?</span>
-        </text>
-        <text fg={theme.textDim} wrapMode="word">
-          Starts the configured agent if needed, delivers one structured prompt, then clears the batch.
-        </text>
+        {feedbackTargets === null ? (
+          <text fg={theme.textDim}>Finding working agents…</text>
+        ) : feedbackTargets.map((target, index) => (
+          <text key={target.kind === "existing" ? target.tabID : target.kind} wrapMode="none">
+            <span fg={theme.focus}>{index === targetSel ? glyph.focusBar + " " : "  "}</span>
+            <span fg={index === targetSel ? theme.textBright : theme.textDim} attributes={index === targetSel ? BOLD : 0}>
+              {target.label}
+            </span>
+          </text>
+        ))}
       </Card>
     );
   }

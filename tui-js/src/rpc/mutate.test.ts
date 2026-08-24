@@ -6,6 +6,7 @@ import {
   reviewAgentArgs,
   reviewAttachArgv,
   reviewMessageArgs,
+  reviewSendArgs,
   shareMarkdownArgs,
   spawnCapture,
   swapArgs,
@@ -57,6 +58,28 @@ describe("reviewAgentArgs", () => {
       "agent",
       "feature",
       "--agent",
+      "Codex",
+    ]);
+  });
+});
+
+describe("reviewSendArgs", () => {
+  test("targets an existing working agent tab", () => {
+    expect(reviewSendArgs("feature", { tabID: "root" })).toEqual([
+      "review",
+      "send",
+      "feature",
+      "--tab",
+      "root",
+    ]);
+  });
+
+  test("launches an explicitly selected feedback agent", () => {
+    expect(reviewSendArgs("feature", { newAgent: "Codex" })).toEqual([
+      "review",
+      "send",
+      "feature",
+      "--new-agent",
       "Codex",
     ]);
   });

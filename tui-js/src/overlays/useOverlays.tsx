@@ -18,6 +18,8 @@ import type {
 import type { CommentContext } from "../review/context";
 import { clampReviewSel } from "../review/context";
 import { quickPickIndex } from "../term/agentpick";
+import { feedbackTargets as buildFeedbackTargets, type FeedbackTarget } from "../term/feedback";
+import { listSlisSessions } from "../term/slis";
 import { shortcutAction } from "../util/shortcut-contract";
 import type { EditorSpec } from "../editor/detect";
 import {
@@ -118,8 +120,9 @@ type Overlay =
       sel: number;
       slice: string;
       preferredAgent?: string;
-      purpose?: "launch" | "review";
+      purpose?: "launch" | "review" | "feedback";
       onPick: (agent: AgentSpec) => void;
+      onCancel?: () => void;
     }
   | { kind: "agentConfig"; agents: AgentSpec[]; sel: number; preferredAgent?: string; onDefault: (agent: AgentSpec) => void }
   | { kind: "conflicts"; scroll: number }
@@ -131,7 +134,8 @@ type Overlay =
       slice: string;
       comments: ReviewComment[] | null;
       sel: number;
-      confirmSend: boolean;
+      feedbackTargets?: FeedbackTarget[] | null;
+      targetSel: number;
       onChanged: () => void;
       agents: AgentSpec[];
       preferredAgent?: string;
@@ -400,7 +404,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         slice,
         comments: null,
         sel: 0,
-        confirmSend: false,
+        targetSel: 0,
         onChanged,
         agents,
         preferredAgent,
@@ -739,7 +743,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         return;
       }
       case "agentPicker": {
-        const { agents, sel, onPick } = overlay;
+        const { agents, sel, onPick, onCancel } = overlay;
         const shortcut = shortcutAction("agent.launch", name);
         const quick = quickPickIndex(name, agents.length);
         if (quick !== null) {
@@ -749,7 +753,10 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
           setOverlay({ ...overlay, sel: Math.min(agents.length - 1, sel + 1) });
         else if (shortcut === "previous")
           setOverlay({ ...overlay, sel: Math.max(0, sel - 1) });
-        else if (shortcut === "cancel") close();
+        else if (shortcut === "cancel") {
+          close();
+          onCancel?.();
+        }
         else if (shortcut === "choose" && agents[sel]) {
           close();
           onPick(agents[sel]!);
@@ -869,38 +876,54 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         } else setOverlay({ ...overlay, text: editText(overlay.text, key) });
         return;
       case "review": {
-        const { slice, comments, sel, confirmSend, onChanged, agents, preferredAgent } = overlay;
-        if (confirmSend) {
-          if (name === "y" || isEnter) {
-            const n = comments?.length ?? 0;
-            setOverlay({ kind: "working", text: "Sending review…" });
-            reviewSend(slice).then(
-              (res) => {
-                if (res.code === 0) {
-                  toast(`Sent ${n} comment${n === 1 ? "" : "s"} to ${slice}`, "ci-pass");
-                  onChanged();
-                  close();
-                } else {
-                  // No running session (or other refusal) — surface the CLI's
-                  // guidance verbatim as a neutral warn, not a red failure.
-                  setOverlay({
-                    kind: "result",
-                    title: "Send review",
-                    body:
-                      (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
-                    status: "warn",
-                  });
-                }
-              },
-              (err) =>
+        const { slice, comments, sel, feedbackTargets, targetSel, onChanged, agents, preferredAgent } = overlay;
+        const sendFeedback = (target: { tabID: string } | { newAgent: string }) => {
+          const n = comments?.length ?? 0;
+          setOverlay({ kind: "working", text: "Sending feedback…" });
+          reviewSend(slice, target).then(
+            (res) => {
+              if (res.code === 0) {
+                toast(`Sent ${n} comment${n === 1 ? "" : "s"} to ${slice}`, "ci-pass");
+                onChanged();
+                close();
+              } else {
                 setOverlay({
                   kind: "result",
-                  title: "Send review — failed",
-                  body: String(err),
-                  status: "failure",
-                }),
-            );
-          } else if (name === "n" || isCancel) setOverlay({ ...overlay, confirmSend: false });
+                  title: "Send feedback",
+                  body: (res.stdout + (res.stderr ? "\n" + res.stderr : "")).trim() || "(no output)",
+                  status: "warn",
+                });
+              }
+            },
+            (err) => setOverlay({ kind: "result", title: "Send feedback — failed", body: String(err), status: "failure" }),
+          );
+        };
+        if (feedbackTargets !== undefined) {
+          if (isCancel) {
+            setOverlay({ ...overlay, feedbackTargets: undefined, targetSel: 0 });
+          } else if (feedbackTargets !== null && (name === "j" || name === "down")) {
+            setOverlay({ ...overlay, targetSel: Math.min(feedbackTargets.length - 1, targetSel + 1) });
+          } else if (feedbackTargets !== null && (name === "k" || name === "up")) {
+            setOverlay({ ...overlay, targetSel: Math.max(0, targetSel - 1) });
+          } else if (feedbackTargets !== null && isEnter) {
+            const target = feedbackTargets[targetSel];
+            if (target?.kind === "existing") {
+              sendFeedback({ tabID: target.tabID });
+            } else if (target?.kind === "new" && agents.length === 1) {
+              sendFeedback({ newAgent: agents[0]!.name });
+            } else if (target?.kind === "new" && agents.length > 1) {
+              setOverlay({
+                kind: "agentPicker",
+                purpose: "feedback",
+                slice,
+                agents,
+                sel: 0,
+                preferredAgent,
+                onPick: (agent) => sendFeedback({ newAgent: agent.name }),
+                onCancel: () => setOverlay(overlay),
+              });
+            }
+          }
           return;
         }
         const list = comments ?? [];
@@ -922,7 +945,30 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
             },
             () => {},
           );
-        } else if (name === "s" && list.length > 0) setOverlay({ ...overlay, confirmSend: true });
+        } else if (name === "s" && list.length > 0) {
+          if (isFake()) {
+            setOverlay({
+              ...overlay,
+              feedbackTargets: [
+                { kind: "existing", tabID: "root", label: "Codex" },
+                { kind: "new", label: "New feedback agent…" },
+              ],
+              targetSel: 0,
+            });
+            return;
+          }
+          setOverlay({ ...overlay, feedbackTargets: null, targetSel: 0 });
+          listSlisSessions(true).then(
+            (groups) => setOverlay((current) => current?.kind === "review" && current.slice === slice
+              ? {
+                  ...current,
+                  feedbackTargets: buildFeedbackTargets(groups, slice).filter((target) => target.kind !== "new" || agents.length > 0),
+                  targetSel: 0,
+                }
+              : current),
+            (error) => setOverlay({ kind: "result", title: "Find feedback agents", body: String(error), status: "failure" }),
+          );
+        }
         else if (name === "a" && agents.length > 0) {
           const preferred = agents.findIndex((agent) => agent.name === preferredAgent);
           setOverlay({
@@ -1066,7 +1112,8 @@ function renderOverlay(
           slice={overlay.slice}
           comments={overlay.comments}
           sel={overlay.sel}
-          confirmSend={overlay.confirmSend}
+          feedbackTargets={overlay.feedbackTargets}
+          targetSel={overlay.targetSel}
           height={height}
         />
       );

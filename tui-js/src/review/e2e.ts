@@ -104,13 +104,13 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
     reviewList.toLowerCase().includes("pending") &&
     (reviewList.includes("rename this variable") || reviewList.includes("cart.tsx"));
 
-  // s → send confirm → y → send; success toast.
+  // s → target picker → enter → send; success toast.
   pty.write("s");
   await sleep(600);
-  const confirm = vt.getText();
-  const sawConfirm = confirm.includes("agent session");
+  const targetPicker = vt.getText();
+  const sawTargetPicker = targetPicker.includes("Codex") && targetPicker.includes("New feedback agent");
 
-  pty.write("y");
+  pty.write("\r");
   await sleep(900);
   const afterSend = vt.getText();
   const sawSendToast = afterSend.includes("Sent");
@@ -147,8 +147,8 @@ async function driveOnce(size: Size): Promise<Record<string, boolean>> {
     range_opens_comment_composer: sawComposer,
     submit_shows_add_toast: sawAddToast,
     V_lists_pending_comments: sawList,
-    s_shows_send_confirm: sawConfirm,
-    y_sends_shows_toast: sawSendToast,
+    s_shows_feedback_target_picker: sawTargetPicker,
+    enter_sends_shows_toast: sawSendToast,
     esc_chain_returns_to_browser: escChain,
   };
   if (!Object.values(R).every(Boolean)) {

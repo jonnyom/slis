@@ -46,14 +46,14 @@ describe("fake review loop", () => {
   test("send clears the slice's batch and reports the count", async () => {
     await reviewAdd({ slice: "checkout", repo: "web", file: "a.ts", line: 1, body: "one" });
     expect(fakeReviewsList("checkout").length).toBe(2);
-    const res = await reviewSend("checkout");
+    const res = await reviewSend("checkout", { tabID: "root" });
     expect(res.code).toBe(0);
     expect(res.stdout).toContain("delivered 2");
     expect(fakeReviewsList("checkout").length).toBe(0);
   });
 
   test("send with nothing pending is a non-zero no-op", async () => {
-    const res = await reviewSend("payments");
+    const res = await reviewSend("payments", { tabID: "root" });
     expect(res.code).not.toBe(0);
     expect(res.stderr).toContain("no pending review comments");
   });
