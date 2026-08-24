@@ -90,7 +90,11 @@ func EnvPrefix(sl model.Slice, wsRoot, harness string) string {
 
 // Line builds the complete one-line command typed into the tmux shell.
 func Line(agent string, sl model.Slice, wsRoot, harness string) string {
-	launch := EnvPrefix(sl, wsRoot, harness) + " " + WithSliceContext(agent, sl)
+	agentWithContext := WithSliceContext(agent, sl)
+	if strings.EqualFold(filepath.Base(harness), "claude") && agentWithContext == agent {
+		agentWithContext = agent + " --append-system-prompt " + ShellSingleQuote(SliceContext(sl))
+	}
+	launch := EnvPrefix(sl, wsRoot, harness) + " " + agentWithContext
 	workingDirectory := sliceWorkingDirectory(sl)
 	if workingDirectory == "" {
 		return launch

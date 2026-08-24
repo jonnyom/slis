@@ -92,7 +92,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis review add <slice>` | mutate | no | Add a pending review comment on a line or range (`--repo --file --line [--end-line] --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
 | `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
 | `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
-| `slis review send <slice>` | mutate | no | Compose pending comments, create/reuse the slice session and start the configured agent if needed, verify that agent owns the active tab, inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
+| `slis review send <slice>` | mutate | no | Compose pending comments, detect working agents across all session tabs, and ask for the target. Choose a live tab or a new feedback agent harness; scripts use `--tab <id>` or `--new-agent <name>`. Inject via bracketed paste + Enter, then clear (`--keep` preserves). Startup/readiness failure keeps comments pending |
 | `slis review agent <slice> --agent <name>` | mutate | no | Start a persistent review conversation in a dedicated slice session tab; results and clean receipts survive completion |
 | `slis review message <run-id> --body <text>` | mutate | no | Append a follow-up turn; the reviewer receives the complete stored conversation and the same session tab is resumed |
 | `slis review attach <run-id>` | interactive | no | Attach or switch to the exact review session tab, including completed scrollback |

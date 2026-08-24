@@ -16,7 +16,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jonnyom/slis/internal/agentlaunch"
 	"github.com/jonnyom/slis/internal/agentreview"
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/model"
@@ -243,7 +242,7 @@ func storeAgentFindings(store *review.Store, slice model.Slice, author string, f
 }
 
 func reviewAgentCommands(s config.Sessions) []string {
-	specs := s.AgentList()
+	specs := detectableAgentSpecs(s)
 	out := make([]string, 0, len(specs))
 	seen := make(map[string]bool)
 	for _, spec := range specs {
@@ -253,19 +252,7 @@ func reviewAgentCommands(s config.Sessions) []string {
 			seen[command] = true
 		}
 	}
-	for _, command := range []string{"claude", "codex", "opencode", "gemini", "cursor-agent"} {
-		if !seen[command] {
-			out = append(out, command)
-		}
-	}
 	return out
-}
-
-func defaultReviewAgent(s config.Sessions) (command, harness string) {
-	if len(s.Agents) > 0 && len(s.Agents[0].Cmd) > 0 {
-		return strings.Join(s.Agents[0].Cmd, " "), s.Agents[0].Name
-	}
-	return s.AgentCommand(), s.HarnessName()
 }
 
 func reviewSessionMembers(sl model.Slice) []model.SliceMember {
@@ -324,39 +311,6 @@ func reviewAgentCwd(sl model.Slice, wsRoot string) string {
 	return parent
 }
 
-func ensureReviewAgent(ws config.Workspace, sl model.Slice, sess review.SlisSession) error {
-	if _, err := sess.Manager.Ensure(context.Background(), sl.Name, reviewSessionMembers(sl), sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout}); err != nil {
-		return err
-	}
-	if _, err := sess.Manager.EnsureTab(context.Background(), sl.Name, sessionmanager.TabSpec{ID: "agent", Kind: sessionmanager.TabKindAgent, Title: "agent", CWD: reviewAgentCwd(sl, ws.Root)}); err != nil {
-		return err
-	}
-	if sess.HasAgent(sl.Name) {
-		return nil
-	}
-	busy, err := sess.Manager.Busy(context.Background(), sl.Name, "agent")
-	if err != nil {
-		return err
-	}
-	if busy {
-		return fmt.Errorf("slice %q agent terminal is busy; review comments remain pending", sl.Name)
-	}
-
-	agent, harness := defaultReviewAgent(ws.Sessions)
-	if err := sess.Manager.StartCommand(context.Background(), sl.Name, sessionmanager.TabSpec{ID: "agent", Kind: sessionmanager.TabKindAgent, Title: "agent", CWD: reviewAgentCwd(sl, ws.Root)}, agentlaunch.Line(agent, sl, ws.Root, harness)); err != nil {
-		return fmt.Errorf("launch review agent: %w", err)
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if sess.HasAgent(sl.Name) {
-			time.Sleep(time.Second)
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return fmt.Errorf("configured agent %q did not start in slice %q; review comments remain pending", agent, sl.Name)
-}
-
 var reviewSendCmd = &cobra.Command{
 	Use:   "send <slice>",
 	Short: "Compose the pending comments into a prompt and inject it into the slice's session",
@@ -387,9 +341,33 @@ var reviewSendCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		sess := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: "agent", Context: cmd.Context()}
-		if err := ensureReviewAgent(ws, sl, sess); err != nil {
+		group, err := manager.Ensure(cmd.Context(), sl.Name, reviewSessionMembers(sl), sessionmanager.LayoutOptions{Root: ws.Root, Layout: ws.Sessions.Layout})
+		if err != nil {
 			return err
+		}
+		runtimes, err := manager.Runtimes(cmd.Context(), []sessionmanager.Group{group})
+		if err != nil {
+			return err
+		}
+		liveGroup := sessionGroupForOutputWithRuntime(group, runtimes, detectableAgentSpecs(ws.Sessions))
+		agents := availableFeedbackAgents(ws.Sessions)
+		selection, err := selectFeedbackTarget(cmd, liveGroup, agents)
+		if err != nil {
+			return err
+		}
+		sess := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: selection.TabID, Context: cmd.Context()}
+		if selection.NewAgent != "" {
+			var selectedAgent config.AgentSpec
+			for _, agent := range agents {
+				if strings.EqualFold(agent.Name, selection.NewAgent) {
+					selectedAgent = agent
+					break
+				}
+			}
+			sess, err = startFeedbackAgent(cmd.Context(), ws, sl, group, manager, selectedAgent)
+			if err != nil {
+				return err
+			}
 		}
 		n, err := runReviewSend(store, name, sess, keep)
 		if err != nil {
@@ -477,6 +455,8 @@ func init() {
 
 	reviewListCmd.Flags().Bool("json", false, "Output as JSON")
 	reviewSendCmd.Flags().Bool("keep", false, "Keep the pending comments after a successful send")
+	reviewSendCmd.Flags().String("tab", "", "Send to the coding agent running in this tab")
+	reviewSendCmd.Flags().String("new-agent", "", "Launch this coding agent in a new feedback tab")
 	reviewAgentCmd.Flags().String("agent", "", "Reviewer agent name")
 	reviewAgentCmd.Flags().Bool("foreground", false, "Run the review in the current process")
 	reviewAgentCmd.Flags().String("run-id", "", "Persistent review run identifier")

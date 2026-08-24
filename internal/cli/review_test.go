@@ -218,7 +218,7 @@ func TestStoreAgentFindingsIsIdempotentAcrossDeliveryRetries(t *testing.T) {
 	}
 }
 
-func TestEnsureReviewAgentLaunchesConfiguredAgentFromShell(t *testing.T) {
+func TestStartFeedbackAgentCreatesANewConfiguredAgentTab(t *testing.T) {
 	binary := os.Getenv("SLIS_ZMX_BINARY")
 	if binary == "" {
 		t.Skip("SLIS_ZMX_BINARY is not set")
@@ -239,30 +239,23 @@ func TestEnsureReviewAgentLaunchesConfiguredAgentFromShell(t *testing.T) {
 	}
 	ws := config.Workspace{
 		Root:     worktree,
-		Sessions: config.Sessions{Agent: "sleep 30"},
+		Sessions: config.Sessions{Agents: []config.AgentSpec{{Name: "Sleep", Cmd: []string{"sleep", "30"}}}},
 	}
 	manager := sessionmanager.NewManager(sessionmanager.OpenStore(t.TempDir()), zmxctl.New(binary, runtimeDirectory))
-	sess := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: "agent", Context: context.Background()}
-	if err := ensureReviewAgent(ws, sl, sess); err != nil {
-		t.Fatalf("ensureReviewAgent: %v", err)
+	group, err := manager.Ensure(context.Background(), slice, reviewSessionMembers(sl), sessionmanager.LayoutOptions{Root: ws.Root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := startFeedbackAgent(context.Background(), ws, sl, group, manager, ws.Sessions.Agents[0])
+	if err != nil {
+		t.Fatalf("startFeedbackAgent: %v", err)
 	}
 	t.Cleanup(func() { _ = manager.Kill(context.Background(), slice) })
+	if sess.TabID != "feedback" {
+		t.Fatalf("feedback tab = %q", sess.TabID)
+	}
 	if !sess.HasAgent(slice) {
 		t.Fatal("configured agent was not running in the active pane")
-	}
-}
-
-func TestDefaultReviewAgentUsesFirstConfiguredChoice(t *testing.T) {
-	s := config.Sessions{
-		Harness: "claude",
-		Agents: []config.AgentSpec{
-			{Name: "codex", Cmd: []string{"codex", "--full-auto"}},
-			{Name: "claude", Cmd: []string{"claude"}},
-		},
-	}
-	cmd, harness := defaultReviewAgent(s)
-	if cmd != "codex --full-auto" || harness != "codex" {
-		t.Fatalf("defaultReviewAgent = %q/%q, want codex --full-auto/codex", cmd, harness)
 	}
 }
 
@@ -278,6 +271,40 @@ func TestReviewAgentCommandsRecognizeDetectedAgents(t *testing.T) {
 		if !found {
 			t.Errorf("commands %#v do not include %q", commands, expected)
 		}
+	}
+}
+
+func TestFeedbackTargetsUseDetectedWorkingAgentTabs(t *testing.T) {
+	group := sessionGroupOutput{ID: "feature", Tabs: []sessionTabOutput{
+		{ID: "root", Kind: sessionmanager.TabKindRoot, Agent: "Codex", Label: "Codex"},
+		{ID: "claude", Kind: sessionmanager.TabKindAgent, CurrentDirectory: "/work/feature", Label: "/work/feature"},
+		{ID: "agent-2", Kind: sessionmanager.TabKindAgent, Agent: "Codex", Label: "Codex (1)"},
+		{ID: "review-codex", Kind: sessionmanager.TabKindReview, Agent: "Codex", Label: "Codex (2)"},
+	}}
+
+	targets := feedbackTargets(group)
+	if len(targets) != 2 {
+		t.Fatalf("targets = %#v", targets)
+	}
+	if targets[0].TabID != "root" || targets[0].Label != "Codex" {
+		t.Fatalf("first target = %#v", targets[0])
+	}
+	if targets[1].TabID != "agent-2" || targets[1].Label != "Codex (1)" {
+		t.Fatalf("second target = %#v", targets[1])
+	}
+}
+
+func TestNextFeedbackTabIDAlwaysCreatesANewTab(t *testing.T) {
+	group := sessionmanager.Group{Tabs: []sessionmanager.Tab{{ID: "root"}, {ID: "feedback"}, {ID: "feedback-2"}}}
+	if got := nextFeedbackTabID(group); got != "feedback-3" {
+		t.Fatalf("nextFeedbackTabID = %q, want feedback-3", got)
+	}
+}
+
+func TestFeedbackAgentCommandPreservesArguments(t *testing.T) {
+	agent := config.AgentSpec{Name: "Claude", Cmd: []string{"/tmp/Claude Code/claude", "--model", "fast model"}}
+	if got, want := feedbackAgentCommand(agent), "'/tmp/Claude Code/claude' '--model' 'fast model'"; got != want {
+		t.Fatalf("feedbackAgentCommand = %q, want %q", got, want)
 	}
 }
 

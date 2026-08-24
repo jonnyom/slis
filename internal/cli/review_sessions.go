@@ -113,8 +113,8 @@ func deliverReviewFindings(ws config.Workspace, slice model.Slice, agentName, de
 	if err != nil {
 		return fmt.Errorf("%s stored %d finding(s), but delivery failed: %w", agentName, len(comments), err)
 	}
-	session := review.SlisSession{Manager: manager, AgentCommands: reviewAgentCommands(ws.Sessions), TabID: "agent", Context: context.Background()}
-	if err := ensureReviewAgent(ws, slice, session); err != nil {
+	session, err := automaticFeedbackSession(context.Background(), ws, slice, manager)
+	if err != nil {
 		return fmt.Errorf("%s stored %d finding(s), but delivery failed: %w", agentName, len(comments), err)
 	}
 	if err := session.SendPromptOnce(slice.Name, review.ComposePrompt(comments), deliveryID); err != nil {

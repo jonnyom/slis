@@ -229,15 +229,14 @@ Add/remove/deliver with the mutating twins:
 `slis review send <slice> [--keep]`. **Send flow:** `send` composes every pending
 comment for the slice into one structured prompt (`Code review feedback on slice
 <name> — address each item:` then a numbered item per comment with repo,
-file:line or file:start-end, fenced selection, and the instruction) and injects
-it into the slice's
-configured agent's **active Slis tab** via bracketed paste + Enter, then clears
-the pending batch (keep it with `--keep`). If no agent is running, `send` creates
-or reuses the slice session, launches the configured agent with the same SLIS_*
-worktree context as the TUI agent action, waits for it to own the active tab,
-then delivers. A busy non-agent tab gets a dedicated `agent` tab. Startup or
-readiness failure leaves every comment pending; prompts are never pasted into a
-shell or unrelated process. The read-only RPC
+file:line or file:start-end, fenced selection, and the instruction). It detects
+coding agents from every live Slis tab and always asks which one should receive
+the prompt. The user can instead launch a new feedback agent, choosing the
+harness when several are available. Scripts can select the same targets with
+`--tab <id>` or `--new-agent <name>`. Successful delivery uses bracketed paste +
+Enter, then clears the pending batch (keep it with `--keep`). Startup or readiness
+failure leaves every comment pending; prompts are never pasted into a shell,
+read-only reviewer, or unrelated process. The read-only RPC
 sidecar exposes the same array as the `reviews` method (`{ "slice"?: string }`);
 adding and sending stay CLI-only so the sidecar never mutates.
 
