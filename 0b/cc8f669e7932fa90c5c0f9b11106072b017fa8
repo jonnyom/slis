@@ -1,0 +1,66 @@
+internal/cli/session.go
+  s_c7b36a62b6243d::t_50b6ac9ee82107 22-28,53,95-111,114-118,416
+internal/cli/session_runtime.go
+  s_c7b36a62b6243d::t_b033f632d1f21b 1-98
+tui-js/src/term/runtime.test.ts
+  s_c7b36a62b6243d::t_1c2f7fc5b653c0 1-34
+internal/cli/session_test.go
+  s_c7b36a62b6243d::t_67afa787ac6276 7-10,40-75
+tui-js/src/term/session.ts
+  s_c7b36a62b6243d::t_e10f80f2f6b4ca 32
+tui-js/src/app.tsx
+  s_c7b36a62b6243d::t_34b0fc4c8bbe07 157,187-203
+  s_c7b36a62b6243d::t_1c2f7fc5b653c0 68
+  s_c7b36a62b6243d::t_6802524abfe42a 156,161-164,649,666,1171
+internal/session/manager_test.go
+  s_c7b36a62b6243d::t_c20dddd9e4ad04 8,66-88
+  s_c7b36a62b6243d::t_efc27082428e68 89-90
+tui-js/src/term/tabs.test.ts
+  s_c7b36a62b6243d::t_912b799cc80d02 45-55
+internal/review/send_test.go
+  s_c7b36a62b6243d::t_ba4d628f674539 94
+tui-js/src/term/tabs.tsx
+  s_c7b36a62b6243d::t_e10f80f2f6b4ca 88,98
+  s_c7b36a62b6243d::t_6802524abfe42a 182,196,228,469,490,601
+internal/session/manager.go
+  s_c7b36a62b6243d::t_2d4cee6941259a 28-33,254-278
+  s_c7b36a62b6243d::t_c08cbf71d33037 279
+internal/proc/proc_test.go
+  s_c7b36a62b6243d::t_c20dddd9e4ad04 43,48-50,59-60
+  s_c7b36a62b6243d::t_f038b758ea6ec9 61
+internal/agentreview/agentreview.go
+  s_c7b36a62b6243d::t_ba4d628f674539 57,71-78
+  s_c7b36a62b6243d::t_cc4edbb4fdd860 79-80
+tui-js/src/term/runtime.ts
+  s_c7b36a62b6243d::t_1c2f7fc5b653c0 1-20
+internal/config/config_test.go
+  s_c7b36a62b6243d::t_34b0fc4c8bbe07 121-123
+internal/review/send.go
+  s_c7b36a62b6243d::t_34b0fc4c8bbe07 69
+  s_c7b36a62b6243d::t_ba4d628f674539 72,112,116,129,133,192
+internal/config/config.go
+  s_c7b36a62b6243d::t_34b0fc4c8bbe07 93,103-112
+tui-js/src/term/slis.test.ts
+  s_c7b36a62b6243d::t_912b799cc80d02 87
+tui-js/src/term/slis.ts
+  s_c7b36a62b6243d::t_e10f80f2f6b4ca 10-12,80-81,120-121
+internal/proc/proc.go
+  s_c7b36a62b6243d::t_2d4cee6941259a 49,116-117
+  s_c7b36a62b6243d::t_abbfa8ab14cd9c 118-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "0bcc8f669e7932fa90c5c0f9b11106072b017fa8",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
