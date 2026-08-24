@@ -6,7 +6,7 @@
 // shortcuts is forwarded to the active PTY untouched.
 
 import { extend, usePaste, useRenderer } from "@opentui/react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import type { SessionStatus } from "../rpc/types";
 import { color, sessionBadge, theme } from "../theme";
 import { BOLD, DIM } from "../components/ui";
@@ -14,7 +14,7 @@ import { Divider } from "../components/divider";
 import { TermManager } from "./manager";
 import { tmuxWheelSequence } from "./mouse";
 import type { TermSessionOpts } from "./session";
-import { TerminalFeedBuffer } from "./feed";
+import { TERMINAL_FRAME_DELAY_MILLISECONDS, TerminalFeedBuffer } from "./feed";
 import {
   embeddedTerminalInputSequence,
 } from "./input";
@@ -37,6 +37,7 @@ export const BACK_KEY = process.env["SLIS_TERM_BACK_KEY"]
 export const UNFOCUS_KEY = "\x07";
 export const EMBEDDED_TERMINAL_SELECTABLE = true;
 export const EMBEDDED_TERMINAL_BACKGROUND = theme.bg;
+export const EMBEDDED_TERMINAL_HISTORY_LIMIT = 500;
 
 export function isBackKeySequence(sequence: string): boolean {
   if (sequence === BACK_KEY) return true;
@@ -97,6 +98,20 @@ export function tabBarLabel(tab: TabEntry, tabs: TabEntry[]): string {
     return tab.opts.agentLabel ?? tab.opts.tabTitle;
   }
   return tabLabel(tab);
+}
+
+function sessionUsesCodex(entry: TabEntry): boolean {
+  if (entry.kind !== "session") return false;
+  return [entry.opts.agentLabel, entry.opts.harness, entry.opts.agent].some(
+    (agentName) => agentName?.trim().toLowerCase().startsWith("codex"),
+  );
+}
+
+function sessionApplicationHandlesWheel(entry: TabEntry): boolean {
+  if (entry.kind !== "session") return false;
+  if (entry.opts.targetSession) return true;
+  if (entry.opts.kind !== "agent") return false;
+  return !sessionUsesCodex(entry);
 }
 
 export function adjacentTabKey(tabs: TabEntry[], active: string | null, direction: -1 | 1): string | null {
@@ -176,6 +191,7 @@ function TermTab({
   rows,
   top,
   onFocus,
+  onRenderable,
   onSessionExit,
   onCommandExit,
 }: {
@@ -187,6 +203,7 @@ function TermTab({
   rows: number;
   top: number;
   onFocus: () => void;
+  onRenderable: (key: string, terminal: EmbeddedTerminalRenderable | null) => void;
   /** A tmux client died (session killed elsewhere) → close the tab. */
   onSessionExit: (key: string) => void;
   /** A command process exited → mark the tab exited (kept open for the user). */
@@ -202,11 +219,22 @@ function TermTab({
 
   useEffect(() => {
     const terminal = ref.current;
+    if (!terminal) return;
+    onRenderable(key, terminal);
+    return () => onRenderable(key, null);
+  }, [key, onRenderable]);
+
+  useEffect(() => {
+    const terminal = ref.current;
     if (!terminal || !attachmentActive) return;
-    const feedBuffer = new TerminalFeedBuffer((bytes) => {
-      terminal.feed(bytes);
-      if (visibleRef.current) requestTerminalFullRepaint(renderer);
-    });
+    const feedBuffer = new TerminalFeedBuffer(
+      (bytes) => {
+        terminal.feed(bytes);
+        if (visibleRef.current) requestTerminalFullRepaint(renderer);
+      },
+      TERMINAL_FRAME_DELAY_MILLISECONDS,
+      TERMINAL_FRAME_DELAY_MILLISECONDS,
+    );
     const feed = (bytes: Uint8Array) => {
       feedBuffer.write(bytes);
     };
@@ -278,6 +306,7 @@ function TermTab({
       cols={cols}
       rows={rows}
       bg={EMBEDDED_TERMINAL_BACKGROUND}
+      limit={sessionUsesCodex(entry) ? EMBEDDED_TERMINAL_HISTORY_LIMIT : undefined}
       visible={shown}
       zIndex={101}
       persistent
@@ -288,18 +317,17 @@ function TermTab({
         if (shown) onFocus();
       }}
       onMouseScroll={(event) => {
-        if (!shown || entry.kind !== "session") return;
-        const direction = event.scroll?.direction;
-        if (!direction) return;
-
-        // OpenTUI reports screen coordinates; tmux's SGR protocol expects
-        // one-based coordinates relative to the embedded terminal.
-        const column = Math.min(cols, Math.max(1, event.x + 1));
-        const row = Math.min(rows, Math.max(1, event.y - top + 1));
-        manager.get(key)?.write(
-          tmuxWheelSequence(direction, column, row, event.modifiers),
-        );
-        event.preventDefault();
+        if (!shown) return;
+        if (sessionApplicationHandlesWheel(entry)) {
+          const direction = event.scroll?.direction;
+          if (!direction) return;
+          const column = Math.min(cols, Math.max(1, event.x + 1));
+          const row = Math.min(rows, Math.max(1, event.y - top + 1));
+          manager.get(key)?.write(
+            tmuxWheelSequence(direction, column, row, event.modifiers),
+          );
+          event.preventDefault();
+        }
         event.stopPropagation();
       }}
     />
@@ -484,6 +512,14 @@ export function TerminalLayer({
   cycleTabsRef.current = tabBarTabs ?? tabs;
   const managerRef = useRef(manager);
   managerRef.current = manager;
+  const terminalRenderablesRef = useRef(new Map<string, EmbeddedTerminalRenderable>());
+  const registerTerminalRenderable = useCallback(
+    (key: string, terminal: EmbeddedTerminalRenderable | null) => {
+      if (terminal) terminalRenderablesRef.current.set(key, terminal);
+      else terminalRenderablesRef.current.delete(key);
+    },
+    [],
+  );
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
   const onUnfocusRef = useRef(onUnfocus);
@@ -495,6 +531,7 @@ export function TerminalLayer({
     if (!focusedRef.current) return;
     const key = activeRef.current;
     if (key) {
+      terminalRenderablesRef.current.get(key)?.followLatestOutput();
       managerRef.current.get(key)?.paste(event.bytes);
     }
     event.preventDefault();
@@ -519,7 +556,10 @@ export function TerminalLayer({
         return true;
       }
       const key = activeRef.current;
-      if (key) managerRef.current.get(key)?.write(embeddedTerminalInputSequence(seq));
+      if (key) {
+        terminalRenderablesRef.current.get(key)?.followLatestOutput();
+        managerRef.current.get(key)?.write(embeddedTerminalInputSequence(seq));
+      }
       return true; // consume: everything reaches the PTY, nothing is parsed
     };
     renderer.addInputHandler(handler);
@@ -565,6 +605,7 @@ export function TerminalLayer({
             rows={termRows}
             top={2}
             onFocus={onFocus}
+            onRenderable={registerTerminalRenderable}
             onSessionExit={onSessionExit}
             onCommandExit={onCommandExit}
           />

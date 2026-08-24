@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TerminalFeedBuffer } from "./feed";
+import { TERMINAL_FRAME_DELAY_MILLISECONDS, TerminalFeedBuffer } from "./feed";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -39,5 +39,22 @@ describe("TerminalFeedBuffer", () => {
     await Bun.sleep(25);
 
     expect(updates).toEqual(["first second third"]);
+  });
+
+  test("delivers continuous animation output at UI frame cadence", async () => {
+    const updates: string[] = [];
+    const feedBuffer = new TerminalFeedBuffer(
+      (bytes) => updates.push(decoder.decode(bytes)),
+      TERMINAL_FRAME_DELAY_MILLISECONDS,
+      TERMINAL_FRAME_DELAY_MILLISECONDS,
+    );
+
+    for (let frame = 0; frame < 5; frame++) {
+      feedBuffer.write(encoder.encode(String(frame)));
+      await Bun.sleep(10);
+    }
+
+    expect(updates.length).toBeGreaterThan(0);
+    feedBuffer.cancel();
   });
 });

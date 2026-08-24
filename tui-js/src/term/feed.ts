@@ -1,3 +1,5 @@
+export const TERMINAL_FRAME_DELAY_MILLISECONDS = 34;
+
 export class TerminalFeedBuffer {
   private pendingChunks: Uint8Array[] = [];
   private pendingByteCount = 0;
@@ -6,7 +8,7 @@ export class TerminalFeedBuffer {
 
   constructor(
     private readonly deliver: (bytes: Uint8Array) => void,
-    private readonly quietDelayMilliseconds = 34,
+    private readonly quietDelayMilliseconds = TERMINAL_FRAME_DELAY_MILLISECONDS,
     private readonly maximumDelayMilliseconds = 100,
   ) {}
 

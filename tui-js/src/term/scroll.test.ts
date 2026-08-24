@@ -47,7 +47,36 @@ describe("embedded terminal scrolling", () => {
     expect(terminal.getText().split("\n")[1]).toBe("X");
   });
 
-  test("forwards the wheel without scrolling retained Ghostty history", async () => {
+  test("shows the latest terminal rows and scrolls retained history", async () => {
+    setup = await createTestRenderer({ width: 40, height: 6 });
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 40,
+      height: 6,
+      cols: 40,
+      rows: 6,
+      persistent: true,
+      onMouseScroll: (event) => event.stopPropagation(),
+    });
+    setup.renderer.root.add(terminal);
+    terminal.feed(Array.from({ length: 30 }, (_, index) => `row ${index}\r\n`).join(""));
+    await setup.renderOnce();
+    await setup.renderOnce();
+    expect(terminal.scrollHeight).toBeGreaterThan(terminal.height);
+    expect(terminal.scrollY).toBe(terminal.scrollHeight - terminal.height);
+    expect(setup.captureCharFrame()).toContain("row 29");
+
+    await setup.mockMouse.scroll(5, 3, "up");
+
+    const scrolledPosition = terminal.scrollY;
+    expect(scrolledPosition).toBeLessThan(terminal.scrollHeight - terminal.height);
+
+    terminal.feed("row 30\r\n");
+    await setup.renderOnce();
+
+    expect(terminal.scrollY).toBe(scrolledPosition);
+  });
+
+  test("does not scroll retained history when the wheel is claimed", async () => {
     setup = await createTestRenderer({ width: 40, height: 6 });
     let forwardedWheelEvents = 0;
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
@@ -65,12 +94,42 @@ describe("embedded terminal scrolling", () => {
     setup.renderer.root.add(terminal);
     terminal.feed(Array.from({ length: 30 }, (_, index) => `row ${index}\r\n`).join(""));
     await setup.renderOnce();
-    expect(terminal.scrollHeight).toBeGreaterThan(terminal.height);
-    expect(terminal.scrollY).toBe(0);
+    const initialScrollY = terminal.scrollY;
 
-    await setup.mockMouse.scroll(5, 3, "down");
+    await setup.mockMouse.scroll(5, 3, "up");
 
     expect(forwardedWheelEvents).toBe(1);
-    expect(terminal.scrollY).toBe(0);
+    expect(terminal.scrollY).toBe(initialScrollY);
+  });
+
+  test("positions the native cursor relative to retained-history scrolling", async () => {
+    setup = await createTestRenderer({ width: 40, height: 6 });
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 40,
+      height: 6,
+      cols: 40,
+      rows: 6,
+      persistent: true,
+      showCursor: true,
+      focusable: true,
+    });
+    setup.renderer.root.add(terminal);
+    terminal.focus();
+    terminal.feed(Array.from({ length: 30 }, (_, index) => `row ${index}\r\n`).join(""));
+    await setup.renderOnce();
+    await setup.renderOnce();
+
+    const [cursorColumn, cursorRow] = terminal.getCursor();
+
+    expect(setup.renderer.getCursorState()).toMatchObject({
+      x: terminal.x + cursorColumn + 1,
+      y: terminal.y + cursorRow + 1,
+      visible: true,
+    });
+
+    await setup.mockMouse.scroll(2, 2, "up");
+    await setup.renderOnce();
+
+    expect(setup.renderer.getCursorState().visible).toBe(false);
   });
 });
