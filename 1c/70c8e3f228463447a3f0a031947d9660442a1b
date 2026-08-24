@@ -1,0 +1,67 @@
+tui-js/src/term/scroll.test.ts
+  s_d1763c0255f5c3::t_e984006a4df8cc 104-128
+  s_d1763c0255f5c3::t_a25569f4a625a8 70-76
+  s_d1763c0255f5c3::t_196552c7bbd1ae 50-57,59-62,64-69,77-79,97,99,102-103
+  s_d1763c0255f5c3::t_7b9145a456c063 63
+  s_d1763c0255f5c3::t_571ecab07cd10f 129-133
+  s_d1763c0255f5c3::t_8249ad8b3a9dc5 58
+tui-js/src/term/tabs.tsx
+  s_c7b36a62b6243d::t_0d81f1075b646a 17
+  s_d1763c0255f5c3::t_dc6c616de0452f 9,194,206,220-226,515-522,534,559-562,608
+  s_649f2ca046d056::t_cce9b557eb8da8 110-113,115-116,321
+  s_c7b36a62b6243d::t_bb9802bf549751 40,103-109,114,309
+  s_c7b36a62b6243d::t_db6f873191ba8e 230-237
+  s_d1763c0255f5c3::t_47acc4fe0e50a1 320,322-330
+tui-js/src/term/embedded.ts
+  s_d1763c0255f5c3::t_47acc4fe0e50a1 5-6,12-22,52
+  s_d1763c0255f5c3::t_8e5f8492139896 36-46,48-49
+  s_d1763c0255f5c3::t_dc6c616de0452f 7-11
+  s_d1763c0255f5c3::t_306c9795f1b49f 23-35,47,50-51
+tui-js/src/term/tabs.mouse.test.tsx
+  s_d1763c0255f5c3::t_aab46d97c07c1e 19-32,35-38,93,120
+  s_d1763c0255f5c3::t_891a32b595c5fb 489
+  s_c7b36a62b6243d::t_6b0921db4627dc 368-374,376-422,425-428,492
+  s_c7b36a62b6243d::t_9e48ea70eaa657 4,375,423-424
+  s_d1763c0255f5c3::t_18763665999e5f 6,316,429-453,455-474,476-481,483-488,490-491
+  s_649f2ca046d056::t_436e761a8a5513 18,33,317-340,342-367
+  s_d1763c0255f5c3::t_c1e50ca7abfb65 482
+  s_649f2ca046d056::t_cce9b557eb8da8 34,341,454
+  s_d1763c0255f5c3::t_f85253c943bdb4 475
+tui-js/src/term/feed.test.ts
+  s_c7b36a62b6243d::t_0d81f1075b646a 2,46-50
+  s_c7b36a62b6243d::t_171c0251f7f216 43-45,51-59
+tui-js/src/term/feed.ts
+  s_c7b36a62b6243d::t_0d81f1075b646a 1-2,11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "1c70c8e3f228463447a3f0a031947d9660442a1b",
+  "prompts": {},
+  "sessions": {
+    "s_649f2ca046d056": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00efe-55ca-7ae2-afe1-8e16ce4be232",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    },
+    "s_d1763c0255f5c3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffb1c-a37a-7f71-b645-3ee25a73bab6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
