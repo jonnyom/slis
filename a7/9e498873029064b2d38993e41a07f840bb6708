@@ -1,0 +1,19 @@
+internal/rpcserver/rpcserver_test.go
+  s_c7b36a62b6243d::t_1944b0af7e9ab6 177-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a79e498873029064b2d38993e41a07f840bb6708",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
