@@ -1,0 +1,28 @@
+tui-js/package.json
+  s_c7b36a62b6243d::t_12b24cf0f34daf 27-29
+tui-js/src/term/scroll.test.ts
+  s_c7b36a62b6243d::t_03796afec113a0 76
+  s_c7b36a62b6243d::t_e54e257c75534b 67-75,77-90
+tui-js/patches/ghostty-opentui@1.5.0.patch
+  s_c7b36a62b6243d::t_12b24cf0f34daf 1-129
+tui-js/src/term/tabs.tsx
+  s_c7b36a62b6243d::t_03796afec113a0 299
+tui-js/bun.lock
+  s_c7b36a62b6243d::t_3af72a051c41cd 20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "45b3e85c0fe3678a51aeb6714a935a40060880e3",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
