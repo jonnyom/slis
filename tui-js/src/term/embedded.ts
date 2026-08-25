@@ -22,7 +22,10 @@ export class EmbeddedTerminalRenderable extends GhosttyTerminalRenderable {
     super.renderSelf(buffer);
     if (this.followsOutput) {
       const bottom = Math.max(0, this.scrollHeight - this.height);
-      if (this.scrollY !== bottom) this.scrollY = bottom;
+      if (this.scrollY !== bottom) {
+        this.scrollY = bottom;
+        super.renderSelf(buffer);
+      }
     }
     this.positionCursorInViewport();
   }

@@ -47,6 +47,23 @@ describe("embedded terminal scrolling", () => {
     expect(terminal.getText().split("\n")[1]).toBe("X");
   });
 
+  test("paints the final terminal rows without another output frame", async () => {
+    setup = await createTestRenderer({ width: 40, height: 6 });
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 40,
+      height: 6,
+      cols: 40,
+      rows: 6,
+      persistent: true,
+    });
+    setup.renderer.root.add(terminal);
+
+    terminal.feed(Array.from({ length: 30 }, (_, index) => `row ${index}\r\n`).join(""));
+    await setup.renderOnce();
+
+    expect(setup.captureCharFrame()).toContain("row 29");
+  });
+
   test("shows the latest terminal rows and scrolls retained history", async () => {
     setup = await createTestRenderer({ width: 40, height: 6 });
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
