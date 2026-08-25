@@ -174,8 +174,8 @@ func TestHello(t *testing.T) {
 	if len(hr.Agents) != 1 {
 		t.Fatalf("agents = %+v, want 1 default agent", hr.Agents)
 	}
-	if hr.Agents[0].Name != "claude" || len(hr.Agents[0].Cmd) != 1 || hr.Agents[0].Cmd[0] != "claude" {
-		t.Errorf("default agent = %+v, want claude/[claude]", hr.Agents[0])
+	if hr.Agents[0].Name != "Claude Code" || len(hr.Agents[0].Cmd) != 1 || hr.Agents[0].Cmd[0] != "claude" {
+		t.Errorf("default agent = %+v, want Claude Code/[claude]", hr.Agents[0])
 	}
 }
 
