@@ -1,0 +1,21 @@
+tui-js/src/term/embedded.ts
+  s_c7b36a62b6243d::t_49b8c486ebc14a 25-28
+tui-js/src/term/scroll.test.ts
+  s_c7b36a62b6243d::t_4d89ea154d5961 50-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "097cbaf0a8d8ae51e0bb03be755b5c68f577e45c",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
