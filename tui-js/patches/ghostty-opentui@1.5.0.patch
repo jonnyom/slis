@@ -1,0 +1,129 @@
+diff --git a/dist/terminal-buffer.d.ts b/dist/terminal-buffer.d.ts
+index 0271e4ffd9adcfb865d68a8056f14eebe6ef5bf4..7e5f2e1ce987ddfc551790836f0b01fe79076108 100644
+--- a/dist/terminal-buffer.d.ts
++++ b/dist/terminal-buffer.d.ts
+@@ -36,6 +36,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
+     cols?: number;
+     rows?: number;
+     limit?: number;
++    limitFromEnd?: boolean;
+     trimEnd?: boolean;
+     highlights?: HighlightRegion[];
+     /**
+@@ -66,6 +67,7 @@ export declare class GhosttyTerminalRenderable extends TextBufferRenderable {
+     private _cols;
+     private _rows;
+     private _limit?;
++    private _limitFromEnd;
+     private _trimEnd?;
+     private _highlights?;
+     private _ansiDirty;
+diff --git a/dist/terminal-buffer.js b/dist/terminal-buffer.js
+index 956b98d345e4e849d984bc0c4e542cbc785f1227..97375e750c320bd8b6443a21f70c33a71080b261 100644
+--- a/dist/terminal-buffer.js
++++ b/dist/terminal-buffer.js
+@@ -221,6 +221,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+     _cols;
+     _rows;
+     _limit;
++    _limitFromEnd;
+     _trimEnd;
+     _highlights;
+     _ansiDirty = false;
+@@ -246,6 +247,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+         this._cols = options.cols ?? 120;
+         this._rows = options.rows ?? 40;
+         this._limit = options.limit;
++        this._limitFromEnd = options.limitFromEnd ?? false;
+         this._trimEnd = options.trimEnd;
+         this._highlights = options.highlights;
+         this._persistent = options.persistent ?? false;
+@@ -463,16 +465,28 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+         if (this._ansiDirty) {
+             let data;
+             if (this._persistentTerminal) {
+-                // Use persistent terminal for efficient streaming
++                const metadata = this._limit && this._limitFromEnd
++                    ? this._persistentTerminal.getJson({ limit: 1 })
++                    : null;
++                const offset = metadata && this._limit
++                    ? Math.max(0, metadata.totalLines - this._limit)
++                    : 0;
+                 data = this._persistentTerminal.getJson({
++                    offset,
+                     limit: this._limit,
+                 });
+             }
+             else {
+-                // Stateless mode - create terminal each time
++                const metadata = this._limit && this._limitFromEnd
++                    ? ptyToJson(this._ansi, { cols: this._cols, rows: this._rows, limit: 1 })
++                    : null;
++                const offset = metadata && this._limit
++                    ? Math.max(0, metadata.totalLines - this._limit)
++                    : 0;
+                 data = ptyToJson(this._ansi, {
+                     cols: this._cols,
+                     rows: this._rows,
++                    offset,
+                     limit: this._limit
+                 });
+             }
+diff --git a/src/terminal-buffer.ts b/src/terminal-buffer.ts
+index e948e8afce222dc7b985418e33df9a3c8da573f0..65ba99dfda6ace1637b4098e7189b247853a641c 100644
+--- a/src/terminal-buffer.ts
++++ b/src/terminal-buffer.ts
+@@ -308,6 +308,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
+   cols?: number
+   rows?: number
+   limit?: number  // Maximum number of lines to render (from start)
++  limitFromEnd?: boolean
+   trimEnd?: boolean  // Remove empty lines from the end
+   highlights?: HighlightRegion[]  // Regions to highlight with custom background colors
+   /**
+@@ -340,6 +341,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+   private _cols: number
+   private _rows: number
+   private _limit?: number
++  private _limitFromEnd: boolean
+   private _trimEnd?: boolean
+   private _highlights?: HighlightRegion[]
+   private _ansiDirty: boolean = false
+@@ -368,6 +370,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+     this._cols = options.cols ?? 120
+     this._rows = options.rows ?? 40
+     this._limit = options.limit
++    this._limitFromEnd = options.limitFromEnd ?? false
+     this._trimEnd = options.trimEnd
+     this._highlights = options.highlights
+     this._persistent = options.persistent ?? false
+@@ -627,15 +630,27 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+       let data: TerminalData
+       
+       if (this._persistentTerminal) {
+-        // Use persistent terminal for efficient streaming
++        const metadata = this._limit && this._limitFromEnd
++          ? this._persistentTerminal.getJson({ limit: 1 })
++          : null
++        const offset = metadata && this._limit
++          ? Math.max(0, metadata.totalLines - this._limit)
++          : 0
+         data = this._persistentTerminal.getJson({
++          offset,
+           limit: this._limit,
+         })
+       } else {
+-        // Stateless mode - create terminal each time
++        const metadata = this._limit && this._limitFromEnd
++          ? ptyToJson(this._ansi, { cols: this._cols, rows: this._rows, limit: 1 })
++          : null
++        const offset = metadata && this._limit
++          ? Math.max(0, metadata.totalLines - this._limit)
++          : 0
+         data = ptyToJson(this._ansi, { 
+           cols: this._cols, 
+           rows: this._rows,
++          offset,
+           limit: this._limit 
+         })
+       }

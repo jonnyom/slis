@@ -64,6 +64,30 @@ describe("embedded terminal scrolling", () => {
     expect(setup.captureCharFrame()).toContain("row 29");
   });
 
+  test("retains the newest rows when terminal history reaches its limit", async () => {
+    setup = await createTestRenderer({ width: 40, height: 6 });
+    const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+      width: 40,
+      height: 6,
+      cols: 40,
+      rows: 6,
+      persistent: true,
+      limit: 20,
+      limitFromEnd: true,
+    });
+    setup.renderer.root.add(terminal);
+
+    terminal.feed(
+      `${Array.from({ length: 30 }, (_, index) => `row ${index}\r\n`).join("")}Ask Codex to do anything`,
+    );
+    await setup.renderOnce();
+
+    expect(terminal.getText()).toContain("Ask Codex to do anything");
+    expect(terminal.scrollHeight).toBeLessThanOrEqual(20);
+    expect(setup.captureCharFrame()).toContain("Ask Codex to do anything");
+    expect(setup.captureCharFrame()).not.toContain("row 0");
+  });
+
   test("shows the latest terminal rows and scrolls retained history", async () => {
     setup = await createTestRenderer({ width: 40, height: 6 });
     const terminal = new EmbeddedTerminalRenderable(setup.renderer, {

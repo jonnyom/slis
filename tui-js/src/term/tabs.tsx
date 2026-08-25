@@ -296,6 +296,7 @@ function TermTab({
       rows={rows}
       bg={EMBEDDED_TERMINAL_BACKGROUND}
       limit={entry.kind === "session" ? EMBEDDED_TERMINAL_HISTORY_LIMIT : undefined}
+      limitFromEnd={entry.kind === "session"}
       visible={shown}
       zIndex={101}
       persistent
