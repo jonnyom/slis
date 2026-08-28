@@ -1,0 +1,22 @@
+internal/tmuxctl/tmux_test.go
+  s_c7b36a62b6243d::t_43a096fa2046e3 6,8,17,19,22-23,35,162,202
+  s_c7b36a62b6243d::t_52e1fd863a67b8 18,24-25,28,32-34,36-37
+  s_c7b36a62b6243d::t_1952300ec56d8d 20-21
+  s_c7b36a62b6243d::t_03fe76d5c9a01b 26-27,29-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9ab929b8537a0370f604ee909224268b7d11b8b5",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
