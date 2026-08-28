@@ -1,0 +1,19 @@
+internal/swap/live_safety_test.go
+  s_c7b36a62b6243d::t_0b280dfdd4c07e 172-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "a8ee368135b367a29e75363eddd54058099a81ce",
+  "prompts": {},
+  "sessions": {
+    "s_c7b36a62b6243d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03432-a9b4-7f71-b01a-da0f2b33111e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
