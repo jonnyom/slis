@@ -42,6 +42,7 @@ func sessionGroupForOutputWithRuntime(group sessionmanager.Group, runtimes []ses
 		runtime := runtimeByTab[tab.ID]
 		tab.Agent = runtimeAgentName(runtime, agents)
 		tab.CurrentDirectory = runtimeCurrentDirectory(runtime, tab.CWD)
+		tab.Busy = runtime.Busy
 		if tab.Agent == "" {
 			tab.Label = displayDirectory(tab.CurrentDirectory)
 			continue

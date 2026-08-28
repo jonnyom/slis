@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createRpcClient, isSliceNotFound } from "./rpc";
+import { createRpcClient, isSliceNotFound, usingFake } from "./rpc";
 import type {
   AgentSpec,
   ConflictsResult,
@@ -65,13 +65,16 @@ import {
   agentCmdline,
   agentTabID,
 } from "./term/agentpick";
-import { applySessionRuntimeLabels } from "./term/runtime";
+import { applySessionRuntimeLabels, SessionRuntimeRefresher } from "./term/runtime";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
 import { useToasts, ToastLayer } from "./components/toast";
 import { InitialScreen } from "./components/initialscreen";
-import { agentDefaultSet, createSlice } from "./rpc/mutate";
+import { Spinner } from "./components/spinner";
+import { agentDefaultSet, createSlice, deactivate, swapSlice } from "./rpc/mutate";
+import { LiveMirrorManager } from "./live/mirror";
+import { TerminalOpenCoordinator } from "./term/open";
 import {
   createBusyLabel,
   createReducer,
@@ -99,6 +102,14 @@ const THEME_PREFERENCES: ThemePreference[] = ["auto", "midnight", "violet", "lig
 export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const renderer = useRenderer();
   const { width, height } = useTerminalDimensions();
+  const overlaysRef = useRef<OverlayApi | null>(null);
+  const liveMirrorRef = useRef<LiveMirrorManager | null>(null);
+  if (!liveMirrorRef.current) {
+    liveMirrorRef.current = new LiveMirrorManager((message) =>
+      overlaysRef.current?.error("Live sync stopped", message),
+    );
+  }
+  const liveMirror = liveMirrorRef.current;
 
   const clientRef = useRef<RpcClient | null>(null);
   if (!clientRef.current) clientRef.current = createRpcClient();
@@ -153,14 +164,8 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const dockedSessionBySliceRef = useRef(new Map<string, string>());
   const hiddenDockSlicesRef = useRef(new Set<string>());
   const restoredSessionsRef = useRef(false);
-  const runtimeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const runtimeLastActivityRef = useRef(0);
   const [termMode, setTermMode] = useState(false);
   const nextCmdIdRef = useRef(0);
-
-  useEffect(() => () => {
-    if (runtimeRefreshTimeoutRef.current) clearTimeout(runtimeRefreshTimeoutRef.current);
-  }, []);
 
   useEffect(() => {
     if (!dockedSessionTab) return;
@@ -184,23 +189,21 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
 
   // Transient toasts (spec §3.5) + non-blocking create (spec D2).
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
-  const refreshSessionRuntime = useCallback(() => {
-    runtimeLastActivityRef.current = Date.now();
-    if (runtimeRefreshTimeoutRef.current) return;
-    const refreshAfterQuietPeriod = () => {
-      const remainingMilliseconds = 250 - (Date.now() - runtimeLastActivityRef.current);
-      if (remainingMilliseconds > 0) {
-        runtimeRefreshTimeoutRef.current = setTimeout(refreshAfterQuietPeriod, remainingMilliseconds);
-        return;
-      }
-      runtimeRefreshTimeoutRef.current = null;
-      void listSlisSessions(true).then(
-        (groups) => setTabs((currentTabs) => applySessionRuntimeLabels(currentTabs, groups)),
-        (error) => pushToast(`Could not refresh terminal labels: ${String(error)}`, "ci-fail"),
-      );
-    };
-    runtimeRefreshTimeoutRef.current = setTimeout(refreshAfterQuietPeriod, 250);
-  }, [pushToast]);
+  const [terminalOpening, setTerminalOpening] = useState<string | null>(null);
+  const terminalOpenCoordinator = useMemo(
+    () => new TerminalOpenCoordinator(setTerminalOpening),
+    [],
+  );
+  const runtimeRefresher = useMemo(
+    () => new SessionRuntimeRefresher(
+      (signal) => listSlisSessions(true, signal),
+      (groups) => setTabs((currentTabs) => applySessionRuntimeLabels(currentTabs, groups)),
+      (error) => pushToast(`Could not refresh terminal labels: ${String(error)}`, "ci-fail"),
+    ),
+    [pushToast],
+  );
+  useEffect(() => () => runtimeRefresher.stop(), [runtimeRefresher]);
+  const refreshSessionRuntime = useCallback(() => runtimeRefresher.activity(), [runtimeRefresher]);
   const [createState, dispatchCreate] = useReducer(createReducer, initialCreateState);
   const [browserFocusRequest, setBrowserFocusRequest] = useState<{
     id: number;
@@ -377,12 +380,30 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     return () => clearInterval(id);
   }, [refreshDiscovery, tickRefresh]);
 
+  const quittingRef = useRef(false);
   const quit = useCallback(() => {
-    manager.detachAll(); // drop every tmux client — sessions keep running
-    client.close();
-    renderer.destroy();
-    process.exit(0);
-  }, [client, renderer, manager]);
+    if (quittingRef.current) return;
+    quittingRef.current = true;
+    void (async () => {
+      await liveMirror.stop();
+      const activeSlice = lsRef.current?.slices.find((slice) => slice.active);
+      if (activeSlice) {
+        const result = await deactivate();
+        if (result.code !== 0) {
+          liveMirror.start();
+          quittingRef.current = false;
+          const body = (result.stdout + (result.stderr ? `\n${result.stderr}` : "")).trim();
+          overlaysRef.current?.error("Could not reset live slice", body || "(no output)");
+          return;
+        }
+      }
+      runtimeRefresher.stop();
+      manager.detachAll();
+      client.close();
+      renderer.destroy();
+      process.exit(0);
+    })();
+  }, [client, renderer, manager, liveMirror, runtimeRefresher]);
 
   // Ctrl+C quits from every React UI state (browser, cockpit, diff, overlays),
   // before the key parser can turn it into the browser's plain `c` action.
@@ -418,7 +439,6 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // Non-blocking create (spec D2): run in the background with an ambient header
   // spinner; success → toast, failure → Result overlay (via the overlays ref,
   // which is assigned just below to break the useOverlays ⇄ startCreate cycle).
-  const overlaysRef = useRef<OverlayApi | null>(null);
   const startCreate = useCallback(
     (name: string) => {
       dispatchCreate({ type: "start", name });
@@ -450,6 +470,17 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [pushToast, refresh],
   );
 
+  const runSwapWithLiveMirror = useCallback(
+    async (slice: string, active: boolean, replacing?: string) => {
+      if (usingFake()) return swapSlice(slice, active, replacing);
+      await liveMirror.stop();
+      const result = await swapSlice(slice, active, replacing);
+      if (result.activeAfter) liveMirror.start();
+      return result;
+    },
+    [liveMirror],
+  );
+
   const overlays = useOverlays({
     refresh,
     conflicts,
@@ -462,8 +493,30 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     runInteractive: openCommandTab,
     toast: pushToast,
     startCreate,
+    runSwap: runSwapWithLiveMirror,
   });
   overlaysRef.current = overlays;
+
+  const recoveryPromptedRef = useRef(false);
+  useEffect(() => {
+    if (!ls || recoveryPromptedRef.current || usingFake()) return;
+    recoveryPromptedRef.current = true;
+    const activeSlice = ls.slices.find((slice) => slice.active);
+    if (!activeSlice) return;
+    overlaysRef.current?.liveRecovery(
+      activeSlice.name,
+      async () => {
+        await liveMirror.stop();
+        const result = await deactivate();
+        if (result.code !== 0) liveMirror.start();
+        return result;
+      },
+      () => {
+        liveMirror.start();
+        pushToast(`Reactivated ${activeSlice.name}`, "ci-pass");
+      },
+    );
+  }, [ls, liveMirror, pushToast]);
 
   // Theme switching is global across browser/cockpit/diff, but never steals a
   // T from a text-entry overlay or embedded terminal. Use the parsed key event
@@ -744,8 +797,18 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     [buildTermOpts, preferredAgent],
   );
 
+  const launchTermTabWithFeedback = useCallback(
+    (slice: string, mode: OpenTermMode, choice?: AgentSpec) => {
+      void launchTermTab(slice, mode, choice).then(
+        undefined,
+        (error) => overlays.info("Could not open terminal", String(error)),
+      );
+    },
+    [launchTermTab, overlays],
+  );
+
   const openTerm = useCallback(
-    (slice: string, mode: OpenTermMode) => {
+    async (slice: string, mode: OpenTermMode) => {
       const dockedEntry = tabs.find((tab) => tabKey(tab) === dockedSessionTab);
       if (
         mode === "agent" &&
@@ -784,12 +847,12 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           overlays.agentPicker(
             slice,
             choices,
-            (choice) => launchTermTab(slice, "agent-pick", choice),
+            (choice) => launchTermTabWithFeedback(slice, "agent-pick", choice),
             savedAgent?.name ?? preferredAgent?.name,
           );
           return;
         }
-        launchTermTab(slice, "agent-pick", agentList[0]);
+        await launchTermTab(slice, "agent-pick", agentList[0]);
         return;
       }
       // With more than one configured agent, a launch (C / autostart) first asks
@@ -798,7 +861,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         // Once a valid default exists, C is a one-keystroke launch. The picker
         // is only the first-run choice; comma explicitly reconfigures it.
         if (savedAgent) {
-          launchTermTab(slice, "agent-launch", savedAgent);
+          await launchTermTab(slice, "agent-launch", savedAgent);
           return;
         }
         const choices = pickableAgents(agentList);
@@ -808,16 +871,16 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
             choices,
             (choice) => {
               rememberAgent(choice);
-              launchTermTab(slice, "agent-launch", choice);
+              launchTermTabWithFeedback(slice, "agent-launch", choice);
             },
             preferredAgent?.name,
           );
           return;
         }
       }
-      launchTermTab(slice, mode);
+      await launchTermTab(slice, mode);
     },
-    [launchTermTab, overlays, agentList, preferredAgent, rememberAgent, savedAgent, tabs, dockedSessionTab],
+    [launchTermTab, launchTermTabWithFeedback, overlays, agentList, preferredAgent, rememberAgent, savedAgent, tabs, dockedSessionTab],
   );
 
   const openExistingSession = useCallback(
@@ -901,11 +964,11 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         members: opts.members,
         sessionOpts: opts.sessionOpts,
       }).then(
-        () => launchTermTab(entry.slice, "agent"),
+        () => launchTermTabWithFeedback(entry.slice, "agent"),
         (error) => overlays.info("Could not resume Claude", String(error)),
       );
     },
-    [buildTermOpts, launchTermTab, overlays],
+    [buildTermOpts, launchTermTabWithFeedback, overlays],
   );
 
   // Guard against a second agent in a worktree that already has one. Two agents
@@ -916,41 +979,50 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // preference in the cockpit.
   const openTermGuarded = useCallback(
     (slice: string, mode: OpenTermMode) => {
-      if (mode === "shell") {
-        openTerm(slice, mode);
-        return;
-      }
-      const view = views.find((candidate) => candidate.slice.name === slice);
-      if (!view) {
-        openTerm(slice, mode);
-        return;
-      }
-      const members: TermMember[] = view.slice.members.map((member) => ({
-        repo: member.repo,
-        branch: member.branch,
-        worktreePath: member.worktree_path,
-      }));
-      const knownSlices = views.map((candidate) => candidate.slice.name);
-      listTmuxSessions().then(
-        (sessions) => {
-          const busy = liveForeignAgentInMembers(sessions, members, slice, knownSlices);
-          if (!busy) {
-            openTerm(slice, mode);
-            return;
-          }
-          overlays.agentBusy(
-            slice,
-            busy.session.name,
-            busy.pane.path,
-            () => openExistingSession(slice, busy.session.name),
-            () => openTerm(slice, mode),
-          );
-        },
-        // tmux unreachable: fall through rather than block the user.
-        () => openTerm(slice, mode),
-      );
+      const terminalKind = mode === "shell" ? "shell" : "agent";
+      void terminalOpenCoordinator.run(`opening ${slice} ${terminalKind}…`, async () => {
+        if (mode === "shell") {
+          await openTerm(slice, mode);
+          return;
+        }
+        const view = views.find((candidate) => candidate.slice.name === slice);
+        if (!view) {
+          await openTerm(slice, mode);
+          return;
+        }
+        const members: TermMember[] = view.slice.members.map((member) => ({
+          repo: member.repo,
+          branch: member.branch,
+          worktreePath: member.worktree_path,
+        }));
+        const knownSlices = views.map((candidate) => candidate.slice.name);
+        const sessions = await listTmuxSessions().then(
+          (availableSessions) => availableSessions,
+          () => null,
+        );
+        if (!sessions) {
+          await openTerm(slice, mode);
+          return;
+        }
+        const busy = liveForeignAgentInMembers(sessions, members, slice, knownSlices);
+        if (!busy) {
+          await openTerm(slice, mode);
+          return;
+        }
+        overlays.agentBusy(
+          slice,
+          busy.session.name,
+          busy.pane.path,
+          () => openExistingSession(slice, busy.session.name),
+          () => {
+            void openTerm(slice, mode).catch((error) =>
+              overlays.info("Could not open terminal", String(error)),
+            );
+          },
+        );
+      }).catch((error) => overlays.info("Could not open terminal", String(error)));
     },
-    [openTerm, openExistingSession, overlays, views],
+    [openTerm, openExistingSession, overlays, terminalOpenCoordinator, views],
   );
 
   // Remove a tab and re-point the active tab / term mode. When a *command* tab
@@ -1171,6 +1243,23 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         onSessionActivity={refreshSessionRuntime}
         onCommandExit={markCommandExited}
       />
+
+      {terminalOpening ? (
+        <box
+          position="absolute"
+          top={0}
+          right={2}
+          zIndex={101}
+          backgroundColor={theme.surface}
+          paddingLeft={1}
+          paddingRight={1}
+        >
+          <text wrapMode="none">
+            <Spinner />
+            <span fg={theme.textDim}>{` ${terminalOpening}`}</span>
+          </text>
+        </box>
+      ) : null}
 
       {!connected ? (
         <box

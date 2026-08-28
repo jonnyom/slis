@@ -10,6 +10,7 @@ export interface SessionTab {
   agent?: string;
   current_directory?: string;
   label?: string;
+  busy?: boolean;
 }
 
 export interface SessionGroup {
@@ -117,8 +118,8 @@ export async function listLegacySessions(): Promise<LegacySession[]> {
   return JSON.parse(await run(sessionLegacyListArgv())) as LegacySession[];
 }
 
-export async function listSlisSessions(live = false): Promise<SessionGroup[]> {
-  return JSON.parse(await run(sessionListArgv(live))) as SessionGroup[];
+export async function listSlisSessions(live = false, signal?: AbortSignal): Promise<SessionGroup[]> {
+  return JSON.parse(await run(sessionListArgv(live), signal)) as SessionGroup[];
 }
 
 export async function killLegacySession(name: string): Promise<boolean> {
@@ -160,8 +161,8 @@ async function writeStdin(argv: string[], input: Uint8Array | string, label: str
   if (code !== 0) throw new Error(stderr.trim() || `${label} exited with code ${code}`);
 }
 
-async function run(argv: string[]): Promise<string> {
-  const proc = Bun.spawn(argv, { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+async function run(argv: string[], signal?: AbortSignal): Promise<string> {
+  const proc = Bun.spawn(argv, { stdin: "ignore", stdout: "pipe", stderr: "pipe", signal });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),

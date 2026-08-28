@@ -29,6 +29,7 @@ type TabRuntime struct {
 	GroupID   string
 	TabID     string
 	Processes []proc.ProcInfo
+	Busy      bool
 }
 
 func NewManager(store *Store, client *zmxctl.Client) *Manager {
@@ -66,13 +67,19 @@ func (manager *Manager) Ensure(ctx context.Context, groupID string, members []mo
 	for _, session := range sessions {
 		existing[session.Name] = session
 	}
+	existingRootPIDs := make([]int, 0, len(group.Tabs))
 	for _, tab := range group.Tabs {
 		if runtimeSession, found := existing[tab.PersistenceName]; found {
-			processes, processErr := proc.SliceProcs([]int{runtimeSession.PID})
-			if processErr != nil {
-				return Group{}, processErr
-			}
-			if shouldStartLoginShell(os.Getenv("SHELL"), processes) {
+			existingRootPIDs = append(existingRootPIDs, runtimeSession.PID)
+		}
+	}
+	existingProcessTrees, err := proc.SliceProcTrees(existingRootPIDs)
+	if err != nil {
+		return Group{}, err
+	}
+	for _, tab := range group.Tabs {
+		if runtimeSession, found := existing[tab.PersistenceName]; found {
+			if shouldStartLoginShell(os.Getenv("SHELL"), existingProcessTrees[runtimeSession.PID]) {
 				if err := manager.client.StartLoginShell(ctx, tab.PersistenceName); err != nil {
 					return Group{}, err
 				}
@@ -257,8 +264,18 @@ func (manager *Manager) Runtimes(ctx context.Context, groups []Group) ([]TabRunt
 		return nil, err
 	}
 	pids := make(map[string]int, len(sessions))
+	rootPIDs := make([]int, 0, len(sessions))
 	for _, runtimeSession := range sessions {
 		pids[runtimeSession.Name] = runtimeSession.PID
+		rootPIDs = append(rootPIDs, runtimeSession.PID)
+	}
+	processTrees, err := proc.SliceProcTrees(rootPIDs)
+	if err != nil {
+		return nil, err
+	}
+	busyByPID, err := proc.TerminalForegroundCommands(rootPIDs)
+	if err != nil {
+		return nil, err
 	}
 	runtimes := make([]TabRuntime, 0)
 	for _, group := range groups {
@@ -267,11 +284,7 @@ func (manager *Manager) Runtimes(ctx context.Context, groups []Group) ([]TabRunt
 			if pid <= 0 {
 				continue
 			}
-			processes, processErr := proc.SliceProcs([]int{pid})
-			if processErr != nil {
-				return nil, processErr
-			}
-			runtimes = append(runtimes, TabRuntime{GroupID: group.ID, TabID: tab.ID, Processes: processes})
+			runtimes = append(runtimes, TabRuntime{GroupID: group.ID, TabID: tab.ID, Processes: processTrees[pid], Busy: busyByPID[pid]})
 		}
 	}
 	return runtimes, nil

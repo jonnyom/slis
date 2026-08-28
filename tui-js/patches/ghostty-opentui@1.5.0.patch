@@ -1,5 +1,5 @@
 diff --git a/dist/terminal-buffer.d.ts b/dist/terminal-buffer.d.ts
-index 0271e4ffd9adcfb865d68a8056f14eebe6ef5bf4..7e5f2e1ce987ddfc551790836f0b01fe79076108 100644
+index 0271e4ffd9adcfb865d68a8056f14eebe6ef5bf4..614407982a6658c3e74e21650409fb853592e7bc 100644
 --- a/dist/terminal-buffer.d.ts
 +++ b/dist/terminal-buffer.d.ts
 @@ -36,6 +36,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
@@ -19,10 +19,102 @@ index 0271e4ffd9adcfb865d68a8056f14eebe6ef5bf4..7e5f2e1ce987ddfc551790836f0b01fe
      private _highlights?;
      private _ansiDirty;
 diff --git a/dist/terminal-buffer.js b/dist/terminal-buffer.js
-index 956b98d345e4e849d984bc0c4e542cbc785f1227..97375e750c320bd8b6443a21f70c33a71080b261 100644
+index 956b98d345e4e849d984bc0c4e542cbc785f1227..445eb911e2843f3156c0c82d9228687df1945e2e 100644
 --- a/dist/terminal-buffer.js
 +++ b/dist/terminal-buffer.js
-@@ -221,6 +221,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+@@ -36,10 +36,10 @@ function getLineStarts(lineInfo) {
+ }
+ function convertSpanToChunk(span) {
+     const { text, fg, bg, flags, width } = span;
+-    let fgColor = fg ? RGBA.fromHex(fg) : DEFAULT_FG;
++    let fgColor = fg ? RGBA.fromHex(fg) : undefined;
+     let bgColor = bg ? RGBA.fromHex(bg) : undefined;
+     if (flags & StyleFlags.INVERSE) {
+-        const temp = fgColor;
++        const temp = fgColor ?? DEFAULT_FG;
+         fgColor = bgColor || DEFAULT_BG;
+         bgColor = temp;
+     }
+@@ -56,6 +56,64 @@ function convertSpanToChunk(span) {
+         attributes |= TextAttributes.DIM;
+     return { __isChunk: true, text, fg: fgColor, bg: bgColor, attributes, cellWidth: width };
+ }
++const visibleUrlPattern = /https?:\/\/[^\s<>"']+/g;
++const trailingUrlPunctuation = /[.,;:!?)}\]]+$/;
++function applyLinksToLine(chunks) {
++    const text = chunks.map((chunk) => chunk.text).join("");
++    const links = [...text.matchAll(visibleUrlPattern)].map((match) => {
++        const url = match[0].replace(trailingUrlPunctuation, "");
++        const start = match.index;
++        return { start, end: start + url.length, url };
++    });
++    if (links.length === 0)
++        return chunks;
++    const result = [];
++    let chunkStart = 0;
++    for (const chunk of chunks) {
++        const chunkEnd = chunkStart + chunk.text.length;
++        const boundaries = new Set([chunkStart, chunkEnd]);
++        for (const link of links) {
++            if (link.start > chunkStart && link.start < chunkEnd)
++                boundaries.add(link.start);
++            if (link.end > chunkStart && link.end < chunkEnd)
++                boundaries.add(link.end);
++        }
++        const positions = [...boundaries].sort((left, right) => left - right);
++        for (let index = 0; index < positions.length - 1; index++) {
++            const start = positions[index];
++            const end = positions[index + 1];
++            const segment = chunk.text.slice(start - chunkStart, end - chunkStart);
++            const link = links.find((candidate) => start >= candidate.start && end <= candidate.end);
++            result.push({
++                ...chunk,
++                text: segment,
++                cellWidth: wcwidth(segment),
++                ...(link ? { link: { url: link.url } } : {}),
++            });
++        }
++        chunkStart = chunkEnd;
++    }
++    return result;
++}
++function chunksHaveSameStyle(left, right) {
++    return ((left.fg?.equals(right.fg) ?? right.fg === undefined) &&
++        (left.bg?.equals(right.bg) ?? right.bg === undefined) &&
++        (left.attributes ?? 0) === (right.attributes ?? 0) &&
++        left.link?.url === right.link?.url);
++}
++function coalesceAdjacentChunks(chunks) {
++    const result = [];
++    for (const chunk of chunks) {
++        const previous = result.at(-1);
++        if (previous && chunksHaveSameStyle(previous, chunk)) {
++            previous.text += chunk.text;
++        }
++        else {
++            result.push({ ...chunk });
++        }
++    }
++    return result;
++}
+ /**
+  * Applies highlights to chunks for a specific line.
+  * Splits chunks at highlight boundaries and applies background colors.
+@@ -209,18 +267,20 @@ export function terminalDataToStyledText(data, highlights, cursor) {
+         if (cursor && i === cursor.y) {
+             lineChunks = applyCursorToLine(lineChunks, cursor.x, cursor.style);
+         }
++        lineChunks = applyLinksToLine(lineChunks);
+         chunks.push(...lineChunks);
+         if (i < data.lines.length - 1) {
+             chunks.push({ __isChunk: true, text: "\n", attributes: 0 });
+         }
+     }
+-    return new StyledText(chunks);
++    return new StyledText(coalesceAdjacentChunks(chunks));
+ }
+ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+     _ansi;
      _cols;
      _rows;
      _limit;
@@ -30,7 +122,7 @@ index 956b98d345e4e849d984bc0c4e542cbc785f1227..97375e750c320bd8b6443a21f70c33a7
      _trimEnd;
      _highlights;
      _ansiDirty = false;
-@@ -246,6 +247,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+@@ -246,6 +306,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
          this._cols = options.cols ?? 120;
          this._rows = options.rows ?? 40;
          this._limit = options.limit;
@@ -38,7 +130,7 @@ index 956b98d345e4e849d984bc0c4e542cbc785f1227..97375e750c320bd8b6443a21f70c33a7
          this._trimEnd = options.trimEnd;
          this._highlights = options.highlights;
          this._persistent = options.persistent ?? false;
-@@ -463,16 +465,28 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+@@ -463,16 +524,28 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
          if (this._ansiDirty) {
              let data;
              if (this._persistentTerminal) {
@@ -70,10 +162,117 @@ index 956b98d345e4e849d984bc0c4e542cbc785f1227..97375e750c320bd8b6443a21f70c33a7
                  });
              }
 diff --git a/src/terminal-buffer.ts b/src/terminal-buffer.ts
-index e948e8afce222dc7b985418e33df9a3c8da573f0..65ba99dfda6ace1637b4098e7189b247853a641c 100644
+index e948e8afce222dc7b985418e33df9a3c8da573f0..c4e83fff067d125296f8e843dc674303a22fd221 100644
 --- a/src/terminal-buffer.ts
 +++ b/src/terminal-buffer.ts
-@@ -308,6 +308,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
+@@ -73,11 +73,11 @@ function getLineStarts(lineInfo: LineInfoWithStarts): number[] {
+ function convertSpanToChunk(span: TerminalSpan): WidthAwareChunk {
+   const { text, fg, bg, flags, width } = span
+-
++
+-  let fgColor = fg ? RGBA.fromHex(fg) : DEFAULT_FG
++  let fgColor = fg ? RGBA.fromHex(fg) : undefined
+   let bgColor = bg ? RGBA.fromHex(bg) : undefined
+-
++
+   if (flags & StyleFlags.INVERSE) {
+-    const temp = fgColor
++    const temp = fgColor ?? DEFAULT_FG
+     fgColor = bgColor || DEFAULT_BG
+     bgColor = temp
+   }
+@@ -92,6 +92,67 @@ function convertSpanToChunk(span: TerminalSpan): WidthAwareChunk {
+   return { __isChunk: true, text, fg: fgColor, bg: bgColor, attributes, cellWidth: width }
+ }
+-
++
++const visibleUrlPattern = /https?:\/\/[^\s<>"']+/g
++const trailingUrlPunctuation = /[.,;:!?)}\]]+$/
++
++function applyLinksToLine(chunks: TextChunk[]): TextChunk[] {
++  const text = chunks.map((chunk) => chunk.text).join("")
++  const links = [...text.matchAll(visibleUrlPattern)].map((match) => {
++    const url = match[0].replace(trailingUrlPunctuation, "")
++    const start = match.index
++    return { start, end: start + url.length, url }
++  })
++  if (links.length === 0) return chunks
++
++  const result: TextChunk[] = []
++  let chunkStart = 0
++  for (const chunk of chunks) {
++    const chunkEnd = chunkStart + chunk.text.length
++    const boundaries = new Set([chunkStart, chunkEnd])
++    for (const link of links) {
++      if (link.start > chunkStart && link.start < chunkEnd) boundaries.add(link.start)
++      if (link.end > chunkStart && link.end < chunkEnd) boundaries.add(link.end)
++    }
++    const positions = [...boundaries].sort((left, right) => left - right)
++    for (let index = 0; index < positions.length - 1; index++) {
++      const start = positions[index]!
++      const end = positions[index + 1]!
++      const segment = chunk.text.slice(start - chunkStart, end - chunkStart)
++      const link = links.find((candidate) => start >= candidate.start && end <= candidate.end)
++      result.push({
++        ...chunk,
++        text: segment,
++        cellWidth: wcwidth(segment),
++        ...(link ? { link: { url: link.url } } : {}),
++      } as TextChunk)
++    }
++    chunkStart = chunkEnd
++  }
++  return result
++}
++
++function chunksHaveSameStyle(left: TextChunk, right: TextChunk): boolean {
++  return (
++    (left.fg?.equals(right.fg) ?? right.fg === undefined) &&
++    (left.bg?.equals(right.bg) ?? right.bg === undefined) &&
++    (left.attributes ?? 0) === (right.attributes ?? 0) &&
++    left.link?.url === right.link?.url
++  )
++}
++
++function coalesceAdjacentChunks(chunks: TextChunk[]): TextChunk[] {
++  const result: TextChunk[] = []
++  for (const chunk of chunks) {
++    const previous = result.at(-1)
++    if (previous && chunksHaveSameStyle(previous, chunk)) {
++      previous.text += chunk.text
++    } else {
++      result.push({ ...chunk })
++    }
++  }
++  return result
++}
++
+ /**
+  * Applies highlights to chunks for a specific line.
+  * Splits chunks at highlight boundaries and applies background colors.
+@@ -293,6 +354,8 @@ export function terminalDataToStyledText(
+       lineChunks = applyCursorToLine(lineChunks, cursor.x, cursor.style)
+     }
+-
++
++    lineChunks = applyLinksToLine(lineChunks)
++
+     chunks.push(...lineChunks)
+-
++
+     if (i < data.lines.length - 1) {
+@@ -300,7 +363,7 @@ export function terminalDataToStyledText(
+     }
+   }
+-
++
+-  return new StyledText(chunks)
++  return new StyledText(coalesceAdjacentChunks(chunks))
+ }
+-
++
+ export interface GhosttyTerminalOptions extends TextBufferOptions {
+@@ -308,6 +371,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
    cols?: number
    rows?: number
    limit?: number  // Maximum number of lines to render (from start)
@@ -81,7 +280,7 @@ index e948e8afce222dc7b985418e33df9a3c8da573f0..65ba99dfda6ace1637b4098e7189b247
    trimEnd?: boolean  // Remove empty lines from the end
    highlights?: HighlightRegion[]  // Regions to highlight with custom background colors
    /**
-@@ -340,6 +341,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+@@ -340,6 +404,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
    private _cols: number
    private _rows: number
    private _limit?: number
@@ -89,7 +288,7 @@ index e948e8afce222dc7b985418e33df9a3c8da573f0..65ba99dfda6ace1637b4098e7189b247
    private _trimEnd?: boolean
    private _highlights?: HighlightRegion[]
    private _ansiDirty: boolean = false
-@@ -368,6 +370,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+@@ -368,6 +433,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
      this._cols = options.cols ?? 120
      this._rows = options.rows ?? 40
      this._limit = options.limit
@@ -97,7 +296,7 @@ index e948e8afce222dc7b985418e33df9a3c8da573f0..65ba99dfda6ace1637b4098e7189b247
      this._trimEnd = options.trimEnd
      this._highlights = options.highlights
      this._persistent = options.persistent ?? false
-@@ -627,15 +630,27 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+@@ -627,15 +693,27 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
        let data: TerminalData
        
        if (this._persistentTerminal) {

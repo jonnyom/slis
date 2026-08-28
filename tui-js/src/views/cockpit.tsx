@@ -119,6 +119,7 @@ import {
 } from "./cockpit.hints";
 
 const SCOPES: DiffScope[] = ["working", "parent", "trunk"];
+const DIFF_POLL_INTERVAL_MS = 5_000;
 const SCOPE_SHORT: Record<DiffScope, string> = {
   working: "working",
   parent: "parent",
@@ -962,6 +963,7 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const [fileCursor, setFileCursor] = useState(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const richDiffRequestRef = useRef(0);
+  const refreshDiffRef = useRef<() => void>(() => {});
 
   const scope = SCOPES[scopeIdx]!;
 
@@ -1095,16 +1097,29 @@ export function Cockpit(props: CockpitProps): ReactNode {
   // The cockpit is an operational summary: load stats only. The patch is
   // fetched on demand when Enter opens the dedicated full-screen diff.
   useEffect(() => {
-    if (panel !== "stack") return;
+    if (panel !== "stack" || diffOpen) return;
     let live = true;
+    let requestInFlight = false;
+    const loadDiff = () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      client
+        .diff({ slice, scope, format: "stat" })
+        .finally(() => {
+          requestInFlight = false;
+        })
+        .then((result) => live && setDiff({ scope, result }), () => {});
+    };
+    refreshDiffRef.current = loadDiff;
     setDiff(null);
-    client
-      .diff({ slice, scope, format: "stat" })
-      .then((result) => live && setDiff({ scope, result }), () => {});
+    loadDiff();
+    const interval = setInterval(loadDiff, DIFF_POLL_INTERVAL_MS);
     return () => {
       live = false;
+      refreshDiffRef.current = () => {};
+      clearInterval(interval);
     };
-  }, [client, slice, scope, panel]);
+  }, [client, slice, scope, panel, diffOpen]);
 
   useEffect(() => {
     if (panel !== "stack") return;
@@ -1543,7 +1558,10 @@ export function Cockpit(props: CockpitProps): ReactNode {
   const refreshCockpit = () => {
     bumpReviews();
     if (panel === "session") setCaptureNonce((n) => n + 1);
-    else props.onRefresh();
+    else {
+      refreshDiffRef.current();
+      props.onRefresh();
+    }
   };
 
   useKeyboard((key) => {

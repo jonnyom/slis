@@ -3,6 +3,8 @@ package swap
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ type RepoActivation struct {
 	Primary   string   // primary checkout dir (absolute path)
 	Branch    string   // slice branch to activate
 	Lockfiles []string // lockfiles to diff for dep-reconcile (may be empty)
+	Worktree  string
 }
 
 // ActivateOptions controls optional behaviour during Activate.
@@ -49,8 +52,12 @@ func Activate(slice string, repos []RepoActivation, journalPath string, opts Act
 			Branch:     ra.Branch,
 			TempBranch: tempBranch,
 			Stash:      opts.Stash,
+			Worktree:   ra.Worktree,
 		})
 		if err != nil {
+			if st.Primary != "" {
+				j.Repos = append(j.Repos, st)
+			}
 			activateErr := fmt.Errorf("activate %q: %w", ra.Repo, err)
 			failed, rbErrs := rollback(j.Repos)
 			if len(failed) == 0 {
@@ -159,6 +166,36 @@ func Deactivate(journalPath string, force bool) error {
 	if j == nil {
 		return nil // nothing active
 	}
+	alreadyRestored := make([]bool, len(j.Repos))
+	for index, state := range j.Repos {
+		if state.Mirror != nil {
+			restored, err := primaryAlreadyRestored(state)
+			if err != nil {
+				return err
+			}
+			if restored {
+				alreadyRestored[index] = true
+				continue
+			}
+			if err := validatePrimaryMirror(state); err != nil {
+				return err
+			}
+		}
+	}
+	for index := range j.Repos {
+		if j.Repos[index].Mirror == nil {
+			continue
+		}
+		if !alreadyRestored[index] {
+			if err := clearWorkingMirror(j.Repos[index]); err != nil {
+				return fmt.Errorf("clear live mirror for %q: %w", j.Repos[index].Repo, err)
+			}
+		}
+		j.Repos[index].Mirror = nil
+		if err := Save(journalPath, j); err != nil {
+			return fmt.Errorf("save cleared mirror for %q: %w", j.Repos[index].Repo, err)
+		}
+	}
 
 	// Fix D: collect failed repos; only clear the journal when all succeeded.
 	var errs []error
@@ -180,6 +217,45 @@ func Deactivate(journalPath string, force bool) error {
 	j.Repos = failed
 	_ = Save(journalPath, j) // best-effort
 	return errors.Join(errs...)
+}
+
+func primaryAlreadyRestored(state RepoState) (bool, error) {
+	if state.TempBranch == "" || state.PriorBranch == "" {
+		return false, nil
+	}
+	branch, err := git.CurrentBranch(state.Primary)
+	if err != nil {
+		return false, fmt.Errorf("current-branch in %q: %w", state.Primary, err)
+	}
+	if branch != state.PriorBranch {
+		return false, nil
+	}
+	dirty, err := git.IsDirty(state.Primary)
+	if err != nil {
+		return false, fmt.Errorf("is-dirty %q: %w", state.Primary, err)
+	}
+	if dirty {
+		return false, nil
+	}
+	if state.Mirror != nil {
+		for _, path := range state.Mirror.Untracked {
+			if !safeRelativePath(path) {
+				return false, fmt.Errorf("unsafe mirrored path %q", path)
+			}
+			_, err := os.Lstat(filepath.Join(state.Primary, filepath.FromSlash(path)))
+			if err == nil {
+				return false, nil
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				return false, err
+			}
+		}
+	}
+	tempTip, err := git.RevParse(state.Primary, state.TempBranch)
+	if err != nil {
+		return false, fmt.Errorf("verify temp branch %q in %q: %w", state.TempBranch, state.Primary, err)
+	}
+	return tempTip == state.TargetSHA, nil
 }
 
 // RecoverState reads the journal at journalPath and returns the in-progress
@@ -330,6 +406,7 @@ type RepoPlan struct {
 	Branch     string // slice branch to activate (must exist in the shared object db)
 	TempBranch string // the slis/live/<slice> branch to create on the primary
 	Stash      bool   // when true, auto-stash a dirty primary before switching
+	Worktree   string
 }
 
 // LiveBranchName is the temp branch slis creates on each primary during
@@ -438,7 +515,7 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 		return RepoState{}, switchErr
 	}
 
-	return RepoState{
+	state := RepoState{
 		Repo:        plan.Repo,
 		Primary:     plan.Primary,
 		Branch:      plan.Branch,
@@ -448,7 +525,20 @@ func activateRepo(plan RepoPlan) (RepoState, error) {
 		StashMsg:    stashMsg,
 		TargetSHA:   target,
 		TempBranch:  plan.TempBranch,
-	}, nil
+		Worktree:    plan.Worktree,
+	}
+	if plan.Worktree != "" {
+		snapshot, err := captureWorkingSnapshot(plan.Primary)
+		if err != nil {
+			captureErr := fmt.Errorf("capture mirror baseline in %q: %w", plan.Primary, err)
+			if rollbackErr := deactivateRepo("", state, false); rollbackErr != nil {
+				return state, errors.Join(captureErr, fmt.Errorf("rollback %q: %w", plan.Repo, rollbackErr))
+			}
+			return RepoState{}, captureErr
+		}
+		state.Mirror = snapshot.mirrorState()
+	}
+	return state, nil
 }
 
 // ErrPriorBranchGone is returned when the branch the primary was on before
@@ -522,6 +612,19 @@ func deactivateRepo(slice string, st RepoState, force bool) error {
 	}
 
 	switch {
+	case currentBranch == st.PriorBranch:
+		dirty, err := git.IsDirty(st.Primary)
+		if err != nil {
+			return fmt.Errorf("is-dirty %q: %w", st.Primary, err)
+		}
+		if dirty {
+			return fmt.Errorf("%w in %q: primary is already on prior branch %q but contains changes", ErrPrimaryDrifted, st.Primary, st.PriorBranch)
+		}
+		if err := deleteTempBranchIfAtSHA(st, st.TargetSHA); err != nil {
+			return err
+		}
+		return popPinnedStash(st)
+
 	case currentBranch != st.TempBranch:
 		// Drifted off the temp branch (switched away or detached).
 		if !force {

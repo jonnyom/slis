@@ -1,10 +1,70 @@
 import { TextBufferRenderable } from "@opentui/core";
 import { useRenderer, useSelectionHandler } from "@opentui/react";
+import { GhosttyTerminalRenderable } from "ghostty-opentui/terminal-buffer";
 import { openUrl } from "../rpc/mutate";
 import { activateVisibleUrlAtPosition } from "../term/links";
 
+type SelectionPoint = { x: number; y: number };
+
 function openSelectedUrl(url: string): void {
   void openUrl(url);
+}
+
+function stringIndexAtCellColumn(text: string, targetColumn: number): number {
+  if (targetColumn <= 0) return 0;
+  let column = 0;
+  let index = 0;
+  for (const character of text) {
+    const nextColumn = column + Math.max(0, Bun.stringWidth(character));
+    if (nextColumn > targetColumn) break;
+    column = nextColumn;
+    index += character.length;
+  }
+  return index;
+}
+
+function orderedSelectionPoints(
+  anchor: SelectionPoint,
+  focus: SelectionPoint,
+): [SelectionPoint, SelectionPoint] {
+  if (anchor.y < focus.y || (anchor.y === focus.y && anchor.x <= focus.x)) {
+    return [anchor, focus];
+  }
+  return [focus, anchor];
+}
+
+export function terminalTextWithinSelection(
+  terminal: GhosttyTerminalRenderable,
+  anchor: SelectionPoint,
+  focus: SelectionPoint,
+): string {
+  const [start, end] = orderedSelectionPoints(
+    {
+      x: anchor.x - terminal.screenX + terminal.scrollX,
+      y: anchor.y - terminal.screenY + terminal.scrollY,
+    },
+    {
+      x: focus.x - terminal.screenX + terminal.scrollX,
+      y: focus.y - terminal.screenY + terminal.scrollY,
+    },
+  );
+  const lines = terminal.plainText.split("\n");
+  const firstRow = Math.max(0, start.y);
+  const lastRow = Math.min(lines.length - 1, end.y);
+  if (firstRow > lastRow) return "";
+
+  return lines
+    .slice(firstRow, lastRow + 1)
+    .map((line, rowOffset) => {
+      const row = firstRow + rowOffset;
+      const startColumn = row === start.y ? Math.max(0, start.x) : 0;
+      const endColumn = row === end.y ? Math.max(0, end.x) : Bun.stringWidth(line);
+      return line.slice(
+        stringIndexAtCellColumn(line, startColumn),
+        stringIndexAtCellColumn(line, endColumn),
+      );
+    })
+    .join("\n");
 }
 
 export function SelectionClipboard({
@@ -18,9 +78,11 @@ export function SelectionClipboard({
     const isClick =
       selection.anchor.x === selection.focus.x &&
       selection.anchor.y === selection.focus.y;
-    const textRenderable = selection.touchedRenderables.find(
-      (renderable) => renderable instanceof TextBufferRenderable,
-    ) as TextBufferRenderable | undefined;
+    const textRenderable = selection.touchedRenderables
+      .filter((renderable): renderable is TextBufferRenderable =>
+        renderable instanceof TextBufferRenderable,
+      )
+      .sort((left, right) => right.zIndex - left.zIndex)[0];
     if (
       isClick &&
       textRenderable &&
@@ -35,7 +97,22 @@ export function SelectionClipboard({
       return;
     }
 
-    const selectedText = selection.getSelectedText();
+    const selectedRenderables = selection.selectedRenderables;
+    const highestZIndex = Math.max(...selectedRenderables.map((renderable) => renderable.zIndex));
+    const selectedText = highestZIndex > 0
+      ? selectedRenderables
+          .filter((renderable) => renderable.zIndex === highestZIndex)
+          .map((renderable) =>
+            renderable instanceof GhosttyTerminalRenderable
+              ? terminalTextWithinSelection(
+                  renderable,
+                  selection.anchor,
+                  selection.focus,
+                )
+              : renderable.getSelectedText(),
+          )
+          .join("")
+      : selection.getSelectedText();
     if (selectedText) renderer.copyToClipboardOSC52(selectedText);
   });
 

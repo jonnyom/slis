@@ -96,19 +96,22 @@ describe("embedded terminal scrolling", () => {
       cols: 40,
       rows: 6,
       persistent: true,
+      limit: 500,
+      limitFromEnd: true,
       onMouseScroll: (event) => event.stopPropagation(),
     });
     setup.renderer.root.add(terminal);
     terminal.feed(Array.from({ length: 30 }, (_, index) => `row ${index}\r\n`).join(""));
     await setup.renderOnce();
     await setup.renderOnce();
-    expect(terminal.scrollHeight).toBeGreaterThan(terminal.height);
-    expect(terminal.scrollY).toBe(terminal.scrollHeight - terminal.height);
+    expect(terminal.scrollHeight).toBeLessThanOrEqual(terminal.height);
     expect(setup.captureCharFrame()).toContain("row 29");
 
     await setup.mockMouse.scroll(5, 3, "up");
+    await setup.renderOnce();
 
     const scrolledPosition = terminal.scrollY;
+    expect(terminal.scrollHeight).toBeGreaterThan(terminal.height);
     expect(scrolledPosition).toBeLessThan(terminal.scrollHeight - terminal.height);
 
     terminal.feed("row 30\r\n");

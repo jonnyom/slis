@@ -101,3 +101,22 @@ func RunRawCtx(ctx context.Context, dir string, args ...string) ([]byte, error) 
 	}
 	return out.Bytes(), nil
 }
+
+func RunInput(dir string, input []byte, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancel()
+	return RunInputCtx(ctx, dir, input, args...)
+}
+
+func RunInputCtx(ctx context.Context, dir string, input []byte, args ...string) error {
+	full := append([]string{"-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	subproc.Configure(cmd)
+	cmd.Stdin = bytes.NewReader(input)
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, errb.String())
+	}
+	return nil
+}

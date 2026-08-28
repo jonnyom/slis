@@ -48,12 +48,12 @@ func TestSessionGroupRuntimeLabelsUseAgentThenLiveDirectory(t *testing.T) {
 		},
 	}
 	runtimes := []sessionmanager.TabRuntime{
-		{GroupID: "feature", TabID: "root", Processes: []proc.ProcInfo{{Cmd: "/opt/codex", CWD: "/Users/jonny/nory/web-app"}}},
+		{GroupID: "feature", TabID: "root", Processes: []proc.ProcInfo{{Cmd: "/opt/codex", CWD: "/Users/jonny/nory/web-app"}}, Busy: true},
 		{GroupID: "feature", TabID: "claude", Processes: []proc.ProcInfo{{Cmd: "/bin/zsh", CWD: "/Users/jonny/nory/api"}}},
 	}
 
 	output := sessionGroupForOutputWithRuntime(group, runtimes, []config.AgentSpec{{Name: "Codex", Cmd: []string{"codex"}}})
-	if output.Tabs[0].Agent != "Codex" || output.Tabs[0].Label != "Codex" {
+	if output.Tabs[0].Agent != "Codex" || output.Tabs[0].Label != "Codex" || !output.Tabs[0].Busy {
 		t.Fatalf("root tab = %#v", output.Tabs[0])
 	}
 	if output.Tabs[1].Agent != "" || output.Tabs[1].Label != "~/nory/api" {

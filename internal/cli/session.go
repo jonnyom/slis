@@ -26,6 +26,7 @@ type sessionTabOutput struct {
 	Agent            string                 `json:"agent,omitempty"`
 	CurrentDirectory string                 `json:"current_directory,omitempty"`
 	Label            string                 `json:"label,omitempty"`
+	Busy             bool                   `json:"busy,omitempty"`
 }
 
 type sessionGroupOutput struct {

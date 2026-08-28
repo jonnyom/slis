@@ -53,7 +53,6 @@ import {
   submitSlice,
   summarySlice,
   syncSlice,
-  swapSlice,
   ungroupSlice,
   type MutateResult,
 } from "../rpc/mutate";
@@ -72,6 +71,7 @@ import {
   ResultOverlay,
   ReviewMessageOverlay,
   ReviewListOverlay,
+  LiveRecoveryOverlay,
   StackActionsHelpOverlay,
   StackActionsOverlay,
   SummaryOverlay,
@@ -88,6 +88,12 @@ import { stackOverlayAction } from "./stack";
 type Overlay =
   | { kind: "help" }
   | { kind: "swap"; slice: string; active: boolean; replacing?: string }
+  | {
+      kind: "liveRecovery";
+      slice: string;
+      onReset: () => Promise<MutateResult>;
+      onReactivate: () => void;
+    }
   | { kind: "stack"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "stackHelp"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "remove"; slices: string[] }
@@ -151,6 +157,11 @@ export interface OverlayApi {
   // modal openers
   help(): void;
   swap(slice: string, active: boolean): void;
+  liveRecovery(
+    slice: string,
+    onReset: () => Promise<MutateResult>,
+    onReactivate: () => void,
+  ): void;
   stack(slices: string[], conflictWith: string[], gatherable: boolean): void;
   remove(slices: string[]): void;
   terminalClose(title: string, onConfirm: () => void): void;
@@ -227,6 +238,7 @@ export interface UseOverlaysArgs {
   // Kick off a non-blocking slice create (spec D2). The app owns the create
   // state machine + ambient header spinner; the overlay only collects the name.
   startCreate: (name: string) => void;
+  runSwap: (slice: string, active: boolean, replacing?: string) => Promise<MutateResult>;
 }
 
 async function runSequential(
@@ -257,6 +269,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     runInteractive,
     toast,
     startCreate,
+    runSwap,
   } = args;
   const [overlay, setOverlay] = useState<Overlay>(null);
   const helpReturn = useRef<Overlay>(null);
@@ -492,6 +505,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     node: renderOverlay(overlay, conflicts, view, height),
     help: openHelp,
     swap: openSwap,
+    liveRecovery: (slice, onReset, onReactivate) =>
+      setOverlay({ kind: "liveRecovery", slice, onReset, onReactivate }),
     stack: (slices, conflictWith, gatherable) =>
       setOverlay({ kind: "stack", slices, conflictWith, gatherable }),
     remove: (slices) => setOverlay({ kind: "remove", slices }),
@@ -599,7 +614,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         if (name === "y" || isEnter)
           runMutation(
             overlay.active ? "Swap out" : overlay.replacing ? "Switch live slice" : "Swap in",
-            () => swapSlice(overlay.slice, overlay.active, overlay.replacing),
+            () => runSwap(overlay.slice, overlay.active, overlay.replacing),
             {
               successToast: overlay.active
                 ? `Swapped out ${overlay.slice}`
@@ -609,6 +624,17 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
             },
           );
         else if (name === "n" || isCancel) close();
+        return;
+      case "liveRecovery":
+        if (name === "r")
+          runMutation("Reset live slice", overlay.onReset, {
+            successToast: `Reset ${overlay.slice}`,
+          });
+        else if (name === "a" || isEnter) {
+          const onReactivate = overlay.onReactivate;
+          close();
+          onReactivate();
+        }
         return;
       case "stack": {
         const first = overlay.slices[0] ?? "";
@@ -1033,6 +1059,8 @@ function renderOverlay(
           replacing={overlay.replacing}
         />
       );
+    case "liveRecovery":
+      return <LiveRecoveryOverlay slice={overlay.slice} />;
     case "stack":
       return (
         <StackActionsOverlay

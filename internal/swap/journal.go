@@ -11,16 +11,23 @@ import (
 // involved in a slice activation. Enough information to restore the primary
 // to its exact pre-activation state (branch, stash, dep install flag).
 type RepoState struct {
-	Repo        string `json:"repo"`
-	Primary     string `json:"primary"`
-	Branch      string `json:"branch"`       // slice branch name (used by Refresh to re-resolve tip)
-	PriorBranch string `json:"prior_branch"` // branch the primary was on before activate ("" if it was detached)
-	PriorSHA    string `json:"prior_sha"`    // HEAD sha before activate (for detached-prior restore)
-	StashRef    string `json:"stash_ref"`    // pinned stash commit sha, "" if nothing stashed
-	StashMsg    string `json:"stash_msg"`    // unique stash message used during activation, "" if nothing stashed
-	TargetSHA   string `json:"target_sha"`   // the slice branch tip we checked out
-	TempBranch  string `json:"temp_branch"`  // the slis/live/<slice> branch created on the primary; "" for legacy detached-HEAD journals
-	Reconciled  bool   `json:"reconciled"`   // whether a dep install ran during activate
+	Repo        string       `json:"repo"`
+	Primary     string       `json:"primary"`
+	Branch      string       `json:"branch"`       // slice branch name (used by Refresh to re-resolve tip)
+	PriorBranch string       `json:"prior_branch"` // branch the primary was on before activate ("" if it was detached)
+	PriorSHA    string       `json:"prior_sha"`    // HEAD sha before activate (for detached-prior restore)
+	StashRef    string       `json:"stash_ref"`    // pinned stash commit sha, "" if nothing stashed
+	StashMsg    string       `json:"stash_msg"`    // unique stash message used during activation, "" if nothing stashed
+	TargetSHA   string       `json:"target_sha"`   // the slice branch tip we checked out
+	TempBranch  string       `json:"temp_branch"`  // the slis/live/<slice> branch created on the primary; "" for legacy detached-HEAD journals
+	Reconciled  bool         `json:"reconciled"`   // whether a dep install ran during activate
+	Worktree    string       `json:"worktree,omitempty"`
+	Mirror      *MirrorState `json:"mirror,omitempty"`
+}
+
+type MirrorState struct {
+	Fingerprint string   `json:"fingerprint"`
+	Untracked   []string `json:"untracked,omitempty"`
 }
 
 // Journal is the activation journal written atomically to disk whenever a

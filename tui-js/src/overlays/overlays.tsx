@@ -64,6 +64,29 @@ export function SwapOverlay({
   );
 }
 
+export function LiveRecoveryOverlay({ slice }: { slice: string }): ReactNode {
+  return (
+    <Card
+      title={`Recover live slice · ${slice}`}
+      width={68}
+      hints={[
+        { key: "r", label: "reset" },
+        { key: "a", label: "reactivate" },
+      ]}
+    >
+      <text fg={theme.text} wrapMode="word">
+        Previous TUI exited before it restored primary checkouts.
+      </text>
+      <text fg={theme.textDim} wrapMode="word">
+        Reset restores pre-activation branches. Reactivate rebuilds the live mirror.
+      </text>
+      <text fg={theme.attn} wrapMode="word">
+        Slis refuses either action if a primary contains unknown changes.
+      </text>
+    </Card>
+  );
+}
+
 export function EditorPickerOverlay({
   editors,
   sel,

@@ -29,16 +29,16 @@ test("managed session targets preserve separator characters", () => {
   expect(sessionDisplayName(target)).toBe("feature:one · api");
 });
 
-test("managed session inventory exposes each Slis tab without runtime names", async () => {
+test("managed session inventory uses one live snapshot for every tab", () => {
   const groups: SessionGroup[] = [{
     id: "feature:one",
     active_tab_id: "repo:api",
     tabs: [
-      { id: "repo:api", kind: "repo", title: "api", cwd: "/wt/api" },
-      { id: "agent", kind: "agent", title: "agent", cwd: "/wt" },
+      { id: "repo:api", kind: "repo", title: "api", cwd: "/wt/api", busy: false },
+      { id: "agent", kind: "agent", title: "agent", cwd: "/wt", busy: true },
     ],
   }];
-  const sessions = await managedSessionInfos(groups, async (_groupID, tabID) => tabID === "agent");
+  const sessions = managedSessionInfos(groups);
   expect(sessions).toEqual([
     {
       name: managedSessionTarget("feature:one", "repo:api"),
@@ -51,6 +51,24 @@ test("managed session inventory exposes each Slis tab without runtime names", as
       panes: [{ path: "/wt", command: "slis-process", target: managedSessionTarget("feature:one", "agent") }],
     },
   ]);
+});
+
+test("managed session inventory keeps stale metadata reopenable when its terminal is missing", () => {
+  const groups: SessionGroup[] = [{
+    id: "feature",
+    active_tab_id: "repo:api",
+    tabs: [{ id: "repo:api", kind: "repo", title: "api", cwd: "/wt/api" }],
+  }];
+
+  expect(managedSessionInfos(groups)).toEqual([{
+    name: managedSessionTarget("feature", "repo:api"),
+    kind: "shell",
+    panes: [{
+      path: "/wt/api",
+      command: "sh",
+      target: managedSessionTarget("feature", "repo:api"),
+    }],
+  }]);
 });
 
 describe("sessionName", () => {

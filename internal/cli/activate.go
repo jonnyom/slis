@@ -24,6 +24,7 @@ func buildActivations(ws config.Workspace, sl model.Slice) []swap.RepoActivation
 			Primary:   repo.Primary,
 			Branch:    m.Branch,
 			Lockfiles: dr.Lockfiles,
+			Worktree:  m.WorktreePath,
 		})
 	}
 	return result

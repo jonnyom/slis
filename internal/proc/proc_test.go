@@ -69,6 +69,40 @@ func TestSliceProcsFindsBusyChild(t *testing.T) {
 	}
 }
 
+func TestSliceProcTreesCaptureMultipleRoots(t *testing.T) {
+	commands := []*exec.Cmd{
+		exec.Command("sh", "-c", "sleep 30 & wait"),
+		exec.Command("sh", "-c", "sleep 30 & wait"),
+	}
+	for _, command := range commands {
+		if err := command.Start(); err != nil {
+			t.Fatalf("start process tree: %v", err)
+		}
+		defer func(command *exec.Cmd) {
+			_ = proc.KillSubtree(command.Process.Pid)
+			_ = command.Wait()
+		}(command)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	firstPID := commands[0].Process.Pid
+	secondPID := commands[1].Process.Pid
+	trees, err := proc.SliceProcTrees([]int{firstPID, secondPID})
+	if err != nil {
+		t.Fatalf("SliceProcTrees: %v", err)
+	}
+	for _, rootPID := range []int{firstPID, secondPID} {
+		if len(trees[rootPID]) < 2 {
+			t.Fatalf("tree %d has %d processes, want root and child", rootPID, len(trees[rootPID]))
+		}
+	}
+	for _, process := range trees[firstPID] {
+		if process.PID == secondPID {
+			t.Fatalf("tree %d contains unrelated root %d", firstPID, secondPID)
+		}
+	}
+}
+
 // TestKillSubtreeTerminates starts a parent shell with two child sleeps,
 // calls KillSubtree on the parent, and asserts the parent is gone.
 func TestKillSubtreeTerminates(t *testing.T) {

@@ -27,3 +27,13 @@ func TestParseTerminalProcessGroupsRejectsUnexpectedOutput(t *testing.T) {
 		t.Fatal("unexpected ps output accepted")
 	}
 }
+
+func TestParseTerminalProcessGroupsByPID(t *testing.T) {
+	busy, err := parseTerminalProcessGroupsByPID(" 101 101 202\n 303 303 303\n")
+	if err != nil {
+		t.Fatalf("parseTerminalProcessGroupsByPID: %v", err)
+	}
+	if !busy[101] || busy[303] {
+		t.Fatalf("busy = %#v", busy)
+	}
+}

@@ -61,6 +61,10 @@ export interface MutateResult {
   timedOut?: boolean;
 }
 
+export interface SwapResult extends MutateResult {
+  activeAfter: boolean;
+}
+
 interface SpawnCaptureOpts {
   stdinText?: string;
   timeoutMs?: number;
@@ -169,20 +173,24 @@ export async function swapSlice(
   slice: string,
   active: boolean,
   replacing?: string,
-): Promise<MutateResult> {
+): Promise<SwapResult> {
   const plan = swapPlan(slice, active, replacing);
-  if (plan.length === 1) return run(plan[0]!);
+  if (plan.length === 1) {
+    const result = await run(plan[0]!);
+    return { ...result, activeAfter: result.code === 0 ? !active : active };
+  }
 
   const deactivated = await run(plan[0]!);
-  if (deactivated.code !== 0) return deactivated;
+  if (deactivated.code !== 0) return { ...deactivated, activeAfter: true };
 
   const activated = await run(plan[1]!);
-  if (activated.code === 0) return activated;
+  if (activated.code === 0) return { ...activated, activeAfter: true };
 
   const note = `${replacing} was swapped out, but ${slice} could not be swapped in. ` +
     `No slice is currently active; retry swapping in ${slice}.`;
   return {
     ...activated,
+    activeAfter: false,
     stdout: [deactivated.stdout, activated.stdout].filter(Boolean).join("\n"),
     stderr: [note, activated.stderr].filter(Boolean).join("\n"),
   };

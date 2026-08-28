@@ -23,6 +23,46 @@ func TerminalHasForegroundCommand(pid int) (bool, error) {
 	return parseTerminalProcessGroups(string(output))
 }
 
+func TerminalForegroundCommands(pids []int) (map[int]bool, error) {
+	busy := make(map[int]bool, len(pids))
+	if len(pids) == 0 {
+		return busy, nil
+	}
+	values := make([]string, 0, len(pids))
+	for _, pid := range pids {
+		values = append(values, strconv.Itoa(pid))
+	}
+	output, err := exec.Command("ps", "-o", "pid=,pgid=,tpgid=", "-p", strings.Join(values, ",")).Output()
+	if err != nil {
+		return nil, fmt.Errorf("read terminal process groups: %w", err)
+	}
+	return parseTerminalProcessGroupsByPID(string(output))
+}
+
+func parseTerminalProcessGroupsByPID(output string) (map[int]bool, error) {
+	busy := make(map[int]bool)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("unexpected terminal process group output %q", strings.TrimSpace(line))
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			return nil, fmt.Errorf("parse process ID %q: %w", fields[0], err)
+		}
+		processGroup, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return nil, fmt.Errorf("parse process group %q: %w", fields[1], err)
+		}
+		foregroundProcessGroup, err := strconv.Atoi(fields[2])
+		if err != nil {
+			return nil, fmt.Errorf("parse foreground process group %q: %w", fields[2], err)
+		}
+		busy[pid] = processGroup != foregroundProcessGroup
+	}
+	return busy, nil
+}
+
 func parseTerminalProcessGroups(output string) (bool, error) {
 	fields := strings.Fields(output)
 	if len(fields) != 2 {
@@ -55,39 +95,73 @@ type ProcInfo struct {
 func SliceProcs(panePIDs []int) ([]ProcInfo, error) {
 	visited := make(map[int32]bool)
 	var out []ProcInfo
-
 	for _, pid := range panePIDs {
 		collectTree(int32(pid), visited, &out)
 	}
-
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].CPU > out[j].CPU
 	})
-
 	return out, nil
 }
 
-// collectTree recursively walks the process tree rooted at pid, appending a
-// ProcInfo for each unseen process. Already-visited PIDs are skipped to guard
-// against cycles.
 func collectTree(pid int32, visited map[int32]bool, out *[]ProcInfo) {
 	if visited[pid] {
 		return
 	}
 	visited[pid] = true
-
-	p, err := goproc.NewProcess(pid)
+	process, err := goproc.NewProcess(pid)
 	if err != nil {
-		// Process vanished — skip.
 		return
 	}
+	*out = append(*out, snapshot(process))
+	children, _ := process.Children()
+	for _, child := range children {
+		collectTree(child.Pid, visited, out)
+	}
+}
 
-	info := snapshot(p)
-	*out = append(*out, info)
+func SliceProcTrees(rootPIDs []int) (map[int][]ProcInfo, error) {
+	trees := make(map[int][]ProcInfo, len(rootPIDs))
+	if len(rootPIDs) == 0 {
+		return trees, nil
+	}
+	processes, err := goproc.Processes()
+	if err != nil {
+		return nil, fmt.Errorf("list processes: %w", err)
+	}
+	processByPID := make(map[int32]*goproc.Process, len(processes))
+	childrenByParent := make(map[int32][]int32)
+	for _, process := range processes {
+		processByPID[process.Pid] = process
+		parentPID, parentErr := process.Ppid()
+		if parentErr == nil {
+			childrenByParent[parentPID] = append(childrenByParent[parentPID], process.Pid)
+		}
+	}
+	for _, rootPID := range rootPIDs {
+		visited := make(map[int32]bool)
+		tree := make([]ProcInfo, 0)
+		collectIndexedTree(int32(rootPID), processByPID, childrenByParent, visited, &tree)
+		sort.Slice(tree, func(i, j int) bool {
+			return tree[i].CPU > tree[j].CPU
+		})
+		trees[rootPID] = tree
+	}
+	return trees, nil
+}
 
-	kids, _ := p.Children()
-	for _, kid := range kids {
-		collectTree(kid.Pid, visited, out)
+func collectIndexedTree(pid int32, processes map[int32]*goproc.Process, children map[int32][]int32, visited map[int32]bool, out *[]ProcInfo) {
+	if visited[pid] {
+		return
+	}
+	visited[pid] = true
+	process := processes[pid]
+	if process == nil {
+		return
+	}
+	*out = append(*out, snapshot(process))
+	for _, childPID := range children[pid] {
+		collectIndexedTree(childPID, processes, children, visited, out)
 	}
 }
 

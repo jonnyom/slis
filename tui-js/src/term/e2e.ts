@@ -145,10 +145,13 @@ async function main() {
   await sleep(500);
   pty.write("a");
   await sleep(1400);
+  const openMarker = `SLIS_OPEN_${Date.now()}`;
+  pty.write(`printf '${openMarker}\\n'\r`);
+  await sleep(700);
   const terminalText = vt.getText();
-  const sawTabBar = terminalText.includes("TERM") && terminalText.includes("claude");
   const browserVisibleAlongsideDock = terminalText.includes("FILTERS") && terminalText.includes("CHANGES") && terminalText.includes("SLICES");
   const visibleSessionAttached = await attachedSessionClientCount(app.pid) > 0;
+  const terminalTabOpened = visibleSessionAttached && terminalText.includes(openMarker);
   pty.write("\x11");
   await sleep(5500);
   const backToBrowser = vt.getText().includes("SLICES") && !vt.getText().includes("ctrl+q back");
@@ -270,7 +273,7 @@ async function main() {
     browser_paints_slice_list: sawBrowser,
     enter_opens_cockpit: cockpitOpened,
     breadcrumb_survives_arrow_navigation: breadcrumbSurvivesArrows,
-    key_a_opens_terminal_tab: sawTabBar,
+    key_a_opens_terminal_tab: terminalTabOpened,
     terminal_dock_keeps_browser_visible: browserVisibleAlongsideDock,
     keystrokes_reach_embedded_shell: sawMarker,
     consecutive_newlines_start_at_column_zero: consecutiveNewlinesStartAtColumnZero,

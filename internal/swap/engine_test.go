@@ -965,9 +965,6 @@ func TestDeactivateRefusesCommitOnTempBranchThenForceRescues(t *testing.T) {
 	}
 }
 
-// TestDeactivateRefusesManualSwitchDrift verifies that when the user manually
-// switches the primary off its temp branch to another branch, a plain
-// deactivate refuses cleanly with zero state change.
 func TestDeactivateRefusesManualSwitchDrift(t *testing.T) {
 	r, _ := setupRepoWithWorktree(t)
 
@@ -976,9 +973,8 @@ func TestDeactivateRefusesManualSwitchDrift(t *testing.T) {
 		t.Fatalf("activateRepo: %v", err)
 	}
 
-	// User manually switches the primary back to main.
-	if _, err := git.Run(r, "switch", "main"); err != nil {
-		t.Fatalf("manual switch to main: %v", err)
+	if _, err := git.Run(r, "switch", "-c", "other"); err != nil {
+		t.Fatalf("manual switch to other: %v", err)
 	}
 
 	err = deactivateRepo("myslice", st, false)
@@ -986,10 +982,9 @@ func TestDeactivateRefusesManualSwitchDrift(t *testing.T) {
 		t.Fatalf("want ErrPrimaryDrifted, got %v", err)
 	}
 
-	// State unchanged: still on main.
 	branch, _ := git.CurrentBranch(r)
-	if branch != "main" {
-		t.Errorf("branch after refused deactivate: want %q, got %q", "main", branch)
+	if branch != "other" {
+		t.Errorf("branch after refused deactivate: want %q, got %q", "other", branch)
 	}
 }
 

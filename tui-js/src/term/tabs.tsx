@@ -18,7 +18,6 @@ import { TERMINAL_FRAME_DELAY_MILLISECONDS, TerminalFeedBuffer } from "./feed";
 import {
   embeddedTerminalInputSequence,
 } from "./input";
-import { requestTerminalFullRepaint } from "./repaint";
 import { EmbeddedTerminalRenderable } from "./embedded";
 import { useDelayedSessionAttachment } from "./attachment";
 
@@ -199,8 +198,6 @@ function TermTab({
 }): ReactNode {
   const renderer = useRenderer();
   const ref = useRef<EmbeddedTerminalRenderable>(null);
-  const visibleRef = useRef(shown);
-  visibleRef.current = shown;
 
   const key = tabKey(entry);
   const attachmentActive = useDelayedSessionAttachment(shown, entry.kind === "session");
@@ -218,7 +215,6 @@ function TermTab({
     const feedBuffer = new TerminalFeedBuffer(
       (bytes) => {
         terminal.feed(bytes);
-        if (visibleRef.current) requestTerminalFullRepaint(renderer);
       },
       TERMINAL_FRAME_DELAY_MILLISECONDS,
       TERMINAL_FRAME_DELAY_MILLISECONDS,

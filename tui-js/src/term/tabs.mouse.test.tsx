@@ -419,13 +419,78 @@ test("scrolling a generic zmx session uses bounded local history without mouse m
   const pane = setup.renderer.root.findDescendantById(
     "term-pane-session:feature:agent",
   ) as EmbeddedTerminalRenderable;
-  const bottom = pane.scrollY;
+  expect(pane.scrollHeight).toBeLessThanOrEqual(pane.height);
   await setup.mockMouse.scroll(pane.screenX + 2, pane.screenY + 2, "up");
+  await setup.flush();
+  const bottom = pane.scrollHeight - pane.height;
 
   expect(pane.limit).toBe(EMBEDDED_TERMINAL_HISTORY_LIMIT);
+  expect(pane.scrollHeight).toBeGreaterThan(pane.height);
   expect(pane.scrollHeight).toBeLessThanOrEqual(EMBEDDED_TERMINAL_HISTORY_LIMIT);
   expect(writes).toEqual([]);
   expect(pane.scrollY).toBeLessThan(bottom);
+});
+
+test("visible terminal output renders without requesting a full-screen repaint", async () => {
+  setup = await createTestRenderer({ width: 80, height: 12 });
+  root = createRoot(setup.renderer);
+  let deliverOutput: ((bytes: Uint8Array) => void) | undefined;
+  const session = {
+    async attach(_cols: number, _rows: number, onData: (bytes: Uint8Array) => void) {
+      deliverOutput = onData;
+    },
+    write() {},
+    paste() {},
+    resize() {},
+    onExit() {
+      return () => {};
+    },
+    detach() {},
+  };
+  const manager = {
+    session: () => session,
+    get: () => session,
+    sessionApplicationHandlesMouse: () => false,
+    detach() {},
+  } as unknown as TermManager;
+  flushSync(() =>
+    root!.render(
+      <TerminalLayer
+        tabs={[sessionEntry("codex", "codex")]}
+        active="session:feature:agent"
+        shown
+        focused
+        statuses={{}}
+        width={80}
+        height={12}
+        left={0}
+        manager={manager}
+        onBack={() => {}}
+        onSelectTab={() => {}}
+        onFocus={() => {}}
+        onSessionExit={() => {}}
+        onCommandExit={() => {}}
+      />,
+    ),
+  );
+  await setup.flush();
+
+  expect(deliverOutput).toBeDefined();
+  Reflect.set(setup.renderer, "forceFullRepaintRequested", false);
+  const renderer = setup.renderer as typeof setup.renderer & {
+    requestRender: () => void;
+  };
+  const originalRequestRender = renderer.requestRender.bind(renderer);
+  const fullRepaintFlags: boolean[] = [];
+  renderer.requestRender = () => {
+    fullRepaintFlags.push(Boolean(Reflect.get(renderer, "forceFullRepaintRequested")));
+    originalRequestRender();
+  };
+  deliverOutput!(new TextEncoder().encode("LIVE_UPDATE"));
+  await Bun.sleep(50);
+
+  expect(setup.captureCharFrame()).toContain("LIVE_UPDATE");
+  expect(fullRepaintFlags).not.toContain(true);
 });
 
 test("typing after scrolling returns the session terminal to live output", async () => {
@@ -482,14 +547,16 @@ test("typing after scrolling returns the session terminal to live output", async
   const pane = setup.renderer.root.findDescendantById(
     "term-pane-session:feature:agent",
   ) as EmbeddedTerminalRenderable;
-  expect(pane.scrollHeight).toBeGreaterThan(pane.height);
+  expect(pane.scrollHeight).toBeLessThanOrEqual(pane.height);
   await setup.mockMouse.scroll(pane.screenX + 2, pane.screenY + 2, "up");
-  const scrolledPosition = pane.scrollY;
+  await setup.flush();
+  expect(pane.scrollHeight).toBeGreaterThan(pane.height);
 
   setup.mockInput.pressKey("x");
   await setup.flush();
 
   expect(writes).toEqual(["\x1b[120u"]);
   expect(pane.scrollY).toBe(pane.scrollHeight - pane.height);
-  expect(pane.scrollY).toBeGreaterThan(scrolledPosition);
+  expect(pane.scrollHeight).toBeLessThanOrEqual(pane.height);
+  expect(setup.captureCharFrame()).toContain("row 29");
 });

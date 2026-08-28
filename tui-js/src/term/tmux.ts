@@ -98,26 +98,20 @@ export function sessionDisplayName(target: string): string {
   return `${managed.groupID} · ${managed.tabID.replace(/^repo:/, "")}`;
 }
 
-export async function managedSessionInfos(
-  groups: SessionGroup[],
-  busy: (groupID: string, tabID: string) => Promise<boolean>,
-): Promise<TmuxSessionInfo[]> {
-  return Promise.all(
-    groups.flatMap((group) => group.tabs.map(async (tab) => {
+export function managedSessionInfos(groups: SessionGroup[]): TmuxSessionInfo[] {
+  return groups.flatMap((group) => group.tabs.map((tab) => {
       const target = managedSessionTarget(group.id, tab.id);
-      const running = await busy(group.id, tab.id);
       return {
         name: target,
         kind: tab.kind === "agent" || tab.kind === "review" ? "agent" : "shell",
-        panes: [{ path: tab.cwd, command: running ? "slis-process" : "sh", target }],
+        panes: [{ path: tab.cwd, command: tab.busy ? "slis-process" : "sh", target }],
       } satisfies TmuxSessionInfo;
-    })),
-  );
+    }));
 }
 
 export async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
-  const groups = await listSlisSessions();
-  const managed = await managedSessionInfos(groups, slisSessionBusy);
+  const groups = await listSlisSessions(true);
+  const managed = managedSessionInfos(groups);
   const legacy = await listLegacySessions();
   return [...managed, ...legacy];
 }
