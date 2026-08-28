@@ -169,7 +169,11 @@ func TestSyncWorkingTreeRollsBackWhenJournalSaveFails(t *testing.T) {
 	if err := os.Chmod(journalDirectory, 0o555); err != nil {
 		t.Fatalf("make journal directory read-only: %v", err)
 	}
-	defer os.Chmod(journalDirectory, 0o755)
+	t.Cleanup(func() {
+		if err := os.Chmod(journalDirectory, 0o755); err != nil {
+			t.Errorf("restore journal directory permissions: %v", err)
+		}
+	})
 
 	_, err := SyncWorkingTree(journalPath)
 	if err == nil {
