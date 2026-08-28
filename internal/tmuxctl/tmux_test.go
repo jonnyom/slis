@@ -3,7 +3,9 @@ package tmuxctl_test
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,27 @@ import (
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/tmuxctl"
 )
+
+func startCat(t *testing.T, slice string) {
+	t.Helper()
+	readyPath := filepath.Join(t.TempDir(), "cat-ready")
+	command := fmt.Sprintf("stty -echo; touch %q; exec cat", readyPath)
+	if err := exec.Command("tmux", "respawn-pane", "-k", "-t", tmuxctl.SessionName(slice), command).Run(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := os.Stat(readyPath)
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("cat did not start")
+}
 
 func TestRelatedSessionNamesIncludesCanonicalShellAndLegacySessions(t *testing.T) {
 	members := []model.SliceMember{{Repo: "nory", WorktreePath: "/worktrees/pay-119/nory"}}
@@ -136,10 +159,7 @@ func TestSendPromptOnceSkipsACompletedDelivery(t *testing.T) {
 	if err := tmuxctl.EnsureSession(slice, []model.SliceMember{member}, tmuxctl.SessionOpts{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := exec.Command("tmux", "send-keys", "-t", tmuxctl.SessionName(slice), "cat", "Enter").Run(); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(50 * time.Millisecond)
+	startCat(t, slice)
 
 	prompt := "slis-once-delivery-marker"
 	if err := tmuxctl.SendPromptOnce(slice, prompt, "run-1:request-1"); err != nil {
@@ -179,10 +199,7 @@ func TestSendPromptOnceSerializesConcurrentDelivery(t *testing.T) {
 	if err := tmuxctl.EnsureSession(slice, []model.SliceMember{member}, tmuxctl.SessionOpts{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := exec.Command("tmux", "send-keys", "-t", tmuxctl.SessionName(slice), "cat", "Enter").Run(); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(50 * time.Millisecond)
+	startCat(t, slice)
 
 	const senders = 8
 	prompt := "slis-concurrent-delivery-marker"
