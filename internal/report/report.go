@@ -261,7 +261,8 @@ func ListSlicesReportCtx(ctx context.Context, ws config.Workspace, overridesPath
 	slices := discovery.Resolve(rep.Slices, overridesPath, ws.Grouping.StripPrefix)
 
 	// Graphite stack annotation is opt-in: only ls --json needs it, and it costs
-	// a `gt state` read per member, so polling commands (status) skip it.
+	// a `gt state` read per repo (served from gt's per-repo cache when the
+	// repo's refs are unchanged), so polling commands (status) skip it.
 	if annotateStacks {
 		slices = discovery.AnnotateStacks(ctx, slices, gt.ReadStackCtx)
 	}
