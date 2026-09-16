@@ -10,8 +10,6 @@ import (
 	"os/exec"
 	"sort"
 	"time"
-
-	"github.com/jonnyom/slis/internal/subproc"
 )
 
 // stateTimeout bounds a `gt state` read. gt is a Node process and can hang
@@ -105,9 +103,7 @@ func ReadStateCtx(parent context.Context, repoDir string) (State, error) {
 
 	ctx, cancel := context.WithTimeout(parent, stateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gt", "state", "--no-interactive")
-	subproc.Configure(cmd)
-	cmd.Dir = repoDir
+	cmd := stateCmd(ctx, repoDir)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	// Discard stderr (banner / warnings go there).
