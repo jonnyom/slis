@@ -25,6 +25,8 @@ func Track(dir, branch, parent string) (string, error) {
 	cmd := exec.Command("gt", "track", "--parent", parent, "--no-interactive", branch)
 	subproc.Configure(cmd)
 	cmd.Dir = dir
+	cmd.Env = quietGraphiteEnv()
 	out, err := cmd.CombinedOutput()
+	stacks.Invalidate(dir)
 	return strings.TrimSpace(string(out)), err
 }

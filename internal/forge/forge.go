@@ -326,7 +326,19 @@ func PRForBranchCtx(parent context.Context, repoDir, branch string) (*PR, error)
 	return prForBranchCtx(parent, repoDir, branch, true)
 }
 
-func prForBranchCtx(parent context.Context, repoDir, branch string, includeInlineComments bool) (*PR, error) {
+// prForBranchCtx resolves branch's PR through the process-wide cache; see prCache.
+func prForBranchCtx(ctx context.Context, repoDir, branch string, includeInlineComments bool) (*PR, error) {
+	return prs.lookup(ctx, repoDir, branch, includeInlineComments, lookupPRUncached)
+}
+
+// prs is the process-wide PR lookup cache every branch → PR read goes through.
+var prs = newPRCache()
+
+// lookupPRUncached is the real gh-backed resolution behind prForBranchCtx. It
+// is a variable only so the cache wiring can be tested without gh.
+var lookupPRUncached prLookupFunc = lookupPRViaGh
+
+func lookupPRViaGh(parent context.Context, repoDir, branch string, includeInlineComments bool) (*PR, error) {
 	if !Available() {
 		return nil, nil
 	}

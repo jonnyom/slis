@@ -113,6 +113,21 @@ func ReadStack(repoDir string) (State, error) {
 // ReadStackCtx is ReadStack with a caller-supplied context, propagated to both
 // the gt process and the pure-git refs fallback.
 func ReadStackCtx(ctx context.Context, repoDir string) (State, error) {
+	return stacks.Read(ctx, repoDir)
+}
+
+// stacks is the process-wide per-repo stack cache every ReadStack goes through.
+var stacks = newStackCache(readStackUncachedCtx)
+
+// InvalidateStack drops the cached stack for the repository containing dir.
+// gt mutators call it; other packages that change Graphite metadata outside
+// package gt (none today) should too.
+func InvalidateStack(dir string) {
+	stacks.Invalidate(dir)
+}
+
+// readStackUncachedCtx is the real read: `gt state`, then the refs fallback.
+func readStackUncachedCtx(ctx context.Context, repoDir string) (State, error) {
 	st, _ := ReadStateCtx(ctx, repoDir)
 	if len(st) > 0 {
 		return st, nil
