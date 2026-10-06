@@ -1,0 +1,21 @@
+README.md
+  s_1a9dec91f227d3::t_017d318b5e65cc 551
+scripts/build-slis-ui.sh
+  s_1a9dec91f227d3::t_eb1de81cc710cf 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b2dc9e07b9d69a7b01bae8745fef3be4b1551f3e",
+  "prompts": {},
+  "sessions": {
+    "s_1a9dec91f227d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3cbaff32-e830-427d-84f0-61fa70a5dfcf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
