@@ -1,0 +1,23 @@
+internal/swap/live_test.go
+  s_1a9dec91f227d3::t_491c8efd73af7a 258-283
+internal/swap/engine.go
+  s_1a9dec91f227d3::t_3aa978f51e62d4 329-331
+  s_1a9dec91f227d3::t_0b7fe5ce522712 370-385
+  s_1a9dec91f227d3::t_9a02e30f6b78f4 358-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "71bead214dfd99d06974347104ed9d4e6e412559",
+  "prompts": {},
+  "sessions": {
+    "s_1a9dec91f227d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3cbaff32-e830-427d-84f0-61fa70a5dfcf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
