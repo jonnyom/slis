@@ -41,7 +41,7 @@ for entry in "${targets[@]}"; do
   out_dir="dist/${goos}-${goarch}"
   mkdir -p "${out_dir}"
   echo "==> compiling slis-ui for ${goos}/${goarch} (${bun_target})"
-  bun build --compile --target="${bun_target}" ./src/index.tsx --outfile "${out_dir}/slis-ui"
+  bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target="${bun_target}" ./src/index.tsx --outfile "${out_dir}/slis-ui"
   chmod +x "${out_dir}/slis-ui"
 done
 

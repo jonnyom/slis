@@ -548,7 +548,7 @@ Compile a standalone front-end beside the Go binary:
 ```sh
 cd tui-js
 bun run ./scripts/require-bun-version.ts 1.3.14
-bun build --compile ./src/index.tsx --outfile ../slis-ui
+bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig ./src/index.tsx --outfile ../slis-ui
 cd ..
 ./slis
 ```
