@@ -326,6 +326,9 @@ func Refresh(journalPath string) (*Journal, error) {
 				return nil, fmt.Errorf("refresh switch --detach %q in %q: %w", newTargets[i], rs.Primary, err)
 			}
 			rs.TargetSHA = newTargets[i]
+			if err := rebaselineMirror(rs); err != nil {
+				return nil, err
+			}
 			// Fix W1: persist this repo's advance immediately, mirroring Activate's
 			// incremental journaling. A later repo's failure must NOT leave the disk
 			// journal stale for an already-advanced repo — a stale TargetSHA would
@@ -352,6 +355,9 @@ func Refresh(journalPath string) (*Journal, error) {
 				rs.TempBranch, shortSHA(newTargets[i]), rs.Primary, err)
 		}
 		rs.TargetSHA = newTargets[i]
+		if err := rebaselineMirror(rs); err != nil {
+			return nil, err
+		}
 		// Fix W1: persist this repo's advance immediately (see the legacy path above).
 		if err := saveRefreshedRepo(journalPath, j, rs.Repo); err != nil {
 			return nil, err
@@ -359,6 +365,22 @@ func Refresh(journalPath string) (*Journal, error) {
 	}
 
 	return j, nil
+}
+
+// rebaselineMirror re-records a live repo's mirror baseline after Refresh has
+// advanced its clean primary. The mirror fingerprint hashes HEAD, so keeping the
+// pre-refresh baseline would make every later live sync reject the primary as
+// "no longer matches the Slis mirror".
+func rebaselineMirror(rs *RepoState) error {
+	if rs.Mirror == nil {
+		return nil
+	}
+	snapshot, err := captureWorkingSnapshot(rs.Primary)
+	if err != nil {
+		return fmt.Errorf("refresh: capture mirror baseline in %q: %w", rs.Primary, err)
+	}
+	rs.Mirror = snapshot.mirrorState()
+	return nil
 }
 
 // saveRefreshedRepo persists the journal after a single repo's TargetSHA has been

@@ -255,6 +255,32 @@ func TestSyncWorkingTreeFollowsRewrittenTip(t *testing.T) {
 	}
 }
 
+func TestSyncWorkingTreeAcceptsPrimaryAdvancedByRefresh(t *testing.T) {
+	primary, worktree, journalPath := activateLiveRepo(t)
+
+	if err := os.WriteFile(filepath.Join(worktree, "f.txt"), []byte("committed\n"), 0o644); err != nil {
+		t.Fatalf("write committed file: %v", err)
+	}
+	if _, err := git.Run(worktree, "commit", "-q", "-am", "advance"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	newTip, err := git.RevParse(worktree, "HEAD")
+	if err != nil {
+		t.Fatalf("new tip: %v", err)
+	}
+
+	if _, err := Refresh(journalPath); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, err := SyncWorkingTree(journalPath); err != nil {
+		t.Fatalf("SyncWorkingTree after Refresh: %v", err)
+	}
+	primaryTip, err := git.RevParse(primary, "HEAD")
+	if err != nil || primaryTip != newTip {
+		t.Fatalf("primary tip = %q, want %q: %v", primaryTip, newTip, err)
+	}
+}
+
 func TestSyncWorkingTreeFollowsBranchRenameAtSameTip(t *testing.T) {
 	_, worktree, journalPath := activateLiveRepo(t)
 	if _, err := git.Run(worktree, "branch", "-m", "renamed"); err != nil {
