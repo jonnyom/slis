@@ -26,7 +26,7 @@ export class LiveMirrorManager {
   private stoppingProcess: LiveMirrorProcess | null = null;
 
   constructor(
-    private readonly onFailure: (message: string) => void,
+    private readonly onStopped: (message: string, exitCode: number) => void,
     private readonly spawn: SpawnLiveMirror = spawnLiveMirror,
     private readonly binary = process.env["SLIS_BIN"] ?? "slis",
   ) {}
@@ -46,8 +46,9 @@ export class LiveMirrorManager {
         this.stoppingProcess = null;
         return;
       }
+      if (code === 0 && !output.trim()) return;
       const message = output.trim() || `Live sync stopped with exit code ${code}`;
-      this.onFailure(message);
+      this.onStopped(message, code);
     });
   }
 

@@ -32,6 +32,7 @@ import { AllSlicesProcOverlay } from "./components/procoverlay";
 import { SessionOverlay } from "./components/sessionoverlay";
 import { useOverlays, type OverlayApi } from "./overlays/useOverlays";
 import { TermManager } from "./term/manager";
+import { removeMissingSliceTabs, reconcileTabSelection } from "./term/slice-tabs";
 import {
   dockRefocusAction,
   nextSessionTabID,
@@ -72,7 +73,7 @@ import { BulkLoadOverlay } from "./components/bulkload";
 import { useToasts, ToastLayer } from "./components/toast";
 import { InitialScreen } from "./components/initialscreen";
 import { Spinner } from "./components/spinner";
-import { agentDefaultSet, createSlice, deactivate, swapSlice } from "./rpc/mutate";
+import { agentDefaultSet, createSlice, deactivate, recoverActivation, swapSlice } from "./rpc/mutate";
 import { LiveMirrorManager } from "./live/mirror";
 import { TerminalOpenCoordinator } from "./term/open";
 import {
@@ -105,9 +106,14 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const overlaysRef = useRef<OverlayApi | null>(null);
   const liveMirrorRef = useRef<LiveMirrorManager | null>(null);
   if (!liveMirrorRef.current) {
-    liveMirrorRef.current = new LiveMirrorManager((message) =>
-      overlaysRef.current?.error("Live sync stopped", message),
-    );
+    liveMirrorRef.current = new LiveMirrorManager((message, exitCode) => {
+      if (exitCode === 0) {
+        pushToast("Live slice deactivated: checkout changed outside Slis. Files preserved.", "idle");
+        refresh();
+      } else {
+        overlaysRef.current?.error("Live sync stopped", message);
+      }
+    });
   }
   const liveMirror = liveMirrorRef.current;
 
@@ -247,6 +253,9 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       );
       client.ls().then((res) => {
         setInitialError(null);
+        const previousNames = (lsRef.current?.slices ?? []).map((slice) => slice.name);
+        const nextNames = res.slices.map((slice) => slice.name);
+        setTabs((currentTabs) => removeMissingSliceTabs(currentTabs, previousNames, nextNames));
         lsRef.current = res;
         setLs(res);
         onDone?.(res);
@@ -278,6 +287,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         const nextNames = result.slices.map((slice) => slice.name);
         const discovered = newlyDiscoveredSliceNames(previousNames, nextNames);
         const available = new Set(nextNames);
+        setTabs((currentTabs) => removeMissingSliceTabs(currentTabs, previousNames, nextNames));
         lsRef.current = result;
         setLs(result);
         loadedRef.current = new Set(
@@ -384,25 +394,26 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const quit = useCallback(() => {
     if (quittingRef.current) return;
     quittingRef.current = true;
+    const cleanup = () => {
+      runtimeRefresher.stop();
+      manager.detachAll();
+      client.close();
+      renderer.destroy();
+    };
     void (async () => {
       await liveMirror.stop();
       const activeSlice = lsRef.current?.slices.find((slice) => slice.active);
       if (activeSlice) {
         const result = await deactivate();
         if (result.code !== 0) {
-          liveMirror.start();
-          quittingRef.current = false;
           const body = (result.stdout + (result.stderr ? `\n${result.stderr}` : "")).trim();
-          overlaysRef.current?.error("Could not reset live slice", body || "(no output)");
-          return;
+          return `Live slice was not reset; files and recovery state were preserved. ${body}`;
         }
       }
-      runtimeRefresher.stop();
-      manager.detachAll();
-      client.close();
-      renderer.destroy();
-      process.exit(0);
-    })();
+    })().finally(cleanup).then((failure) => {
+      if (failure) process.stderr.write(`slis: ${failure}\n`);
+      process.exit(failure ? 1 : 0);
+    });
   }, [client, renderer, manager, liveMirror, runtimeRefresher]);
 
   // Ctrl+C quits from every React UI state (browser, cockpit, diff, overlays),
@@ -410,7 +421,14 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // A focused terminal is the exception: its raw-input handler must forward the
   // interrupt to the embedded shell/agent instead of exiting Slis.
   const termModeRef = useRef(termMode);
-  termModeRef.current = termMode;
+  termModeRef.current = termMode && !overlaysRef.current?.active && !procsOpen && !sessionsOpen && bulkPromptCount === null;
+  useKeyboard((key) => {
+    if (key.ctrl && key.name.toLowerCase() === "c" && !termModeRef.current) {
+      key.preventDefault();
+      key.stopPropagation();
+      quit();
+    }
+  });
   useEffect(() => {
     const handler = (sequence: string): boolean => {
       if (sequence !== "\x03" || termModeRef.current) return false;
@@ -502,21 +520,32 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     if (!ls || recoveryPromptedRef.current || usingFake()) return;
     recoveryPromptedRef.current = true;
     const activeSlice = ls.slices.find((slice) => slice.active);
-    if (!activeSlice) return;
-    overlaysRef.current?.liveRecovery(
-      activeSlice.name,
-      async () => {
-        await liveMirror.stop();
-        const result = await deactivate();
-        if (result.code !== 0) liveMirror.start();
-        return result;
-      },
-      () => {
-        liveMirror.start();
-        pushToast(`Reactivated ${activeSlice.name}`, "ci-pass");
-      },
-    );
-  }, [ls, liveMirror, pushToast]);
+    void recoverActivation().then((result) => {
+      if (result.code !== 0) {
+        overlaysRef.current?.error("Could not check live slice", result.stderr || result.stdout);
+        return;
+      }
+      if (result.stderr) {
+        pushToast("Live slice deactivated: checkout changed outside Slis. Files preserved.", "idle");
+        refresh();
+        return;
+      }
+      if (!activeSlice) return;
+      overlaysRef.current?.liveRecovery(
+        activeSlice.name,
+        async () => {
+          await liveMirror.stop();
+          const result = await deactivate();
+          if (result.code === 0 && result.stderr) pushToast(result.stderr, "idle");
+          return result;
+        },
+        () => {
+          liveMirror.start();
+          pushToast(`Reactivated ${activeSlice.name}`, "ci-pass");
+        },
+      );
+    }, (error: unknown) => overlaysRef.current?.error("Could not check live slice", String(error)));
+  }, [ls, liveMirror, pushToast, refresh]);
 
   // Theme switching is global across browser/cockpit/diff, but never steals a
   // T from a text-entry overlay or embedded terminal. Use the parsed key event
@@ -1128,11 +1157,23 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     setTermMode(true);
   }, [tabs]);
 
+  const selectedSession = tabs.find((tab) => tabKey(tab) === activeTab);
+  const selectedGroupID = selectedSession?.kind === "session" && !selectedSession.opts.targetSession
+    ? selectedSession.slice : undefined;
+  const selectedTabID = selectedSession?.kind === "session" ? selectedSession.opts.tabID : undefined;
   useEffect(() => {
-    const active = tabs.find((tab) => tabKey(tab) === activeTab);
-    if (!active || active.kind !== "session" || active.opts.targetSession) return;
-    void activateSlisTab(active.slice, active.opts.tabID);
-  }, [activeTab, tabs]);
+    if (!selectedGroupID || !selectedTabID) return;
+    void activateSlisTab(selectedGroupID, selectedTabID).then(undefined, (error: unknown) => {
+      overlaysRef.current?.error("Could not select terminal", String(error));
+    });
+  }, [selectedGroupID, selectedTabID]);
+
+  useEffect(() => {
+    const selection = reconcileTabSelection(tabs, activeTab, dockedSessionTab);
+    if (selection.active !== activeTab) setActiveTab(selection.active);
+    if (selection.docked !== dockedSessionTab) setDockedSessionTab(selection.docked);
+    if (selection.active === null && selection.docked === null) setTermMode(false);
+  }, [tabs, activeTab, dockedSessionTab]);
 
   if (!ls) {
     return <InitialScreen connected={connected} error={initialError} onQuit={quit} />;
@@ -1145,6 +1186,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const activeTabIsSession = activeEntry?.kind === "session";
   const hasDockedSession = dockedSessionEntry?.kind === "session";
   const modalActive = overlays.active || procsOpen || sessionsOpen || bulkPromptOpen;
+  termModeRef.current = termMode && !modalActive;
   const terminalLayout = terminalPresentation(width, hasDockedSession, termMode, activeTabIsSession, modalActive);
   const presentedTerminalTab = terminalLayout.docked ? dockedSessionTab : activeTab;
   const dockTabBarTabs = dockedSessionEntry?.kind === "session"

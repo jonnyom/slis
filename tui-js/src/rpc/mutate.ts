@@ -152,6 +152,10 @@ export function deactivate(): Promise<MutateResult> {
   return run(["deactivate"]);
 }
 
+export function recoverActivation(): Promise<MutateResult> {
+  return run(["recover-activation"]);
+}
+
 // The interactive TUI chooses the recoverable --stash path for activation.
 // Deactivation restores the pinned stash recorded by the Go swap engine.
 export function swapArgs(slice: string, active: boolean): string[] {

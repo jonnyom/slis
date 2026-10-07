@@ -21,6 +21,8 @@ if (!requestedTheme && savedTheme !== "auto") setTheme(savedTheme);
 // the agent) instead of quitting slis. The browser/cockpit quit with `q`.
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
+  consoleMode: process.env.SLIS_DEBUG === "1" ? "console-overlay" : "disabled",
+  openConsoleOnError: process.env.SLIS_DEBUG === "1",
   targetFps: 30,
 });
 
