@@ -44,7 +44,10 @@ func Activate(slice string, repos []RepoActivation, journalPath string, opts Act
 	j := &Journal{Slice: slice}
 
 	// Phase 1: activate each repo; roll back all on first failure.
-	tempBranch := LiveBranchName(slice)
+	tempBranch, err := liveBranchForActivation(slice, journalPath)
+	if err != nil {
+		return nil, err
+	}
 	for _, ra := range repos {
 		st, err := activateRepo(RepoPlan{
 			Repo:       ra.Repo,

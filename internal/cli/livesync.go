@@ -31,7 +31,8 @@ var liveSyncCmd = &cobra.Command{
 			filepath.Join(paths.StateDir, "live-sync-crashes.jsonl"),
 			time.Now,
 			func(syncContext context.Context) error {
-				return swap.RunLiveSync(syncContext, paths.ActiveJournal, 30*time.Second)
+				failure := swap.RunLiveSync(syncContext, paths.ActiveJournal, 30*time.Second)
+				return recoverActivationDrift(paths.ActiveJournal, failure, cmd.ErrOrStderr())
 			},
 		)
 	},

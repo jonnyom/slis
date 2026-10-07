@@ -29,7 +29,7 @@ before switching away, so nothing is ever lost.`,
 		force, _ := cmd.Flags().GetBool("force")
 		sp := config.StatePaths()
 		if err := swap.Deactivate(sp.ActiveJournal, force); err != nil {
-			return err
+			return recoverActivationDrift(sp.ActiveJournal, err, cmd.ErrOrStderr())
 		}
 		fmt.Println("restored")
 		return nil
