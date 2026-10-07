@@ -1,23 +1,55 @@
 diff --git a/dist/terminal-buffer.d.ts b/dist/terminal-buffer.d.ts
-index 0271e4ffd9adcfb865d68a8056f14eebe6ef5bf4..614407982a6658c3e74e21650409fb853592e7bc 100644
+index 0271e4ffd9adcfb865d68a8056f14eebe6ef5bf4..f3cfb4ac1be807495777e6732d2bcc1dd49eba67 100644
 --- a/dist/terminal-buffer.d.ts
 +++ b/dist/terminal-buffer.d.ts
-@@ -36,6 +36,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
+@@ -1,5 +1,9 @@
+ import { TextBufferRenderable, type TextBufferOptions, StyledText, type RenderContext, type TextChunk } from "@opentui/core";
+ import { type TerminalData } from "./ffi.js";
++export interface TerminalLinkAlias {
++    text: string;
++    url: string;
++}
+ /**
+  * Defines a region to highlight in the terminal output.
+  */
+@@ -30,14 +34,16 @@ export declare function terminalDataToStyledText(data: TerminalData, highlights?
+     x: number;
+     y: number;
+     style: "block" | "underline";
+-}): StyledText;
++}, linkAliases?: TerminalLinkAlias[]): StyledText;
+ export interface GhosttyTerminalOptions extends TextBufferOptions {
+     ansi?: string | Buffer | Uint8Array;
      cols?: number;
      rows?: number;
      limit?: number;
 +    limitFromEnd?: boolean;
      trimEnd?: boolean;
      highlights?: HighlightRegion[];
++    linkAliases?: TerminalLinkAlias[];
      /**
-@@ -66,6 +67,7 @@ export declare class GhosttyTerminalRenderable extends TextBufferRenderable {
+      * Enable persistent mode for streaming/interactive use cases.
+      * When true, the terminal maintains state between feed() calls.
+@@ -66,8 +72,10 @@ export declare class GhosttyTerminalRenderable extends TextBufferRenderable {
      private _cols;
      private _rows;
      private _limit?;
 +    private _limitFromEnd;
      private _trimEnd?;
      private _highlights?;
++    private _linkAliases;
      private _ansiDirty;
+     private _lineCount;
+     private _showCursor;
+@@ -86,6 +94,8 @@ export declare class GhosttyTerminalRenderable extends TextBufferRenderable {
+     set trimEnd(value: boolean | undefined);
+     get highlights(): HighlightRegion[] | undefined;
+     set highlights(value: HighlightRegion[] | undefined);
++    get linkAliases(): TerminalLinkAlias[];
++    set linkAliases(value: TerminalLinkAlias[]);
+     get showCursor(): boolean;
+     set showCursor(value: boolean);
+     get cursorStyle(): "block" | "underline" | undefined;
 diff --git a/dist/terminal-buffer.js b/dist/terminal-buffer.js
 index 956b98d345e4e849d984bc0c4e542cbc785f1227..445eb911e2843f3156c0c82d9228687df1945e2e 100644
 --- a/dist/terminal-buffer.js
@@ -162,48 +194,74 @@ index 956b98d345e4e849d984bc0c4e542cbc785f1227..445eb911e2843f3156c0c82d9228687d
                  });
              }
 diff --git a/src/terminal-buffer.ts b/src/terminal-buffer.ts
-index e948e8afce222dc7b985418e33df9a3c8da573f0..c4e83fff067d125296f8e843dc674303a22fd221 100644
+index e948e8afce222dc7b985418e33df9a3c8da573f0..47616e2ff84672784426ddc58d0b6200ccd6bf5f 100644
 --- a/src/terminal-buffer.ts
 +++ b/src/terminal-buffer.ts
-@@ -73,11 +73,11 @@ function getLineStarts(lineInfo: LineInfoWithStarts): number[] {
+@@ -16,6 +16,11 @@ type WidthAwareChunk = TextChunk & {
+   cellWidth: number
+ }
+ 
++export interface TerminalLinkAlias {
++  text: string
++  url: string
++}
++
+ function getChunkCellWidth(chunk: TextChunk): number {
+   return "cellWidth" in chunk && typeof (chunk as WidthAwareChunk).cellWidth === "number"
+     ? (chunk as WidthAwareChunk).cellWidth
+@@ -73,11 +78,11 @@ function getLineStarts(lineInfo: LineInfoWithStarts): number[] {
  function convertSpanToChunk(span: TerminalSpan): WidthAwareChunk {
    const { text, fg, bg, flags, width } = span
--
-+
+ 
 -  let fgColor = fg ? RGBA.fromHex(fg) : DEFAULT_FG
 +  let fgColor = fg ? RGBA.fromHex(fg) : undefined
    let bgColor = bg ? RGBA.fromHex(bg) : undefined
--
-+
+ 
    if (flags & StyleFlags.INVERSE) {
 -    const temp = fgColor
 +    const temp = fgColor ?? DEFAULT_FG
      fgColor = bgColor || DEFAULT_BG
      bgColor = temp
    }
-@@ -92,6 +92,67 @@ function convertSpanToChunk(span: TerminalSpan): WidthAwareChunk {
+@@ -92,6 +97,84 @@ function convertSpanToChunk(span: TerminalSpan): WidthAwareChunk {
    return { __isChunk: true, text, fg: fgColor, bg: bgColor, attributes, cellWidth: width }
  }
--
-+
+ 
 +const visibleUrlPattern = /https?:\/\/[^\s<>"']+/g
 +const trailingUrlPunctuation = /[.,;:!?)}\]]+$/
 +
-+function applyLinksToLine(chunks: TextChunk[]): TextChunk[] {
++function applyLinksToLine(
++  chunks: TextChunk[],
++  linkAliases: TerminalLinkAlias[],
++): TextChunk[] {
 +  const text = chunks.map((chunk) => chunk.text).join("")
-+  const links = [...text.matchAll(visibleUrlPattern)].map((match) => {
++  const links: Array<{ start: number; end: number; url: string }> = []
++  for (const linkAlias of linkAliases) {
++    if (!linkAlias.text) continue
++    let start = text.indexOf(linkAlias.text)
++    while (start >= 0) {
++      links.push({ start, end: start + linkAlias.text.length, url: linkAlias.url })
++      start = text.indexOf(linkAlias.text, start + linkAlias.text.length)
++    }
++  }
++  links.push(...[...text.matchAll(visibleUrlPattern)].map((match) => {
 +    const url = match[0].replace(trailingUrlPunctuation, "")
 +    const start = match.index
 +    return { start, end: start + url.length, url }
-+  })
++  }))
 +  if (links.length === 0) return chunks
++
++  links.sort((left, right) => left.start - right.start || right.end - left.end)
++  const nonOverlappingLinks = links.filter((link, index) =>
++    links.slice(0, index).every((earlier) => link.start >= earlier.end || link.end <= earlier.start),
++  )
 +
 +  const result: TextChunk[] = []
 +  let chunkStart = 0
 +  for (const chunk of chunks) {
 +    const chunkEnd = chunkStart + chunk.text.length
 +    const boundaries = new Set([chunkStart, chunkEnd])
-+    for (const link of links) {
++    for (const link of nonOverlappingLinks) {
 +      if (link.start > chunkStart && link.start < chunkEnd) boundaries.add(link.start)
 +      if (link.end > chunkStart && link.end < chunkEnd) boundaries.add(link.end)
 +    }
@@ -212,7 +270,7 @@ index e948e8afce222dc7b985418e33df9a3c8da573f0..c4e83fff067d125296f8e843dc674303
 +      const start = positions[index]!
 +      const end = positions[index + 1]!
 +      const segment = chunk.text.slice(start - chunkStart, end - chunkStart)
-+      const link = links.find((candidate) => start >= candidate.start && end <= candidate.end)
++      const link = nonOverlappingLinks.find((candidate) => start >= candidate.start && end <= candidate.end)
 +      result.push({
 +        ...chunk,
 +        text: segment,
@@ -250,53 +308,83 @@ index e948e8afce222dc7b985418e33df9a3c8da573f0..c4e83fff067d125296f8e843dc674303
  /**
   * Applies highlights to chunks for a specific line.
   * Splits chunks at highlight boundaries and applies background colors.
-@@ -293,6 +354,8 @@ export function terminalDataToStyledText(
+@@ -257,6 +340,7 @@ export function terminalDataToStyledText(
+   data: TerminalData,
+   highlights?: HighlightRegion[],
+   cursor?: { x: number; y: number; style: "block" | "underline" },
++  linkAliases: TerminalLinkAlias[] = [],
+ ): StyledText {
+   const chunks: TextChunk[] = []
+ 
+@@ -293,6 +377,8 @@ export function terminalDataToStyledText(
        lineChunks = applyCursorToLine(lineChunks, cursor.x, cursor.style)
      }
--
-+
-+    lineChunks = applyLinksToLine(lineChunks)
+ 
++    lineChunks = applyLinksToLine(lineChunks, linkAliases)
 +
      chunks.push(...lineChunks)
--
-+
+ 
      if (i < data.lines.length - 1) {
-@@ -300,7 +363,7 @@ export function terminalDataToStyledText(
+@@ -300,7 +386,7 @@ export function terminalDataToStyledText(
      }
    }
--
-+
+ 
 -  return new StyledText(chunks)
 +  return new StyledText(coalesceAdjacentChunks(chunks))
  }
--
-+
+ 
  export interface GhosttyTerminalOptions extends TextBufferOptions {
-@@ -308,6 +371,7 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
+@@ -308,8 +394,10 @@ export interface GhosttyTerminalOptions extends TextBufferOptions {
    cols?: number
    rows?: number
    limit?: number  // Maximum number of lines to render (from start)
 +  limitFromEnd?: boolean
    trimEnd?: boolean  // Remove empty lines from the end
    highlights?: HighlightRegion[]  // Regions to highlight with custom background colors
++  linkAliases?: TerminalLinkAlias[]
    /**
-@@ -340,6 +404,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+    * Enable persistent mode for streaming/interactive use cases.
+    * When true, the terminal maintains state between feed() calls.
+@@ -340,8 +428,10 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
    private _cols: number
    private _rows: number
    private _limit?: number
 +  private _limitFromEnd: boolean
    private _trimEnd?: boolean
    private _highlights?: HighlightRegion[]
++  private _linkAliases: TerminalLinkAlias[]
    private _ansiDirty: boolean = false
-@@ -368,6 +433,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+   private _lineCount: number = 0
+   private _showCursor: boolean = false
+@@ -368,8 +458,10 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
      this._cols = options.cols ?? 120
      this._rows = options.rows ?? 40
      this._limit = options.limit
 +    this._limitFromEnd = options.limitFromEnd ?? false
      this._trimEnd = options.trimEnd
      this._highlights = options.highlights
++    this._linkAliases = options.linkAliases ?? []
      this._persistent = options.persistent ?? false
-@@ -627,15 +693,27 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+     this._showCursor = options.showCursor ?? false
+     this._cursorStyle = options.cursorStyle
+@@ -437,6 +529,16 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+     this.requestRender()
+   }
+ 
++  get linkAliases(): TerminalLinkAlias[] {
++    return this._linkAliases
++  }
++
++  set linkAliases(value: TerminalLinkAlias[]) {
++    this._linkAliases = value
++    this._ansiDirty = true
++    this.requestRender()
++  }
++
+   get showCursor(): boolean {
+     return this._showCursor
+   }
+@@ -627,15 +729,27 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
        let data: TerminalData
        
        if (this._persistentTerminal) {
@@ -326,3 +414,12 @@ index e948e8afce222dc7b985418e33df9a3c8da573f0..c4e83fff067d125296f8e843dc674303
            limit: this._limit 
          })
        }
+@@ -650,7 +764,7 @@ export class GhosttyTerminalRenderable extends TextBufferRenderable {
+         }
+       }
+       
+-      this.textBuffer.setStyledText(terminalDataToStyledText(data, this._highlights))
++      this.textBuffer.setStyledText(terminalDataToStyledText(data, this._highlights, undefined, this._linkAliases))
+       this.updateTextInfo()
+       if (this._showCursor) {
+         const cursorY = Math.max(0, (data.totalLines - data.rows) + data.cursor[1] - data.offset)

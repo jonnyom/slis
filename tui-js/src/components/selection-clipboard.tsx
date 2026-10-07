@@ -5,9 +5,29 @@ import { openUrl } from "../rpc/mutate";
 import { activateVisibleUrlAtPosition } from "../term/links";
 
 type SelectionPoint = { x: number; y: number };
+type TerminalLinkSource = {
+  terminalUrlAtPosition: (row: number, column: number) => string | null;
+};
 
 function openSelectedUrl(url: string): void {
   void openUrl(url);
+}
+
+function terminalLinkSource(renderable: TextBufferRenderable): TerminalLinkSource | null {
+  if (!("terminalUrlAtPosition" in renderable)) return null;
+  const source = renderable as TextBufferRenderable & Partial<TerminalLinkSource>;
+  return typeof source.terminalUrlAtPosition === "function"
+    ? source as TextBufferRenderable & TerminalLinkSource
+    : null;
+}
+
+function activateTrackedTerminalUrl(
+  url: string | null | undefined,
+  onOpen: (url: string) => void,
+): boolean {
+  if (!url) return false;
+  onOpen(url);
+  return true;
 }
 
 function stringIndexAtCellColumn(text: string, targetColumn: number): number {
@@ -79,25 +99,38 @@ export function SelectionClipboard({
       selection.anchor.x === selection.focus.x &&
       selection.anchor.y === selection.focus.y;
     const textRenderable = selection.touchedRenderables
+      .filter((renderable) => renderable.visible)
       .filter((renderable): renderable is TextBufferRenderable =>
         renderable instanceof TextBufferRenderable,
       )
       .sort((left, right) => right.zIndex - left.zIndex)[0];
+    const terminalRow = textRenderable
+      ? selection.anchor.y - textRenderable.screenY + textRenderable.scrollY
+      : 0;
+    const terminalColumn = textRenderable
+      ? selection.anchor.x - textRenderable.screenX + textRenderable.scrollX
+      : 0;
+    const trackedTerminalUrl = textRenderable
+      ? terminalLinkSource(textRenderable)?.terminalUrlAtPosition(terminalRow, terminalColumn)
+      : null;
     if (
       isClick &&
       textRenderable &&
-      activateVisibleUrlAtPosition(
-        textRenderable.plainText,
-        selection.anchor.y - textRenderable.screenY,
-        selection.anchor.x - textRenderable.screenX,
-        onOpen,
-      )
+      (activateTrackedTerminalUrl(trackedTerminalUrl, onOpen) ||
+        activateVisibleUrlAtPosition(
+          textRenderable.plainText,
+          terminalRow,
+          terminalColumn,
+          onOpen,
+        ))
     ) {
       renderer.clearSelection();
       return;
     }
 
-    const selectedRenderables = selection.selectedRenderables;
+    const selectedRenderables = selection.selectedRenderables.filter(
+      (renderable) => renderable.visible,
+    );
     const highestZIndex = Math.max(...selectedRenderables.map((renderable) => renderable.zIndex));
     const selectedText = highestZIndex > 0
       ? selectedRenderables

@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing";
 import { createRoot, flushSync, type Root } from "@opentui/react";
 import { GhosttyTerminalRenderable } from "ghostty-opentui/terminal-buffer";
+import { EmbeddedTerminalRenderable } from "../term/embedded";
 import { SelectionClipboard } from "./selection-clipboard";
 
 let setup: TestRendererSetup | null = null;
@@ -81,6 +82,66 @@ test("opens a visible URL clicked in an embedded terminal", async () => {
   expect(openedUrls).toEqual(["https://example.com/docs"]);
 });
 
+test("opens an OSC 8 link clicked in an embedded terminal", async () => {
+  setup = await createTestRenderer({ width: 80, height: 4 });
+  root = createRoot(setup.renderer);
+  const openedUrls: string[] = [];
+  flushSync(() =>
+    root!.render(
+      <SelectionClipboard onOpen={(url) => openedUrls.push(url)} />,
+    ),
+  );
+  const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+    width: 80,
+    height: 4,
+    cols: 80,
+    rows: 4,
+    selectable: true,
+    persistent: true,
+  });
+  setup.renderer.root.add(terminal);
+  terminal.feed("Open \x1b]8;;https://example.com/hidden\x1b\\documentation\x1b]8;;\x1b\\");
+  await setup.flush();
+
+  await setup.mockMouse.click(8, 0);
+
+  expect(openedUrls).toEqual(["https://example.com/hidden"]);
+});
+
+test("opens a URL from the visible row after terminal output scrolls", async () => {
+  setup = await createTestRenderer({ width: 80, height: 4 });
+  root = createRoot(setup.renderer);
+  const openedUrls: string[] = [];
+  flushSync(() => root!.render(
+    <SelectionClipboard onOpen={(url) => openedUrls.push(url)} />,
+  ));
+  const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+    width: 80,
+    height: 4,
+    cols: 80,
+    rows: 4,
+    persistent: true,
+    limit: 500,
+    limitFromEnd: true,
+    selectable: true,
+    zIndex: 100,
+  });
+  setup.renderer.root.add(terminal);
+  terminal.feed(Array.from({ length: 20 }, (_, index) =>
+    `Open https://example.com/row-${index}\r\n`,
+  ).join(""));
+  await setup.renderOnce();
+  await setup.renderOnce();
+  await setup.mockMouse.scroll(2, 2, "up");
+  await setup.renderOnce();
+  const visibleUrl = setup.captureCharFrame().split("\n")[0]!.trim().slice(5);
+  expect(terminal.scrollY).toBeGreaterThan(0);
+
+  await setup.mockMouse.click(12, 0);
+
+  expect(openedUrls).toEqual([visibleUrl]);
+});
+
 test("copies only the top terminal when selectable panes overlap", async () => {
   setup = await createTestRenderer({ width: 80, height: 4 });
   root = createRoot(setup.renderer);
@@ -147,6 +208,47 @@ test("copies only the visible terminal when hidden tabs share its layer", async 
   });
   setup.renderer.root.add(hiddenTerminal);
   setup.renderer.root.add(visibleTerminal);
+  await setup.flush();
+
+  await setup.mockMouse.drag(0, 0, 8, 0);
+
+  expect(copiedText).toEqual(["intended"]);
+});
+
+test("ignores a terminal after its tab becomes hidden", async () => {
+  setup = await createTestRenderer({ width: 80, height: 4 });
+  root = createRoot(setup.renderer);
+  const copiedText: string[] = [];
+  setup.renderer.copyToClipboardOSC52 = (text) => {
+    copiedText.push(text);
+    return true;
+  };
+  flushSync(() => root!.render(<SelectionClipboard />));
+  const hiddenTerminal = new GhosttyTerminalRenderable(setup.renderer, {
+    ansi: "unrelated hidden terminal output",
+    width: 80,
+    height: 4,
+    cols: 80,
+    rows: 4,
+    selectable: true,
+    visible: true,
+    zIndex: 100,
+  });
+  const visibleTerminal = new GhosttyTerminalRenderable(setup.renderer, {
+    ansi: "intended visible terminal output",
+    width: 80,
+    height: 4,
+    cols: 80,
+    rows: 4,
+    selectable: true,
+    visible: false,
+    zIndex: 100,
+  });
+  setup.renderer.root.add(hiddenTerminal);
+  setup.renderer.root.add(visibleTerminal);
+  await setup.flush();
+  hiddenTerminal.visible = false;
+  visibleTerminal.visible = true;
   await setup.flush();
 
   await setup.mockMouse.drag(0, 0, 8, 0);

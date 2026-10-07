@@ -3,6 +3,7 @@ import {
   GhosttyTerminalRenderable,
   type GhosttyTerminalOptions,
 } from "ghostty-opentui/terminal-buffer";
+import { Osc8LinkTracker } from "./links";
 
 function visibleHistoryLimit(
   retainedHistoryLimit: number | undefined,
@@ -17,6 +18,7 @@ export class EmbeddedTerminalRenderable extends GhosttyTerminalRenderable {
   private retainedHistoryLimit: number | undefined;
   private liveHistoryLimit: number | undefined;
   private pendingScrollUpDistance = 0;
+  private readonly linkTracker = new Osc8LinkTracker();
 
   constructor(ctx: RenderContext, options: GhosttyTerminalOptions) {
     const retainedHistoryLimit = options.limit;
@@ -60,6 +62,22 @@ export class EmbeddedTerminalRenderable extends GhosttyTerminalRenderable {
     this.pendingScrollUpDistance = 0;
     this.limit = this.liveHistoryLimit;
     this.scrollY = Math.max(0, this.scrollHeight - this.height);
+  }
+
+  override feed(data: string | Buffer | Uint8Array): void {
+    this.linkTracker.observe(data);
+    this.linkAliases = this.linkTracker.aliases;
+    super.feed(data);
+  }
+
+  override reset(): void {
+    this.linkTracker.reset();
+    this.linkAliases = [];
+    super.reset();
+  }
+
+  terminalUrlAtPosition(row: number, column: number): string | null {
+    return this.linkTracker.urlAtPosition(this.plainText, row, column);
   }
 
   override onMouseEvent(event: MouseEvent): void {
