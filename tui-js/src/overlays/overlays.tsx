@@ -390,9 +390,10 @@ export function AgentBusyOverlay({
 }
 
 export function RemoveOverlay({ slices }: { slices: string[] }): ReactNode {
+  const many = slices.length > 1;
   return (
     <Card
-      title="Clear finished slice(s)"
+      title={many ? `Clear ${slices.length} finished slices` : "Clear finished slice"}
       width={64}
       hints={[
         { key: "y", label: "remove" },
@@ -400,8 +401,8 @@ export function RemoveOverlay({ slices }: { slices: string[] }): ReactNode {
         { key: "esc", label: "cancel" },
       ]}
     >
-      <text wrapMode="none">
-        <span fg={theme.text}>remove </span>
+      <text wrapMode="word">
+        <span fg={theme.text}>{many ? `remove all ${slices.length}: ` : "remove "}</span>
         <span fg={theme.textBright} attributes={BOLD}>
           {slices.join(", ")}
         </span>
