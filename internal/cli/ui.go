@@ -12,6 +12,7 @@ import (
 	"github.com/jonnyom/slis/internal/config"
 	"github.com/jonnyom/slis/internal/hooks"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 )
 
 type uiLaunch struct {
@@ -64,7 +65,15 @@ func execJSUI(binPath string, launch uiLaunch) error {
 	}
 	env = environmentWithValue(env, config.WorkspaceConfigEnv, workspacePath)
 
+	restoreStderr := func() {}
+	if os.Getenv("SLIS_DEBUG") != "1" {
+		if restore, err := redirectStderr(config.StatePaths().UIStderrLog); err == nil {
+			restoreStderr = restore
+		}
+	}
+
 	execErr := syscall.Exec(argv0, append([]string{launch.name}, launch.args...), env)
+	restoreStderr()
 	if prevDir != "" {
 		if cdErr := os.Chdir(prevDir); cdErr != nil {
 			return errors.Join(execErr, cdErr)
@@ -103,6 +112,34 @@ func migrateExistingHooksBestEffort(binPath string) {
 		return
 	}
 	_, _ = hooks.MigrateExistingHooks(filepath.Join(home, ".claude", "settings.json"), binPath)
+}
+
+// redirectStderr points fd 2 at a log file. Children forked by the terminal app
+// can write to fd 2 before exec (on macOS, "MallocStackLogging: can't turn off
+// malloc stack logging" once memory pressure has enabled it), which would land
+// on top of the rendered screen.
+func redirectStderr(path string) (restore func(), err error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	logFile, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	defer logFile.Close()
+	saved, err := unix.Dup(unix.Stderr)
+	if err != nil {
+		return nil, err
+	}
+	unix.CloseOnExec(saved)
+	if err := unix.Dup2(int(logFile.Fd()), unix.Stderr); err != nil {
+		_ = unix.Close(saved)
+		return nil, err
+	}
+	return func() {
+		_ = unix.Dup2(saved, unix.Stderr)
+		_ = unix.Close(saved)
+	}, nil
 }
 
 var uiCmd = &cobra.Command{
