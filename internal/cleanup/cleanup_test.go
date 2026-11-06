@@ -29,10 +29,16 @@ func TestRemoveKillsLegacySessionRelatedByWorktreePath(t *testing.T) {
 	t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", legacySession).Run() })
 
 	ws, sl := sliceFor("r", repo, "feat-session", wt)
-	if _, err := cleanup.Remove(ws, sl, cleanup.Options{}); err != nil {
+	rawPanes, rawErr := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}|#{pane_current_path}|#{pane_pid}|#{pane_dead}").CombinedOutput()
+	t.Logf("DEBUG wt=%s raw=%q err=%v", wt, rawPanes, rawErr)
+	rep, err := cleanup.Remove(ws, sl, cleanup.Options{})
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("DEBUG rep=%+v", rep)
 	if exec.Command("tmux", "has-session", "-t", legacySession).Run() == nil {
+		killOut, killErr := exec.Command("tmux", "kill-session", "-t", legacySession).CombinedOutput()
+		t.Logf("DEBUG manual kill err=%v out=%s", killErr, killOut)
 		t.Fatal("legacy related session still exists after cleanup")
 	}
 }
