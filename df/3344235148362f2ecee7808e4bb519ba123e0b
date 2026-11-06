@@ -1,0 +1,20 @@
+internal/cleanup/cleanup_test.go
+  s_af6b48ccf7448a::t_d32d3065e3bdee 35-37
+  s_af6b48ccf7448a::t_5c70c8df17bbbc 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "df3344235148362f2ecee7808e4bb519ba123e0b",
+  "prompts": {},
+  "sessions": {
+    "s_af6b48ccf7448a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6afd443e-499d-4a6d-8c97-bc5e7b8d246c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
