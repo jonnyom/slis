@@ -1,6 +1,7 @@
 internal/cleanup/cleanup_test.go
   s_af6b48ccf7448a::t_d32d3065e3bdee 35-37
   s_af6b48ccf7448a::t_5c70c8df17bbbc 7
+  s_af6b48ccf7448a::t_242dd215edfc7a 7
 ---
 {
   "schema_version": "authorship/3.0.0",
