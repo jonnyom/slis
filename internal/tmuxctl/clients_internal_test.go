@@ -3,10 +3,10 @@ package tmuxctl
 import "testing"
 
 func TestParseClients(t *testing.T) {
-	raw := "/dev/ttys001\tslis/alpha\t1700000100\n" +
-		"/dev/ttys004\tother\t1700000200\n" +
+	raw := "/dev/ttys001|slis-field|slis/alpha|slis-field|1700000100\n" +
+		"/dev/ttys004|slis-field|other|slis-field|1700000200\n" +
 		"\n" + // blank line skipped
-		"/dev/ttys009\tslis/beta\t1700000050\n"
+		"/dev/ttys009|slis-field|slis/beta|slis-field|1700000050\n"
 
 	clients := parseClients(raw)
 	if len(clients) != 3 {
@@ -27,8 +27,8 @@ func TestParseClients(t *testing.T) {
 
 func TestParseClientsSkipsMalformed(t *testing.T) {
 	// Missing activity field, missing tty, and empty input must not panic.
-	raw := "/dev/ttys001\tslis/alpha\n" + // only 2 fields → skipped
-		"\tslis/beta\t123\n" // empty tty → skipped
+	raw := "/dev/ttys001|slis-field|slis/alpha\n" + // only 2 fields → skipped
+		"|slis-field|slis/beta|slis-field|123\n" // empty tty → skipped
 	if got := parseClients(raw); len(got) != 0 {
 		t.Errorf("parseClients(malformed) = %+v, want empty", got)
 	}

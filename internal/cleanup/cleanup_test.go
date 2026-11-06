@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jonnyom/slis/internal/cleanup"
 	"github.com/jonnyom/slis/internal/config"
@@ -27,6 +29,7 @@ func TestRemoveKillsLegacySessionRelatedByWorktreePath(t *testing.T) {
 		t.Fatalf("create legacy session: %v: %s", err, out)
 	}
 	t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", legacySession).Run() })
+	waitForPanePath(t, legacySession, wt)
 
 	ws, sl := sliceFor("r", repo, "feat-session", wt)
 	if _, err := cleanup.Remove(ws, sl, cleanup.Options{}); err != nil {
@@ -34,6 +37,28 @@ func TestRemoveKillsLegacySessionRelatedByWorktreePath(t *testing.T) {
 	}
 	if exec.Command("tmux", "has-session", "-t", legacySession).Run() == nil {
 		t.Fatal("legacy related session still exists after cleanup")
+	}
+}
+
+func waitForPanePath(t *testing.T, session, wantPath string) {
+	t.Helper()
+	resolvedWant, err := filepath.EvalSymlinks(wantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		out, err := exec.Command("tmux", "display-message", "-p", "-t", session, "#{pane_current_path}").Output()
+		if err == nil {
+			resolvedPane, resolveErr := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+			if resolveErr == nil && resolvedPane == resolvedWant {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tmux pane in %s never reached %s (last: %q, err: %v)", session, wantPath, out, err)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

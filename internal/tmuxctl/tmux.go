@@ -30,6 +30,8 @@ func SessionName(slice string) string {
 }
 
 // Available reports whether the tmux binary is on PATH.
+const fieldSeparator = "|slis-field|"
+
 func Available() bool {
 	_, err := exec.LookPath("tmux")
 	return err == nil
@@ -203,7 +205,7 @@ func CapturePane(slice string) (string, error) {
 // capture per window, so a withdrawn request must be able to stop between them.
 func CapturePaneCtx(ctx context.Context, slice string) (string, error) {
 	name := SessionName(slice)
-	listCmd := exec.CommandContext(ctx, "tmux", "list-windows", "-t", name, "-F", "#{window_index}\t#{window_name}")
+	listCmd := exec.CommandContext(ctx, "tmux", "list-windows", "-t", name, "-F", "#{window_index}"+fieldSeparator+"#{window_name}")
 	subproc.Configure(listCmd)
 	out, err := listCmd.Output()
 	if err != nil {
@@ -218,7 +220,7 @@ func CapturePaneCtx(ctx context.Context, slice string) (string, error) {
 		if ctx.Err() != nil {
 			return sb.String(), ctx.Err()
 		}
-		idx, wname, _ := strings.Cut(line, "\t")
+		idx, wname, _ := strings.Cut(line, fieldSeparator)
 		// -e preserves the pane's colour escapes (slis keeps SGR, strips the rest).
 		captureCmd := exec.CommandContext(ctx, "tmux", "capture-pane", "-p", "-e", "-t", name+":"+idx)
 		subproc.Configure(captureCmd)
@@ -382,14 +384,14 @@ type SessionPane struct {
 }
 
 func ListSessionPanes() ([]SessionPane, error) {
-	format := "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_name}:#{window_index}.#{pane_index}"
+	format := strings.Join([]string{"#{session_name}", "#{pane_current_path}", "#{pane_current_command}", "#{session_name}:#{window_index}.#{pane_index}"}, fieldSeparator)
 	out, err := exec.Command("tmux", "list-panes", "-a", "-F", format).Output()
 	if err != nil {
 		return nil, fmt.Errorf("tmux list-panes: %w", err)
 	}
 	var panes []SessionPane
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		parts := strings.SplitN(line, "\t", 4)
+		parts := strings.SplitN(line, fieldSeparator, 4)
 		if len(parts) != 4 || (!strings.HasPrefix(parts[0], "slis/") && !strings.HasPrefix(parts[0], "slis-shell/")) {
 			continue
 		}
@@ -445,14 +447,14 @@ func KillSessionNamed(name string) error {
 // SelectPane.
 func Panes(slice string) ([]Pane, error) {
 	name := SessionName(slice)
-	format := "#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_current_command}"
+	format := strings.Join([]string{"#{session_name}:#{window_index}.#{pane_index}", "#{pane_pid}", "#{pane_current_command}"}, fieldSeparator)
 	out, err := exec.Command("tmux", "list-panes", "-s", "-t", name, "-F", format).Output()
 	if err != nil {
 		return nil, fmt.Errorf("tmux list-panes: %w", err)
 	}
 	var panes []Pane
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		parts := strings.SplitN(line, "\t", 3)
+		parts := strings.SplitN(line, fieldSeparator, 3)
 		if len(parts) != 3 {
 			continue
 		}
@@ -564,7 +566,7 @@ func WindowRunning(slice, window string) (bool, error) {
 }
 
 func windowState(slice, window string) (bool, bool, error) {
-	out, err := exec.Command("tmux", "list-windows", "-t", SessionName(slice), "-F", "#{window_name}\t#{pane_dead}").CombinedOutput()
+	out, err := exec.Command("tmux", "list-windows", "-t", SessionName(slice), "-F", "#{window_name}"+fieldSeparator+"#{pane_dead}").CombinedOutput()
 	if err != nil {
 		if !SessionExists(slice) {
 			return false, false, nil
@@ -572,7 +574,7 @@ func windowState(slice, window string) (bool, bool, error) {
 		return false, false, fmt.Errorf("tmux list-windows: %w: %s", err, out)
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		fields := strings.Split(line, "\t")
+		fields := strings.Split(line, fieldSeparator)
 		if len(fields) == 2 && fields[0] == window {
 			return true, fields[1] == "1", nil
 		}
@@ -663,8 +665,8 @@ type Client struct {
 }
 
 // clientListFormat is the -F format string for ListClients: tty, session name,
-// and last-activity timestamp, tab-separated.
-const clientListFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
+// and last-activity timestamp, joined by fieldSeparator.
+const clientListFormat = "#{client_tty}" + fieldSeparator + "#{client_session}" + fieldSeparator + "#{client_activity}"
 
 // parseClients parses `tmux list-clients -F clientListFormat` output. Lines that
 // are blank, malformed, or missing a TTY are skipped. Pure — unit-testable
@@ -675,7 +677,7 @@ func parseClients(raw string) []Client {
 		if line == "" {
 			continue
 		}
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(line, fieldSeparator)
 		if len(parts) < 3 {
 			continue
 		}
