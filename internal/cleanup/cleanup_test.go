@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jonnyom/slis/internal/cleanup"
 	"github.com/jonnyom/slis/internal/config"
@@ -28,22 +29,36 @@ func TestRemoveKillsLegacySessionRelatedByWorktreePath(t *testing.T) {
 		t.Fatalf("create legacy session: %v: %s", err, out)
 	}
 	t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", legacySession).Run() })
+	waitForPanePath(t, legacySession, wt)
 
 	ws, sl := sliceFor("r", repo, "feat-session", wt)
-	rawPanes, rawErr := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}|#{pane_current_path}|#{pane_pid}|#{pane_dead}").CombinedOutput()
-	t.Logf("DEBUG wt=%s raw=%q err=%v", wt, rawPanes, rawErr)
-	serverPID, _ := exec.Command("tmux", "display-message", "-p", "#{pid}").Output()
-	nsProbe, _ := exec.Command("sh", "-c", "pid="+strings.TrimSpace(string(serverPID))+"; readlink /proc/self/ns/mnt /proc/$pid/ns/mnt; cat /proc/$pid/cgroup; ls -d /proc/$pid/root"+wt+" 2>&1; ls -la /etc/tmux.conf ~/.tmux.conf ~/.config/tmux 2>&1; which tmux; tmux -V; systemctl --user show tmux 2>&1 | head -3").CombinedOutput()
-	t.Logf("DEBUG ns=%s", nsProbe)
-	rep, err := cleanup.Remove(ws, sl, cleanup.Options{})
+	if _, err := cleanup.Remove(ws, sl, cleanup.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if exec.Command("tmux", "has-session", "-t", legacySession).Run() == nil {
+		t.Fatal("legacy related session still exists after cleanup")
+	}
+}
+
+func waitForPanePath(t *testing.T, session, wantPath string) {
+	t.Helper()
+	resolvedWant, err := filepath.EvalSymlinks(wantPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("DEBUG rep=%+v", rep)
-	if exec.Command("tmux", "has-session", "-t", legacySession).Run() == nil {
-		killOut, killErr := exec.Command("tmux", "kill-session", "-t", legacySession).CombinedOutput()
-		t.Logf("DEBUG manual kill err=%v out=%s", killErr, killOut)
-		t.Fatal("legacy related session still exists after cleanup")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		out, err := exec.Command("tmux", "display-message", "-p", "-t", session, "#{pane_current_path}").Output()
+		if err == nil {
+			resolvedPane, resolveErr := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+			if resolveErr == nil && resolvedPane == resolvedWant {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tmux pane in %s never reached %s (last: %q, err: %v)", session, wantPath, out, err)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
