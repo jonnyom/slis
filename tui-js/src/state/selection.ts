@@ -25,6 +25,24 @@ export function toggleAllVisible(
   return next;
 }
 
+// The selected names the user can currently see, in on-screen order. Used for
+// destructive actions so a search/filter can't hide what is about to change.
+export function visibleSelection(
+  selected: ReadonlySet<string>,
+  visible: readonly string[],
+): string[] {
+  return visible.filter((n) => selected.has(n));
+}
+
+export function pruneSelection(
+  selected: ReadonlySet<string>,
+  existing: readonly string[],
+): ReadonlySet<string> {
+  const keep = new Set(existing);
+  const next = new Set([...selected].filter((n) => keep.has(n)));
+  return next.size === selected.size ? selected : next;
+}
+
 // Substring, case-insensitive match on the slice name only — the same rule the
 // Go browser uses for its `/` incremental filter.
 export function matchesSearch(name: string, query: string): boolean {

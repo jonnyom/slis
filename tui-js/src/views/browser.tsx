@@ -38,7 +38,13 @@ import {
 import type { CockpitEntry } from "./cockpit.hints";
 import { isMethodNotFound } from "../rpc/client";
 import { listHints } from "./browser.hints";
-import { matchesSearch, toggleAllVisible, toggleSelected } from "../state/selection";
+import {
+  matchesSearch,
+  pruneSelection,
+  toggleAllVisible,
+  toggleSelected,
+  visibleSelection,
+} from "../state/selection";
 import { clampScroll, maxScroll } from "../util/scroll";
 import { isQuitKey, isUnmodifiedKey, normalizeKeyName } from "../util/keys";
 import { shortcutAction } from "../util/shortcut-contract";
@@ -678,10 +684,17 @@ export function Browser(props: BrowserProps): ReactNode {
     if (focusedSlice) onFocusSlice(focusedSlice.slice.name);
   }, [focusedSlice, onFocusSlice]);
 
+  useEffect(() => {
+    setSelected((s) => pruneSelection(s, views.map((v) => v.slice.name)));
+  }, [views]);
+
   const targetsFor = (): string[] => {
     if (selected.size > 0) return [...selected];
     return focusedSlice ? [focusedSlice.slice.name] : [];
   };
+
+  const visibleNames = (): string[] =>
+    rows.flatMap((r) => (r.kind === "slice" ? [r.view.slice.name] : []));
 
   useKeyboard((key: KeyEvent) => {
     if (!enabled) return;
@@ -801,12 +814,14 @@ export function Browser(props: BrowserProps): ReactNode {
       return;
     }
     if (shortcut === "clear-slice" && !key.ctrl) {
-      const targets = targetsFor();
+      const picked = visibleSelection(selected, visibleNames());
+      const targets =
+        picked.length > 0 ? picked : focusedSlice ? [focusedSlice.slice.name] : [];
       if (targets.length === 0) return;
       const live = targets.filter((t) => views.find((v) => v.slice.name === t)?.slice.active);
       if (live.length > 0)
         overlays.info("Cannot clear", `${live.join(", ")} is live — swap back (w) first.`);
-      else overlays.remove(targets);
+      else overlays.remove(targets, () => setSelected(new Set()));
       return;
     }
     if (shortcut === "configure-agents") return props.onConfigureAgents();

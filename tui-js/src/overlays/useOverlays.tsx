@@ -96,7 +96,7 @@ type Overlay =
     }
   | { kind: "stack"; slices: string[]; conflictWith: string[]; gatherable: boolean }
   | { kind: "stackHelp"; slices: string[]; conflictWith: string[]; gatherable: boolean }
-  | { kind: "remove"; slices: string[] }
+  | { kind: "remove"; slices: string[]; onDone?: () => void }
   | { kind: "terminalClose"; title: string; onConfirm: () => void }
   | {
       kind: "agentBusy";
@@ -163,7 +163,7 @@ export interface OverlayApi {
     onReactivate: () => void,
   ): void;
   stack(slices: string[], conflictWith: string[], gatherable: boolean): void;
-  remove(slices: string[]): void;
+  remove(slices: string[], onDone?: () => void): void;
   terminalClose(title: string, onConfirm: () => void): void;
   // A live agent from another session is already working in this slice's
   // worktrees: attach to it, or launch a second one deliberately.
@@ -509,7 +509,7 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
       setOverlay({ kind: "liveRecovery", slice, onReset, onReactivate }),
     stack: (slices, conflictWith, gatherable) =>
       setOverlay({ kind: "stack", slices, conflictWith, gatherable }),
-    remove: (slices) => setOverlay({ kind: "remove", slices }),
+    remove: (slices, onDone) => setOverlay({ kind: "remove", slices, onDone }),
     terminalClose: (title, onConfirm) => setOverlay({ kind: "terminalClose", title, onConfirm }),
     agentBusy: (slice, session, path, onAttach, onLaunch) =>
       setOverlay({ kind: "agentBusy", slice, session, path, onAttach, onLaunch }),
@@ -679,17 +679,21 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         } else if (isCancel) close();
         return;
       }
-      case "remove":
-        if (name === "y")
+      case "remove": {
+        const done = overlay.onDone;
+        if (name === "y") {
           runMutation("Clear " + overlay.slices.join(", "), () =>
             runSequential(overlay.slices, (s) => removeSlice(s, false)),
           );
-        else if (name === "f")
+          done?.();
+        } else if (name === "f") {
           runMutation("Force clear " + overlay.slices.join(", "), () =>
             runSequential(overlay.slices, (s) => removeSlice(s, true)),
           );
-        else if (name === "n" || isCancel) close();
+          done?.();
+        } else if (name === "n" || isCancel) close();
         return;
+      }
       case "terminalClose":
         if (isEnter) {
           const onConfirm = overlay.onConfirm;

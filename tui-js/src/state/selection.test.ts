@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { matchesSearch, toggleAllVisible, toggleSelected } from "./selection";
+import {
+  matchesSearch,
+  pruneSelection,
+  toggleAllVisible,
+  toggleSelected,
+  visibleSelection,
+} from "./selection";
 
 describe("toggleSelected", () => {
   test("adds an unselected name", () => {
@@ -27,6 +33,25 @@ describe("toggleAllVisible", () => {
   });
   test("empty visible set is a no-op", () => {
     expect([...toggleAllVisible(new Set(["a"]), [])]).toEqual(["a"]);
+  });
+});
+
+describe("visibleSelection", () => {
+  test("drops selected names hidden by a search or filter", () => {
+    expect(visibleSelection(new Set(["a", "b", "c"]), ["c", "d"])).toEqual(["c"]);
+  });
+  test("follows on-screen order", () => {
+    expect(visibleSelection(new Set(["b", "a"]), ["a", "b"])).toEqual(["a", "b"]);
+  });
+});
+
+describe("pruneSelection", () => {
+  test("drops names that no longer exist", () => {
+    expect([...pruneSelection(new Set(["a", "gone"]), ["a", "b"])]).toEqual(["a"]);
+  });
+  test("returns the same set when nothing changed", () => {
+    const input = new Set(["a"]);
+    expect(pruneSelection(input, ["a", "b"])).toBe(input);
   });
 });
 
