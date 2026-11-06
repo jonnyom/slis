@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jonnyom/slis/internal/cleanup"
@@ -31,6 +32,9 @@ func TestRemoveKillsLegacySessionRelatedByWorktreePath(t *testing.T) {
 	ws, sl := sliceFor("r", repo, "feat-session", wt)
 	rawPanes, rawErr := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}|#{pane_current_path}|#{pane_pid}|#{pane_dead}").CombinedOutput()
 	t.Logf("DEBUG wt=%s raw=%q err=%v", wt, rawPanes, rawErr)
+	serverPID, _ := exec.Command("tmux", "display-message", "-p", "#{pid}").Output()
+	nsProbe, _ := exec.Command("sh", "-c", "pid="+strings.TrimSpace(string(serverPID))+"; readlink /proc/self/ns/mnt /proc/$pid/ns/mnt; cat /proc/$pid/cgroup; ls -d /proc/$pid/root"+wt+" 2>&1; ls -la /etc/tmux.conf ~/.tmux.conf ~/.config/tmux 2>&1; which tmux; tmux -V; systemctl --user show tmux 2>&1 | head -3").CombinedOutput()
+	t.Logf("DEBUG ns=%s", nsProbe)
 	rep, err := cleanup.Remove(ws, sl, cleanup.Options{})
 	if err != nil {
 		t.Fatal(err)
