@@ -325,6 +325,7 @@ function TermTab({
 export function TabBar({
   tabs,
   active,
+  focused = true,
   statuses,
   onBack,
   onUnfocus,
@@ -335,6 +336,7 @@ export function TabBar({
 }: {
   tabs: TabEntry[];
   active: string | null;
+  focused?: boolean;
   statuses: Record<string, SessionStatus>;
   onBack: () => void;
   onUnfocus?: () => void;
@@ -408,20 +410,36 @@ export function TabBar({
           {tabs.length > 1 ? (
             <text fg={theme.textFaint} attributes={DIM} wrapMode="none">{"^⇧←/→ tabs  "}</text>
           ) : null}
-          <text
-            id={onUnfocus ? "term-unfocus" : "term-back"}
-            fg={theme.textFaint}
-            attributes={DIM}
-            wrapMode="none"
-            onMouseDown={(event) => {
-              if (onUnfocus) onUnfocus();
-              else onBack();
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-          >
-            {onUnfocus ? "ctrl+g slis" : "ctrl+q back"}
-          </text>
+          {onUnfocus && !focused ? (
+            <text
+              id="term-focus"
+              fg={theme.focus}
+              attributes={BOLD}
+              wrapMode="none"
+              onMouseDown={(event) => {
+                onFocus();
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              ctrl+g type here
+            </text>
+          ) : (
+            <text
+              id={onUnfocus ? "term-unfocus" : "term-back"}
+              fg={theme.textFaint}
+              attributes={DIM}
+              wrapMode="none"
+              onMouseDown={(event) => {
+                if (onUnfocus) onUnfocus();
+                else onBack();
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              {onUnfocus ? "ctrl+g slis" : "ctrl+q back"}
+            </text>
+          )}
           {onHide ? (
             <text
               id="term-hide"
@@ -572,6 +590,7 @@ export function TerminalLayer({
       <TabBar
         tabs={tabBarTabs ?? tabs}
         active={active}
+        focused={focused}
         statuses={statuses}
         onBack={onBack}
         onUnfocus={onUnfocus}

@@ -45,6 +45,7 @@ export class TermSession {
   readonly slice: string;
   private proc: { terminal: PtyHandle; kill(): void; exited: Promise<number> } | null = null;
   private detached = false;
+  private inputWhileAttaching: string[] | null = null;
   private readonly exitHandlers = new Set<() => void>();
   private readonly terminalModes = new TerminalModeTracker();
 
@@ -62,7 +63,21 @@ export class TermSession {
 
   async attach(cols: number, rows: number, onData: (bytes: Uint8Array) => void, opts: TermSessionOpts): Promise<void> {
     if (this.attached) return;
+    this.inputWhileAttaching = [];
+    try {
+      await this.spawnAttachClient(cols, rows, onData, opts);
+      for (const input of this.inputWhileAttaching) this.proc?.terminal.write(input);
+    } finally {
+      this.inputWhileAttaching = null;
+    }
+  }
 
+  private async spawnAttachClient(
+    cols: number,
+    rows: number,
+    onData: (bytes: Uint8Array) => void,
+    opts: TermSessionOpts,
+  ): Promise<void> {
     let attachArgv: string[];
     if (opts.targetSession) {
       attachArgv = sessionLegacyAttachArgv(opts.targetSession);
@@ -127,7 +142,9 @@ export class TermSession {
   }
 
   write(data: string | Uint8Array): void {
-    this.proc?.terminal.write(embeddedTerminalWriteSequence(data));
+    const sequence = embeddedTerminalWriteSequence(data);
+    if (this.proc) this.proc.terminal.write(sequence);
+    else this.inputWhileAttaching?.push(sequence);
   }
 
   paste(bytes: Uint8Array): void {
