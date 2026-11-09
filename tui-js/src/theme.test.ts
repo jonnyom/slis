@@ -52,7 +52,7 @@ describe("themes", () => {
 });
 
 describe("attention", () => {
-  test("waiting-input is needs-you (attn, ⏸)", () => {
+  test("waiting-input is needs-you (attn, !)", () => {
     const a = attention(view({}, { status: "waiting-input" }));
     expect(a.level).toBe(3);
     expect(a.color).toBe(theme.attn);
@@ -79,7 +79,7 @@ describe("attention", () => {
     expect(a.color).toBe(theme.bad);
   });
 
-  test("live/swapped-in is active (good, ●)", () => {
+  test("live/swapped-in is active (good, ⇄)", () => {
     const a = attention(view({ active: true }));
     expect(a.level).toBe(2);
     expect(a.color).toBe(theme.good);
@@ -90,27 +90,53 @@ describe("attention", () => {
     const a = attention(view({}, { status: "running" }));
     expect(a.level).toBe(2);
     expect(a.color).toBe(theme.good);
+    expect(a.glyph).toBe(glyph.running);
   });
 
-  test("session done is info (merged, ✦)", () => {
+  test("main agent idle with sub-agents working is active (good, ◐)", () => {
+    const a = attention(view({}, { status: "subagents", subagents: 2 }));
+    expect(a.level).toBe(2);
+    expect(a.color).toBe(theme.good);
+    expect(a.glyph).toBe(glyph.subagents);
+    expect(a.bold).toBe(false);
+  });
+
+  test("session done is info (focus, ◇)", () => {
     const a = attention(view({}, { status: "done" }));
     expect(a.level).toBe(1);
-    expect(a.color).toBe(theme.merged);
+    expect(a.color).toBe(theme.focus);
     expect(a.glyph).toBe(glyph.done);
   });
 
-  test("all PRs merged is info ready-to-clear (good, ♻)", () => {
+  test("all PRs merged is info ready-to-clear (merged, ∎)", () => {
     const a = attention(view({}, { prs: [pr({ state: "MERGED" })] }));
     expect(a.level).toBe(1);
-    expect(a.color).toBe(theme.good);
+    expect(a.color).toBe(theme.merged);
     expect(a.glyph).toBe(glyph.ready);
   });
 
-  test("open PR is info in-review (focus, ✓)", () => {
+  test("open PR is info in-review (focus, ↗)", () => {
     const a = attention(view({}, { prs: [pr({ state: "OPEN" })] }));
     expect(a.level).toBe(1);
     expect(a.color).toBe(theme.focus);
-    expect(a.glyph).toBe(glyph.inReview);
+    expect(a.glyph).toBe(glyph.prOpen);
+  });
+
+  test("each status meaning has its own glyph", () => {
+    const statusGlyphs = [
+      glyph.waiting,
+      glyph.running,
+      glyph.subagents,
+      glyph.done,
+      glyph.live,
+      glyph.prOpen,
+      glyph.approved,
+      glyph.changes,
+      glyph.ciFail,
+      glyph.ready,
+      glyph.idle,
+    ];
+    expect(new Set(statusGlyphs).size).toBe(statusGlyphs.length);
   });
 
   test("nothing pending is idle (textDim, ·)", () => {
@@ -145,6 +171,7 @@ describe("badgeFor", () => {
     const states = [
       "live",
       "running",
+      "subagents",
       "waiting",
       "done",
       "dirty",
@@ -170,10 +197,12 @@ describe("badgeFor", () => {
     expect(badgeFor("ci-pending")).toMatchObject({ color: theme.attn, glyph: glyph.ciPending });
   });
 
-  test("waiting is attn ⏸; live is good ●; merged is merged ✦", () => {
+  test("waiting is attn !; live is good ⇄; merged is merged ∎; approved is good ✓", () => {
     expect(badgeFor("waiting")).toMatchObject({ color: theme.attn, glyph: glyph.waiting });
     expect(badgeFor("live")).toMatchObject({ color: theme.good, glyph: glyph.live });
-    expect(badgeFor("merged")).toMatchObject({ color: theme.merged, glyph: glyph.done });
+    expect(badgeFor("merged")).toMatchObject({ color: theme.merged, glyph: glyph.merged });
+    expect(badgeFor("approved")).toMatchObject({ color: theme.good, glyph: glyph.approved });
+    expect(badgeFor("subagents")).toMatchObject({ color: theme.good, glyph: glyph.subagents });
   });
 });
 
@@ -199,12 +228,12 @@ describe("resultStatusStyle (D2 — refusals are warn, not fake success/error)",
     expect(warn.glyph).toBe(glyph.dirty);
     expect(warn.color).not.toBe(theme.good);
     expect(warn.color).not.toBe(theme.bad);
-    expect(warn.glyph).not.toBe(glyph.inReview);
-    expect(warn.glyph).not.toBe(glyph.changes);
+    expect(warn.glyph).not.toBe(glyph.ok);
+    expect(warn.glyph).not.toBe(glyph.failed);
   });
 
   test("success is good ✓ and failure is bad ✗", () => {
-    expect(resultStatusStyle("success")).toEqual({ color: theme.good, glyph: glyph.inReview });
-    expect(resultStatusStyle("failure")).toEqual({ color: theme.bad, glyph: glyph.changes });
+    expect(resultStatusStyle("success")).toEqual({ color: theme.good, glyph: glyph.ok });
+    expect(resultStatusStyle("failure")).toEqual({ color: theme.bad, glyph: glyph.failed });
   });
 });

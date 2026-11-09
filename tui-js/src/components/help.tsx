@@ -191,11 +191,15 @@ function Group({ label, bindings }: BindingGroup): ReactNode {
 
 function Legend(): ReactNode {
   const items: Array<[string, string, string]> = [
-    [glyph.waiting, "waiting for you", theme.attn],
-    [glyph.done, "done", theme.merged],
-    [glyph.ready, "ready to clear", theme.good],
-    [glyph.inReview, "in review", theme.focus],
-    [glyph.live, "live / running", theme.good],
+    [glyph.waiting, "needs you", theme.attn],
+    [glyph.running, "agent working", theme.good],
+    [glyph.subagents, "sub-agents working", theme.good],
+    [glyph.done, "agent done", theme.focus],
+    [glyph.live, "live (swapped in)", theme.good],
+    [glyph.prOpen, "PR in review", theme.focus],
+    [glyph.approved, "approved", theme.good],
+    [glyph.changes, "changes requested", theme.bad],
+    [glyph.ready, "merged, ready to clear", theme.merged],
     [glyph.restack, "needs restack", theme.attn],
     [glyph.stale, "primary behind (stale)", theme.attn],
     [glyph.overlap, "file overlap (>1 slice)", theme.attn],

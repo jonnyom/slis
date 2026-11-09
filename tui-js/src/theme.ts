@@ -223,16 +223,21 @@ export function statusColor(status: FileStatus): string {
 // ── Glyphs (trimmed; each pinned to one color-by-context) ────────────────────
 
 export const glyph = {
-  waiting: "⏸",
-  done: "✦",
-  ready: "♻",
-  inReview: "✓",
-  changes: "✗",
+  waiting: "!",
+  running: "●",
+  subagents: "◐",
+  done: "◇",
+  live: "⇄",
+  prOpen: "↗",
+  approved: "✓",
+  changes: "±",
+  ready: "∎",
+  merged: "∎",
   ciFail: "✗",
   ciPass: "✓",
   ciPending: "⋯",
-  live: "●",
-  running: "●",
+  ok: "✓",
+  failed: "✗",
   idle: "·",
   restack: "⟳",
   dirty: "⚠",
@@ -257,11 +262,11 @@ export type ResultStatus = "success" | "warn" | "failure";
 export function resultStatusStyle(status: ResultStatus): { color: string; glyph: string } {
   switch (status) {
     case "success":
-      return { color: theme.good, glyph: glyph.inReview };
+      return { color: theme.good, glyph: glyph.ok };
     case "warn":
       return { color: theme.attn, glyph: glyph.dirty };
     case "failure":
-      return { color: theme.bad, glyph: glyph.changes };
+      return { color: theme.bad, glyph: glyph.failed };
   }
 }
 
@@ -313,14 +318,16 @@ export function attention(view: SliceView): Attention {
     return { level: 2, color: theme.good, glyph: glyph.live, bold: true };
   if (view.status === "running")
     return { level: 2, color: theme.good, glyph: glyph.running, bold: true };
+  if (view.status === "subagents")
+    return { level: 2, color: theme.good, glyph: glyph.subagents, bold: false };
 
   // 1 — info
   if (view.status === "done")
-    return { level: 1, color: theme.merged, glyph: glyph.done, bold: false };
+    return { level: 1, color: theme.focus, glyph: glyph.done, bold: false };
   if (allPrsMerged(view))
-    return { level: 1, color: theme.good, glyph: glyph.ready, bold: false };
+    return { level: 1, color: theme.merged, glyph: glyph.ready, bold: false };
   if (anyOpenPr(view))
-    return { level: 1, color: theme.focus, glyph: glyph.inReview, bold: false };
+    return { level: 1, color: theme.focus, glyph: glyph.prOpen, bold: false };
 
   // 0 — idle
   return { level: 0, color: theme.textDim, glyph: glyph.idle, bold: false };
@@ -331,6 +338,7 @@ export function attention(view: SliceView): Attention {
 export type BadgeState =
   | "live"
   | "running"
+  | "subagents"
   | "waiting"
   | "done"
   | "dirty"
@@ -357,10 +365,12 @@ export function badgeFor(state: BadgeState): BadgeSpec {
       return { glyph: glyph.live, color: theme.good, label: "live" };
     case "running":
       return { glyph: glyph.running, color: theme.good, label: "running" };
+    case "subagents":
+      return { glyph: glyph.subagents, color: theme.good, label: "sub-agents" };
     case "waiting":
       return { glyph: glyph.waiting, color: theme.attn, label: "waiting" };
     case "done":
-      return { glyph: glyph.done, color: theme.merged, label: "done" };
+      return { glyph: glyph.done, color: theme.focus, label: "done" };
     case "dirty":
       return { glyph: glyph.dirty, color: theme.attn, label: "dirty" };
     case "stale":
@@ -368,7 +378,7 @@ export function badgeFor(state: BadgeState): BadgeSpec {
     case "restack":
       return { glyph: glyph.restack, color: theme.attn, label: "restack" };
     case "ready":
-      return { glyph: glyph.ready, color: theme.good, label: "ready" };
+      return { glyph: glyph.ready, color: theme.merged, label: "ready" };
     case "ci-pass":
       return { glyph: glyph.ciPass, color: theme.good, label: "ci" };
     case "ci-fail":
@@ -376,11 +386,11 @@ export function badgeFor(state: BadgeState): BadgeSpec {
     case "ci-pending":
       return { glyph: glyph.ciPending, color: theme.attn, label: "ci" };
     case "approved":
-      return { glyph: glyph.inReview, color: theme.good, label: "approved" };
+      return { glyph: glyph.approved, color: theme.good, label: "approved" };
     case "changes":
       return { glyph: glyph.changes, color: theme.bad, label: "changes" };
     case "merged":
-      return { glyph: glyph.done, color: theme.merged, label: "merged" };
+      return { glyph: glyph.merged, color: theme.merged, label: "merged" };
     case "idle":
     default:
       return { glyph: glyph.idle, color: theme.textDim, label: "idle" };
@@ -395,20 +405,29 @@ export function sessionBadge(status: SessionStatus): { glyph: string; color: str
       return { glyph: glyph.waiting, color: theme.attn };
     case "running":
       return { glyph: glyph.running, color: theme.good };
+    case "subagents":
+      return { glyph: glyph.subagents, color: theme.good };
     case "done":
-      return { glyph: glyph.done, color: theme.merged };
+      return { glyph: glyph.done, color: theme.focus };
     case "none":
     default:
-      return { glyph: "○", color: theme.textDim };
+      return { glyph: glyph.idle, color: theme.textDim };
   }
 }
 
-export function sessionLabel(status: SessionStatus): string {
+export function subagentsLabel(subagents: number): string {
+  if (subagents === 1) return "1 sub-agent working";
+  return subagents > 1 ? `${subagents} sub-agents working` : "sub-agents working";
+}
+
+export function sessionLabel(status: SessionStatus, subagents = 0): string {
   switch (status) {
     case "waiting-input":
       return "waiting for input";
     case "running":
       return "running";
+    case "subagents":
+      return subagentsLabel(subagents);
     case "done":
       return "done";
     case "none":

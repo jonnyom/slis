@@ -50,7 +50,7 @@ import { isQuitKey, isUnmodifiedKey, normalizeKeyName } from "../util/keys";
 import { shortcutAction } from "../util/shortcut-contract";
 import { editText } from "../overlays/textinput";
 import type { OverlayApi } from "../overlays/useOverlays";
-import { attention, diffColor, glyph, theme } from "../theme";
+import { attention, diffColor, glyph, subagentsLabel, theme } from "../theme";
 import { StatStrip } from "../components/statstrip";
 import { Eyebrow } from "../components/eyebrow";
 import { Divider } from "../components/divider";
@@ -150,6 +150,9 @@ const SliceRow = memo(function SliceRow({
           {" "}
           {view.slice.name}
         </span>
+        {view.status === "subagents" && (view.subagents ?? 0) > 0 ? (
+          <span fg={theme.good}> {glyph.subagents}{view.subagents}</span>
+        ) : null}
         {view.slice.active ? <span fg={theme.good}> {glyph.live}</span> : null}
         {view.slice.stale ? <span fg={theme.attn}> {glyph.stale}</span> : null}
         {reviewRun ? (
@@ -255,7 +258,7 @@ function prBadge(prs: PrStackEntry[] | undefined, repo: string): ReactNode {
           : null;
   const review =
     pr.review_decision === "APPROVED"
-      ? { g: glyph.inReview, c: theme.good, t: "" }
+      ? { g: glyph.approved, c: theme.good, t: " approved" }
       : pr.review_decision === "CHANGES_REQUESTED"
         ? { g: glyph.changes, c: theme.bad, t: " changes" }
         : null;
@@ -265,7 +268,7 @@ function prBadge(prs: PrStackEntry[] | undefined, repo: string): ReactNode {
       <span fg={stateColor}>{state}</span>
       {ci ? (
         <span fg={ci.c}>
-          {" "}
+          {" ci"}
           {ci.g}
           {ci.t}
         </span>
@@ -321,15 +324,21 @@ function previewLines(
         {glyph.running} agent running{"   "}
       </span>,
     );
+  if (view.status === "subagents")
+    stateSpans.push(
+      <span key="subagents" fg={theme.good}>
+        {glyph.subagents} {subagentsLabel(view.subagents ?? 0)}{"   "}
+      </span>,
+    );
   if (view.status === "done")
     stateSpans.push(
-      <span key="done" fg={theme.merged}>
+      <span key="done" fg={theme.focus}>
         {glyph.done} agent done{"   "}
       </span>,
     );
   if (workState(view) === "ready")
     stateSpans.push(
-      <span key="ready" fg={theme.good}>
+      <span key="ready" fg={theme.merged}>
         {glyph.ready} ready to clear{"   "}
       </span>,
     );

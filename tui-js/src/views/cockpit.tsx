@@ -77,7 +77,7 @@ import {
   tmuxSessionRelatedToMembers,
   type TmuxSessionInfo,
 } from "../term/tmux";
-import { color, glyph, sessionBadge, sessionLabel, theme } from "../theme";
+import { color, glyph, sessionBadge, sessionLabel, subagentsLabel, theme } from "../theme";
 import type { OpenTermMode } from "../term/session";
 import { Panel } from "../components/panel";
 import { Breadcrumb } from "../components/breadcrumb";
@@ -127,12 +127,14 @@ const SCOPE_SHORT: Record<DiffScope, string> = {
 };
 
 // A short session-state word for the eyebrow's right-aligned headline.
-function sessionSummary(status: SliceView["status"]): string {
+function sessionSummary(status: SliceView["status"], subagents: number): string {
   switch (status) {
     case "waiting-input":
       return "waiting";
     case "running":
       return "running";
+    case "subagents":
+      return subagentsLabel(subagents);
     case "done":
       return "done";
     default:
@@ -366,9 +368,9 @@ function PrsSection({
                 <>
                   <span fg={color.dim}> #{pr.number} </span>
                   <span fg={stateColor}>{(pr.state ?? "").toLowerCase()}</span>
-                  {ci ? <span fg={ci.color}> {ci.glyph}</span> : null}
+                  {ci ? <span fg={ci.color}> ci{ci.glyph}</span> : null}
                   {pr.review_decision === "APPROVED" ? (
-                    <span fg={color.synced}> {glyph.inReview}</span>
+                    <span fg={color.synced}> {glyph.approved}</span>
                   ) : pr.review_decision === "CHANGES_REQUESTED" ? (
                     <span fg={color.missing}> {glyph.changes}</span>
                   ) : null}
@@ -407,14 +409,14 @@ function SessionSection({
   const trailing = (
     <text wrapMode="none">
       <span fg={outsideRepos ? theme.attn : badge.color}>
-        {outsideRepos ? glyph.dirty : presentWithoutHookStatus ? glyph.live : badge.glyph}{" "}
+        {outsideRepos ? glyph.dirty : presentWithoutHookStatus ? glyph.running : badge.glyph}{" "}
         {outsideRepos
           ? "outside repos"
           : count > 1
             ? `${count} sessions`
           : presentWithoutHookStatus
             ? "session"
-            : sessionSummary(view.status)}
+            : sessionSummary(view.status, view.subagents ?? 0)}
       </span>
     </text>
   );
@@ -434,11 +436,11 @@ function SessionSection({
         </text>
       ) : (
         <text fg={color.dim} attributes={DIM} wrapMode="none">
-          {"  " + sessionLabel(view.status)}
+          {"  " + sessionLabel(view.status, view.subagents ?? 0)}
         </text>
       )}
       <text fg={shellExists ? theme.good : color.dim} attributes={DIM} wrapMode="none">
-        {`  ${shellExists ? glyph.live : "·"} shell ${shellExists ? "ready" : "not started"}`}
+        {`  ${shellExists ? glyph.running : "·"} shell ${shellExists ? "ready" : "not started"}`}
       </text>
     </Panel>
   );
@@ -474,7 +476,7 @@ function ProcsSection({
       ) : (
         slice.procs.slice(0, 2).map((p) => (
           <text key={p.pid} wrapMode="none">
-            <span fg={color.live}>{"  " + glyph.live + " "}</span>
+            <span fg={color.live}>{"  " + glyph.running + " "}</span>
             <span fg={color.fg}>{p.cmd}</span>
             <span fg={color.dim}> {p.cpu.toFixed(0)}%</span>
           </text>
@@ -530,7 +532,7 @@ function StackSummaryRight({
       </text>
       <text wrapMode="none">
         <span fg={row.needsRestack ? theme.attn : theme.good}>
-          {row.needsRestack ? `${glyph.restack} needs restack` : `${glyph.inReview} stack current`}
+          {row.needsRestack ? `${glyph.restack} needs restack` : `${glyph.ok} stack current`}
         </span>
         {pr?.number !== undefined ? (
           <>
@@ -788,7 +790,7 @@ function SessionRight({
               <span fg={index === selected ? color.cursorBar : color.dim}>
                 {index === selected ? glyph.focusBar : " "}
               </span>
-              <span fg={running ? theme.good : color.dim}>{running ? glyph.live : "·"}</span>
+              <span fg={running ? theme.good : color.dim}>{running ? glyph.running : "·"}</span>
               <span fg={session.kind === "agent" ? color.fg : color.dim}> {sessionDisplayName(session.name)}</span>
               {claimable ? <span fg={theme.focus}>  ‹this slice›</span> : null}
               {foreignHere ? (
