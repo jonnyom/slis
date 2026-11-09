@@ -60,6 +60,58 @@ test("clicking the terminal back control leaves the terminal", async () => {
   expect(backCount).toBe(1);
 });
 
+test("an unfocused dock says where typing goes and focuses on click", async () => {
+  setup = await createTestRenderer({ width: 100, height: 4 });
+  root = createRoot(setup.renderer);
+  let focusCount = 0;
+  let unfocusCount = 0;
+  flushSync(() =>
+    root!.render(
+      <TabBar
+        tabs={[]}
+        active={null}
+        focused={false}
+        statuses={{}}
+        onBack={() => {}}
+        onUnfocus={() => unfocusCount++}
+        onSelectTab={() => {}}
+        onFocus={() => focusCount++}
+      />,
+    ),
+  );
+  await setup.flush();
+
+  expect(setup.captureCharFrame()).toContain("ctrl+g type here");
+  const typeHere = setup.renderer.root.findDescendantById("term-focus");
+  expect(typeHere).toBeDefined();
+  await setup.mockMouse.click(typeHere!.screenX, typeHere!.screenY);
+  expect(focusCount).toBe(1);
+  expect(unfocusCount).toBe(0);
+});
+
+test("a focused dock offers ctrl+g back to slis", async () => {
+  setup = await createTestRenderer({ width: 100, height: 4 });
+  root = createRoot(setup.renderer);
+  flushSync(() =>
+    root!.render(
+      <TabBar
+        tabs={[]}
+        active={null}
+        focused
+        statuses={{}}
+        onBack={() => {}}
+        onUnfocus={() => {}}
+        onSelectTab={() => {}}
+        onFocus={() => {}}
+      />,
+    ),
+  );
+  await setup.flush();
+
+  expect(setup.captureCharFrame()).toContain("ctrl+g slis");
+  expect(setup.renderer.root.findDescendantById("term-unfocus")).toBeDefined();
+});
+
 test("clicking dock hide removes the dock without closing its session", async () => {
   setup = await createTestRenderer({ width: 80, height: 4 });
   root = createRoot(setup.renderer);
