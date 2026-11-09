@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -12,6 +13,38 @@ func TestEnvironmentWithValueReplacesExistingValue(t *testing.T) {
 	want := []string{"HOME=/home/jonny", "SLIS_WORKSPACE_CONFIG=/new"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("environment = %v, want %v", got, want)
+	}
+}
+
+func TestRedirectStderrSendsFd2ToLogUntilRestored(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "state", "slis-ui.stderr.log")
+	restore, err := redirectStderr(logPath)
+	if err != nil {
+		t.Fatalf("redirectStderr: %v", err)
+	}
+	_, writeErr := os.Stderr.WriteString("while-redirected\n")
+	restore()
+	if writeErr != nil {
+		t.Fatalf("write stderr: %v", writeErr)
+	}
+
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if string(got) != "while-redirected\n" {
+		t.Errorf("log = %q, want %q", got, "while-redirected\n")
+	}
+	stderrInfo, err := os.Stderr.Stat()
+	if err != nil {
+		t.Fatalf("stat stderr: %v", err)
+	}
+	logInfo, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatalf("stat log: %v", err)
+	}
+	if os.SameFile(stderrInfo, logInfo) {
+		t.Error("stderr still points at the log after restore")
 	}
 }
 

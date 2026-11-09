@@ -21,7 +21,7 @@ test.each(["\x03", "\x1b[99;5u"])("Ctrl+C %j exits through an overlay when reset
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+  const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
   expect(code).toBe(1);
-  expect(stderr).toContain("Live slice was not reset");
+  expect(stdout).toContain("Live slice was not reset");
 });

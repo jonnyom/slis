@@ -411,7 +411,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
         }
       }
     })().finally(cleanup).then((failure) => {
-      if (failure) process.stderr.write(`slis: ${failure}\n`);
+      if (failure) process.stdout.write(`slis: ${failure}\n`);
       process.exit(failure ? 1 : 0);
     });
   }, [client, renderer, manager, liveMirror, runtimeRefresher]);

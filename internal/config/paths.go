@@ -33,6 +33,8 @@ type Paths struct {
 	// Reviews is the path to the pending inline-review-comment store (fed to a
 	// slice's agent by `slis review send`).
 	Reviews string
+	// UIStderrLog receives the terminal app's stderr while it owns the screen.
+	UIStderrLog string
 }
 
 // stateBase returns the base directory for XDG state, honouring XDG_STATE_HOME
@@ -78,6 +80,7 @@ func StatePaths() Paths {
 		WorkspacesDir: filepath.Join(stateDir, "workspaces"),
 		Comments:      filepath.Join(stateDir, "comments.json"),
 		Reviews:       filepath.Join(stateDir, "reviews.json"),
+		UIStderrLog:   filepath.Join(stateDir, "slis-ui.stderr.log"),
 	}
 }
 
