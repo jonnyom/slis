@@ -1,0 +1,31 @@
+tui-js/src/term/session.ts
+  s_af6b48ccf7448a::t_73a059ffdfa0b8 66-73,75-80
+  s_af6b48ccf7448a::t_d4e04d5af4aeb6 145-147
+  s_af6b48ccf7448a::t_04c51518c8733a 48
+tui-js/src/term/tabs.tsx
+  s_af6b48ccf7448a::t_e4774aac3e13e1 428-441
+  s_af6b48ccf7448a::t_b2ef17a622828e 442
+  s_af6b48ccf7448a::t_4d02814236fd8e 413-427
+  s_af6b48ccf7448a::t_a680aa4138a2ea 328,339
+  s_af6b48ccf7448a::t_6aec9fa5b23fa8 593
+tui-js/src/term/tabs.mouse.test.tsx
+  s_af6b48ccf7448a::t_07172419a24a64 63-114
+tui-js/src/term/session.test.ts
+  s_af6b48ccf7448a::t_134115830894e0 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cce51b6a4b48b6d7d4e7a06cf09b815fd90badc3",
+  "prompts": {},
+  "sessions": {
+    "s_af6b48ccf7448a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6afd443e-499d-4a6d-8c97-bc5e7b8d246c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
