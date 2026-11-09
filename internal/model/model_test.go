@@ -13,6 +13,7 @@ func TestSessionStatusString(t *testing.T) {
 		{SessRunning, "running"},
 		{SessWaitingInput, "waiting-input"},
 		{SessDone, "done"},
+		{SessSubagents, "subagents"},
 		{SessionStatus(99), "unknown"},
 	}
 	for _, tc := range tests {

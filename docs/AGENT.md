@@ -92,7 +92,9 @@ an array of every slice in the workspace (status `"none"` when no event recorded
    "session_id": "ebfc8340-a13e-4ac9-9e31-b79f90e43ed7",
    "cwd": "/abs/path/to/worktree" }]
 ```
-`status` ∈ `none | running | waiting-input | done`. See
+`status` ∈ `none | running | waiting-input | subagents | done`. `subagents`
+means the main agent finished its turn while background sub-agents still work;
+`subagents` (an integer, omitted when zero) counts them. See
 [Session status](#session-status) for the data flow. `session_id` and `cwd` are
 optional for compatibility with older event records; when present they let the
 TUI resume a stopped Claude conversation from the Sessions panel.
@@ -378,17 +380,30 @@ Real work is reported, never un-managed for you.
 
 The headline automation signal: *which slice's Claude is waiting for input.*
 
-- **Enum:** `none | running | waiting-input | done`.
+- **Enum:** `none | running | waiting-input | subagents | done`.
 - **Read path (use this):** `slis status [slice] --json`.
-- **Storage (fallback):** one file per slice at
-  `$XDG_STATE_HOME/slis/workspaces/<workspace-id>/events/<slice>.json` (legacy
-  workspaces keep `$XDG_STATE_HOME/slis/events/<slice>.json`);
-  slashes in the slice name become dashes. On-disk shape:
+- **Storage (fallback):** one file per Claude session at
+  `$XDG_STATE_HOME/slis/workspaces/<workspace-id>/events/<slice>@<session_id>.json`
+  (legacy workspaces keep `$XDG_STATE_HOME/slis/events/`; records without a
+  session id use `<slice>.json`); slashes become dashes. On-disk shape:
   `{ "slice": "...", "status": "running", "time_ns": 1719...,
-  "session_id": "...", "cwd": "/abs/path" }`.
+  "session_id": "...", "cwd": "/abs/path", "subagents": 2 }`. A slice reads as
+  its most urgent session (`waiting-input > running > subagents > done`), with
+  `subagents` summed across sessions in that state. Records untouched for 24
+  hours are ignored.
 - **Data flow:** Claude Code fires a hook → `slis hook <event>` (installed by
-  `slis init-hooks`) maps the hook's `cwd` to a slice and writes the status:
-  `Notification → waiting-input`, `Stop`/`SubagentStop → done`, else `running`.
+  `slis init-hooks`) maps the hook's `cwd` to a slice and updates that
+  session's status:
+  - `UserPromptSubmit`, main-thread `PostToolUse` → `running` (a `PostToolUse`
+    with an `agent_id` comes from a sub-agent and changes nothing).
+  - `Notification` with `notification_type` `permission_prompt`,
+    `elicitation_dialog`, `agent_needs_input` (or none) → `waiting-input`;
+    `idle_prompt` → `done`; other types change nothing.
+  - `Stop` → `subagents` when `background_tasks` still lists running
+    sub-agents, else `done`.
+  - `SubagentStop` while the session is `subagents` → recount (`subagents` or
+    `done`); otherwise it changes nothing.
+  - `SessionEnd` → the session's record is removed.
   No hooks installed → every slice reads `none`.
 - **Recovery:** the Sessions panel marks a waiting/done conversation as
   `resume` when no related agent process remains. Enter recreates or reuses the

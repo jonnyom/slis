@@ -25,8 +25,8 @@ func TestInitHooksFreshInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitHooks error: %v", err)
 	}
-	if len(changes) != 3 {
-		t.Fatalf("expected 3 changes, got %d: %v", len(changes), changes)
+	if len(changes) != len(hookEvents) {
+		t.Fatalf("expected %d changes, got %d: %v", len(hookEvents), len(changes), changes)
 	}
 
 	data, err := os.ReadFile(path)
@@ -121,8 +121,8 @@ func TestInitHooksMigratesStaleExecutablePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitHooks: %v", err)
 	}
-	if len(changes) != 3 {
-		t.Fatalf("changes = %v, want three migrations", changes)
+	if len(changes) != len(hookEvents) {
+		t.Fatalf("changes = %v, want three migrations plus the newly added events", changes)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -275,8 +275,8 @@ func TestMergeHookConfigNoDuplicate(t *testing.T) {
 	settings := map[string]interface{}{}
 
 	merged1, changes1 := mergeHookConfig(settings, "/x/slis")
-	if len(changes1) != 3 {
-		t.Fatalf("first merge: expected 3 changes, got %d: %v", len(changes1), changes1)
+	if len(changes1) != len(hookEvents) {
+		t.Fatalf("first merge: expected %d changes, got %d: %v", len(hookEvents), len(changes1), changes1)
 	}
 
 	merged2, changes2 := mergeHookConfig(merged1, "/x/slis")

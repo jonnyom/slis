@@ -10,6 +10,7 @@ const (
 	SessRunning
 	SessWaitingInput
 	SessDone
+	SessSubagents
 )
 
 // String returns a stable lowercase string representation of the status.
@@ -23,6 +24,8 @@ func (s SessionStatus) String() string {
 		return "waiting-input"
 	case SessDone:
 		return "done"
+	case SessSubagents:
+		return "subagents"
 	default:
 		return "unknown"
 	}

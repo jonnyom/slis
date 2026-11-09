@@ -242,6 +242,7 @@ type fileParams struct {
 
 // sessionEventParams is the payload of a sessionEvent notification.
 type sessionEventParams struct {
-	Slice  string `json:"slice"`
-	Status string `json:"status"`
+	Slice     string `json:"slice"`
+	Status    string `json:"status"`
+	Subagents int    `json:"subagents,omitempty"`
 }

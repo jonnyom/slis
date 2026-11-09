@@ -15,6 +15,7 @@ export type WorkState = "needs-you" | "in-review" | "ready" | "in-progress";
 export interface SliceView {
   slice: Slice;
   status: SessionStatus;
+  subagents?: number;
   prs?: PrStackEntry[];
   show?: ShowResult;
 }

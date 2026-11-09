@@ -21,14 +21,18 @@ func renderStatusTable(w io.Writer, dtos []StatusDTO) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "SLICE\tSTATUS")
 	for _, dto := range dtos {
-		fmt.Fprintf(tw, "%s\t%s\n", dto.Slice, dto.Status)
+		status := dto.Status
+		if dto.Subagents > 0 {
+			status = fmt.Sprintf("%s (%d)", status, dto.Subagents)
+		}
+		fmt.Fprintf(tw, "%s\t%s\n", dto.Slice, status)
 	}
 	tw.Flush()
 }
 
 var statusCmd = &cobra.Command{
 	Use:   "status [slice]",
-	Short: "Show each slice's Claude session status (none/running/waiting-input/done)",
+	Short: "Show each slice's Claude session status (none/running/waiting-input/subagents/done)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		useJSON, _ := cmd.Flags().GetBool("json")
@@ -36,10 +40,7 @@ var statusCmd = &cobra.Command{
 
 		// Single slice: a direct event lookup — no workspace/discovery needed.
 		if len(args) == 1 {
-			dto := StatusDTO{
-				Slice:  args[0],
-				Status: report.SliceStatus(sp.EventsDir, args[0]).String(),
-			}
+			dto := report.SliceStatusDTO(sp.EventsDir, args[0])
 			if useJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")

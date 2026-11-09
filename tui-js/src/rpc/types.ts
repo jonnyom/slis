@@ -5,7 +5,7 @@
 // shapes are defined only in docs/plans/2026-07-18-js-tui-spike.md (the RPC
 // surface v0) and are confirmed with the sidecar author separately.
 
-export type SessionStatus = "none" | "running" | "waiting-input" | "done";
+export type SessionStatus = "none" | "running" | "waiting-input" | "subagents" | "done";
 
 export type CiRollup = "pass" | "fail" | "pending";
 
@@ -134,6 +134,7 @@ export interface StatusEntry {
   status: SessionStatus;
   session_id?: string;
   cwd?: string;
+  subagents?: number;
 }
 
 // ── pr-stack ───────────────────────────────────────────────────────────────
@@ -358,6 +359,7 @@ export interface ProcsResult {
 export interface SessionEvent {
   slice: string;
   status: SessionStatus;
+  subagents?: number;
 }
 
 export interface FocusRequest {

@@ -8,11 +8,12 @@ import (
 	"strings"
 )
 
-// hookEvents are the Claude Code events slis installs a handler for.
-// Notification → waiting-input, Stop → done, UserPromptSubmit → running:
-// together a complete running⇄waiting⇄done state machine so the TUI reflects
-// live status and can notify on each transition.
-var hookEvents = []string{"Notification", "Stop", "UserPromptSubmit"}
+// hookEvents are the Claude Code events slis installs a handler for. See
+// transitionFor for how each event moves a session between running,
+// waiting-input, subagents and done. PostToolUse marks a session running again
+// after a permission prompt; SubagentStop counts background sub-agents down;
+// SessionEnd removes the session's status.
+var hookEvents = []string{"Notification", "Stop", "UserPromptSubmit", "PostToolUse", "SubagentStop", "SessionEnd"}
 
 // hookCommand returns the command string for the given event using binPath.
 // e.g. hookCommand("/abs/slis", "Notification") → "/abs/slis hook Notification"

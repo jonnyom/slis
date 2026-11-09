@@ -59,10 +59,10 @@ func TestReadAllStatuses(t *testing.T) {
 	if len(all) != 2 {
 		t.Fatalf("ReadAllStatuses len = %d, want 2", len(all))
 	}
-	if all["alpha"] != model.SessRunning {
+	if all["alpha"].Status != model.SessRunning {
 		t.Errorf("alpha = %v, want SessRunning", all["alpha"])
 	}
-	if all["beta"] != model.SessDone {
+	if all["beta"].Status != model.SessDone {
 		t.Errorf("beta = %v, want SessDone", all["beta"])
 	}
 }

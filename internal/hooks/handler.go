@@ -26,28 +26,12 @@ var errOut io.Writer = os.Stderr
 
 // hookInput is the subset of the Claude hook JSON payload we care about.
 type hookInput struct {
-	Cwd           string `json:"cwd"`
-	SessionID     string `json:"session_id"`
-	HookEventName string `json:"hook_event_name"`
-}
-
-// StatusForEvent maps a Claude hook event name to the corresponding
-// model.SessionStatus:
-//
-//	"Notification"                 → SessWaitingInput
-//	"Stop" / "SubagentStop"         → SessDone
-//	"UserPromptSubmit" / anything else → SessRunning
-func StatusForEvent(event string) model.SessionStatus {
-	switch event {
-	case "Notification":
-		return model.SessWaitingInput
-	case "Stop", "SubagentStop":
-		return model.SessDone
-	case "UserPromptSubmit":
-		return model.SessRunning
-	default:
-		return model.SessRunning
-	}
+	Cwd              string           `json:"cwd"`
+	SessionID        string           `json:"session_id"`
+	HookEventName    string           `json:"hook_event_name"`
+	NotificationType string           `json:"notification_type"`
+	AgentID          string           `json:"agent_id"`
+	BackgroundTasks  []backgroundTask `json:"background_tasks"`
 }
 
 // resolveSymlinks attempts to resolve symlinks for a path. On macOS /var is a
@@ -135,20 +119,27 @@ func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir strin
 		return nil
 	}
 
-	previous := notify.ReadStatus(eventsDir, sliceName)
-	status := StatusForEvent(eName)
+	previous := notify.ParseStatus(notify.ReadSessionStatus(eventsDir, sliceName, hi.SessionID).Status)
+	transition := transitionFor(eName, hi, previous)
+	if transition.endSession {
+		return notify.RemoveSessionStatus(eventsDir, sliceName, hi.SessionID)
+	}
+	if transition.unchanged {
+		return nil
+	}
 	if err := notify.WriteStatusRecord(eventsDir, notify.Status{
 		Slice:     sliceName,
-		Status:    status.String(),
+		Status:    transition.status.String(),
 		TimeNS:    timeNS,
 		SessionID: hi.SessionID,
 		Cwd:       cwd,
+		Subagents: transition.subagents,
 	}); err != nil {
 		return err
 	}
 
-	if status != previous {
-		fireNotification(sliceName, status, cfg)
+	if transition.status != previous {
+		fireNotification(sliceName, transition.status, cfg)
 	}
 	return nil
 }

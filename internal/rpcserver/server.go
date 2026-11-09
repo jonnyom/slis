@@ -447,26 +447,30 @@ func (s *Server) focusAck(raw json.RawMessage) (interface{}, *rpcError) {
 // emitChangedStatuses re-reads the event store, emits a sessionEvent for every
 // slice whose status differs from prev (a removed file reads as "none"), and
 // returns the new snapshot.
-func (s *Server) emitChangedStatuses(prev map[string]model.SessionStatus) map[string]model.SessionStatus {
+func (s *Server) emitChangedStatuses(prev map[string]notify.SliceSummary) map[string]notify.SliceSummary {
 	cur := notify.ReadAllStatuses(s.sp.EventsDir)
-	for slice, st := range cur {
-		if prev[slice] != st {
-			s.emitSessionEvent(slice, st.String())
+	for slice, summary := range cur {
+		if prev[slice] != summary {
+			s.emitSessionEvent(slice, summary)
 		}
 	}
 	for slice := range prev {
 		if _, still := cur[slice]; !still {
-			s.emitSessionEvent(slice, model.SessNone.String())
+			s.emitSessionEvent(slice, notify.SliceSummary{Status: model.SessNone})
 		}
 	}
 	return cur
 }
 
 // emitSessionEvent pushes a single sessionEvent notification to the client.
-func (s *Server) emitSessionEvent(slice, status string) {
+func (s *Server) emitSessionEvent(slice string, summary notify.SliceSummary) {
 	s.writeMessage(notification{
 		JSONRPC: "2.0",
 		Method:  "sessionEvent",
-		Params:  sessionEventParams{Slice: slice, Status: status},
+		Params: sessionEventParams{
+			Slice:     slice,
+			Status:    summary.Status.String(),
+			Subagents: summary.Subagents,
+		},
 	})
 }

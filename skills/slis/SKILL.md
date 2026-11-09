@@ -52,12 +52,12 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 |---|---|---|---|
 | `slis` | — | — | Launch the TUI (no subcommand) |
 | `slis init [root]` | mutate | no | Scan repos → write `workspace.yaml` |
-| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a session is attached. Clicking a banner runs `slis focus <slice>` to open that slice in Slis (terminal-notifier only; set `notify.activate` to a terminal app bundle id to also foreground it) |
+| `slis init-hooks` | mutate | no | Install Claude Code Notification/Stop/UserPromptSubmit/PostToolUse/SubagentStop/SessionEnd hooks (idempotent). The hook process fires the desktop banner itself when a slice changes to waiting-input/done, so notifications work with no TUI running and while a session is attached. Clicking a banner runs `slis focus <slice>` to open that slice in Slis (terminal-notifier only; set `notify.activate` to a terminal app bundle id to also foreground it) |
 | `slis init-skill` | mutate | no | Install this skill (+ `references/AGENT.md`) for an agent harness. `--harness claude\|codex\|both` (default both): claude → `~/.claude/skills/slis/`, codex → `~/.agents/skills/slis/`. Idempotent (content-hash version stamp). Also run by `slis init` unless `--no-skill` |
 | `slis ls` | read | **yes** | List all slices + members + active flag (`● stale` when the active slice's branches advanced past the primaries; `● partial` / `"partial": true` when the active swap covers only some member repos — a crash mid-activate). `--json` object: `slices` + `skipped` + `repo_errors` + `candidates` + `missing`; each slice carries optional Graphite `stack_id`/`stack_order` — siblings share a `stack_id` |
 | `slis candidates` | read | **yes** | List discovered-but-unmanaged worktrees awaiting opt-in import |
 | `slis show <slice>` | read | **yes** | One slice in detail incl. per-repo Graphite stack |
-| `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/done), plus optional Claude `session_id`/`cwd` for recovery |
+| `slis status [slice]` | read | **yes** | Each slice's Claude session status (none/running/waiting-input/subagents/done; `subagents` = main agent idle while `subagents: N` background sub-agents work), plus optional Claude `session_id`/`cwd` for recovery |
 | `slis summary <slice>` | read | **yes** | Per-repo commit subjects (`--ai` for prose, markdown only) |
 | `slis pr <slice>` | read | **yes** | Per-repo PR: number, state, CI pass/fail/pending, comment count |
 | `slis pr-stack <slice>` | read | **yes** | Shareable full PR stack (markdown; `--copy` to clipboard; `--json` emits every non-trunk Graphite branch with `stack_order`, ordered trunk-first) |

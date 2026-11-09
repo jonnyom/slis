@@ -11,27 +11,6 @@ import (
 	"github.com/jonnyom/slis/internal/notify"
 )
 
-func TestStatusForEvent(t *testing.T) {
-	tests := []struct {
-		event string
-		want  model.SessionStatus
-	}{
-		{"Notification", model.SessWaitingInput},
-		{"Stop", model.SessDone},
-		{"SubagentStop", model.SessDone},
-		{"Whatever", model.SessRunning},
-		{"", model.SessRunning},
-	}
-	for _, tc := range tests {
-		t.Run(tc.event, func(t *testing.T) {
-			got := hooks.StatusForEvent(tc.event)
-			if got != tc.want {
-				t.Errorf("StatusForEvent(%q) = %v, want %v", tc.event, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestSliceForCwd(t *testing.T) {
 	// Build a Slice with a member whose WorktreePath is a real temp dir.
 	worktreeDir := t.TempDir()

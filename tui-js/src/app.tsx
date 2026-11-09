@@ -125,7 +125,13 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const [ls, setLs] = useState<LsResult | null>(null);
   const lsRef = useRef<LsResult | null>(null);
   const [statuses, setStatuses] = useState<Record<string, SessionStatus>>({});
+  const [subagentCounts, setSubagentCounts] = useState<Record<string, number>>({});
   const [statusEntries, setStatusEntries] = useState<StatusEntry[]>([]);
+  const applyStatusRows = useCallback((rows: StatusEntry[]) => {
+    setStatusEntries(rows);
+    setStatuses(Object.fromEntries(rows.map((row) => [row.slice, row.status])));
+    setSubagentCounts(Object.fromEntries(rows.map((row) => [row.slice, row.subagents ?? 0])));
+  }, []);
   const [prStacks, setPrStacks] = useState<Record<string, PrStackEntry[]>>({});
   const [shows, setShows] = useState<Record<string, ShowResult>>({});
   const [conflicts, setConflicts] = useState<ConflictsResult | null>(null);
@@ -244,13 +250,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
       // 4 in flight, so the expensive fan-out (conflicts + per-slice PR/stack)
       // must wait behind ls rather than starve it.
       client.hello().then(setHello, () => {});
-      client.status().then(
-        (rows) => {
-          setStatusEntries(rows);
-          setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status])));
-        },
-        () => {},
-      );
+      client.status().then(applyStatusRows, () => {});
       client.ls().then((res) => {
         setInitialError(null);
         const previousNames = (lsRef.current?.slices ?? []).map((slice) => slice.name);
@@ -314,13 +314,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // re-triggers the bulk-load prompt or resets the lazy phase).
   const tickRefresh = useCallback(
     (sliceNames: string[]) => {
-      client.status().then(
-        (rows) => {
-          setStatusEntries(rows);
-          setStatuses(Object.fromEntries(rows.map((r) => [r.slice, r.status])));
-        },
-        () => {},
-      );
+      client.status().then(applyStatusRows, () => {});
       client.conflicts().then(setConflicts, () => {});
       for (const name of sliceNames) loadSlice(name);
     },
@@ -355,9 +349,10 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   // Initial load + subscriptions.
   useEffect(() => {
     refresh();
-    const offEvent = client.onSessionEvent((e) =>
-      setStatuses((m) => ({ ...m, [e.slice]: e.status })),
-    );
+    const offEvent = client.onSessionEvent((e) => {
+      setStatuses((m) => ({ ...m, [e.slice]: e.status }));
+      setSubagentCounts((m) => ({ ...m, [e.slice]: e.subagents ?? 0 }));
+    });
     const offConn = client.onConnectionChange((c, error) => {
       setConnected(c);
       if (!c && error && !lsRef.current) setInitialError(error.message);
@@ -606,10 +601,11 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
     return ls.slices.map((slice) => ({
       slice,
       status: statuses[slice.name] ?? "none",
+      subagents: subagentCounts[slice.name] ?? 0,
       prs: prStacks[slice.name],
       show: shows[slice.name],
     }));
-  }, [ls, statuses, prStacks, shows]);
+  }, [ls, statuses, subagentCounts, prStacks, shows]);
 
   const currentView = useMemo(
     () => views.find((v) => v.slice.name === current),

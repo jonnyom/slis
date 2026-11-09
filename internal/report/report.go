@@ -128,6 +128,7 @@ type StatusDTO struct {
 	Status    string `json:"status"`
 	SessionID string `json:"session_id,omitempty"`
 	Cwd       string `json:"cwd,omitempty"`
+	Subagents int    `json:"subagents,omitempty"`
 }
 
 func SliceStatusDTO(eventsDir, slice string) StatusDTO {
@@ -139,7 +140,8 @@ func SliceStatusDTO(eventsDir, slice string) StatusDTO {
 // must stop rather than walk the whole workspace.
 func SliceStatusDTOCtx(ctx context.Context, eventsDir, slice string) StatusDTO {
 	record := notify.ReadStatusRecord(eventsDir, slice)
-	status := notify.ReadStatus(eventsDir, slice)
+	summary := notify.ReadAllStatuses(eventsDir)[slice]
+	status := summary.Status
 	if status == model.SessNone {
 		if _, err := sessionmanager.OpenStore(config.StatePaths().StateDir).Get(slice); err == nil {
 			status = model.SessRunning
@@ -152,6 +154,7 @@ func SliceStatusDTOCtx(ctx context.Context, eventsDir, slice string) StatusDTO {
 		Status:    status.String(),
 		SessionID: record.SessionID,
 		Cwd:       record.Cwd,
+		Subagents: summary.Subagents,
 	}
 }
 
@@ -163,16 +166,7 @@ func SliceStatus(eventsDir, slice string) model.SessionStatus {
 }
 
 func parseStatusDTO(status StatusDTO) model.SessionStatus {
-	switch status.Status {
-	case model.SessRunning.String():
-		return model.SessRunning
-	case model.SessWaitingInput.String():
-		return model.SessWaitingInput
-	case model.SessDone.String():
-		return model.SessDone
-	default:
-		return model.SessNone
-	}
+	return notify.ParseStatus(status.Status)
 }
 
 // PRStackRowDTO is a JSON-friendly representation of one repo's PR in a slice's
