@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
 	"github.com/jonnyom/slis/internal/hooks"
+	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/skill"
 )
 
@@ -128,6 +130,21 @@ func hookFindings() []doctorFinding {
 			}
 			return strings.Join(changes, ", "), nil
 		},
+	}}
+}
+
+// unmatchedHookFindings warns when a Claude hook event in the last day matched
+// no slice, because that session's status silently stops updating.
+func unmatchedHookFindings(eventsDir string, now time.Time) []doctorFinding {
+	hook, ok := notify.ReadUnmatchedHook(eventsDir)
+	if !ok || now.Sub(time.Unix(0, hook.TimeNS)) > 24*time.Hour {
+		return nil
+	}
+	return []doctorFinding{{
+		Level: lvlWarn,
+		Title: "Claude hook events matched no slice",
+		Detail: fmt.Sprintf("a %s event from %s at %s was ignored, so that session's status is not tracked. Start Claude inside a slice's worktrees.",
+			hook.Event, hook.Cwd, time.Unix(0, hook.TimeNS).Format(time.RFC3339)),
 	}}
 }
 
@@ -245,6 +262,7 @@ func gtFindings(ws config.Workspace, dtos []SliceDTO) []doctorFinding {
 // attached fix closure).
 func runDoctor() []doctorFinding {
 	findings := hookFindings()
+	findings = append(findings, unmatchedHookFindings(config.StatePaths().EventsDir, time.Now())...)
 	findings = append(findings, skillFindings()...)
 
 	ws, err := config.LoadWorkspace(config.WorkspacePath())

@@ -60,33 +60,75 @@ func resolveSymlinks(p string) string {
 	return p
 }
 
-// SliceForCwd returns the name of the first slice whose member's WorktreePath
-// is equal to, or is an ancestor directory of, cwd. Returns "" if none match.
-// Both sides are symlink-resolved for robustness on macOS.
+// SliceForCwd returns the name of the slice that owns cwd, or "" if none does.
+// A member worktree, or a directory inside one, wins first. Failing that, cwd
+// may be a slice's root (`slis create` lays worktrees out as <root>/<repo>,
+// with the root named after the slice), where a multi-repo session usually
+// starts. Both sides are symlink-resolved for robustness on macOS.
 func SliceForCwd(slices []model.Slice, cwd string) string {
 	resolvedCwd := resolveSymlinks(cwd)
-	sep := string(os.PathSeparator)
 
 	for _, sl := range slices {
 		for _, m := range sl.Members {
-			if m.WorktreePath == "" {
-				continue
-			}
-			resolvedWt := resolveSymlinks(m.WorktreePath)
-			if resolvedCwd == resolvedWt {
+			if m.WorktreePath != "" && isWithin(resolvedCwd, resolveSymlinks(m.WorktreePath)) {
 				return sl.Name
 			}
-			if strings.HasPrefix(resolvedCwd, resolvedWt+sep) {
-				return sl.Name
-			}
+		}
+	}
+	for _, sl := range slices {
+		root := sliceRoot(sl)
+		if root != "" && isWithin(resolvedCwd, root) && !holdsOtherSlice(slices, sl.Name, root) {
+			return sl.Name
 		}
 	}
 	return ""
 }
 
+func isWithin(path, dir string) bool {
+	return path == dir || strings.HasPrefix(path, dir+string(os.PathSeparator))
+}
+
+// sliceRoot returns the directory named after the slice that holds every member
+// worktree, or "" when the members do not share one. Requiring the name keeps a
+// worktree adopted from a broad directory like ~/code from claiming all of it.
+func sliceRoot(sl model.Slice) string {
+	root := ""
+	for _, m := range sl.Members {
+		if m.WorktreePath == "" {
+			return ""
+		}
+		parent := filepath.Dir(resolveSymlinks(m.WorktreePath))
+		if root != "" && parent != root {
+			return ""
+		}
+		root = parent
+	}
+	if filepath.Base(root) != sl.Name {
+		return ""
+	}
+	return root
+}
+
+// holdsOtherSlice reports whether root also contains another slice's worktree,
+// as a shared directory like ~/code would. Such a root identifies no one slice.
+func holdsOtherSlice(slices []model.Slice, owner, root string) bool {
+	for _, sl := range slices {
+		if sl.Name == owner {
+			continue
+		}
+		for _, m := range sl.Members {
+			if m.WorktreePath != "" && isWithin(resolveSymlinks(m.WorktreePath), root) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // HandleHook decodes the Claude hook JSON from r, maps cwd → slice, and writes
-// the slice's status to eventsDir. If the cwd cannot be matched to any slice,
-// the call is a no-op (returns nil). Decode errors are silently swallowed so a
+// the slice's status to eventsDir. A cwd outside every slice falls back to the
+// slice the session last reported for; an event no slice claims is recorded
+// for `slis doctor` and otherwise ignored. Decode errors are silently swallowed so a
 // misconfigured or empty hook payload never crashes the parent process.
 //
 // When the status *changes* to waiting-input or done, HandleHook fires a desktop
@@ -116,7 +158,15 @@ func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir strin
 
 	sliceName := SliceForCwd(slices, cwd)
 	if sliceName == "" {
-		return nil
+		sliceName = notify.SliceForSession(eventsDir, hi.SessionID)
+	}
+	if sliceName == "" {
+		return notify.WriteUnmatchedHook(eventsDir, notify.UnmatchedHook{
+			Event:     eName,
+			TimeNS:    timeNS,
+			SessionID: hi.SessionID,
+			Cwd:       cwd,
+		})
 	}
 
 	previous := notify.ParseStatus(notify.ReadSessionStatus(eventsDir, sliceName, hi.SessionID).Status)

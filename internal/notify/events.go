@@ -207,6 +207,59 @@ func ReadSessionStatus(eventsDir, slice, sessionID string) Status {
 	return status
 }
 
+// SliceForSession returns the slice that sessionID last reported a status for,
+// or "" when it never has. A session keeps its ID for life, so this follows it
+// after it `cd`s out of the slice's worktrees. Expired records still count:
+// the mapping outlives the status.
+func SliceForSession(eventsDir, sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	var latest Status
+	for _, record := range readStoredRecords(eventsDir, false) {
+		if record.status.SessionID == sessionID && record.status.TimeNS >= latest.TimeNS {
+			latest = record.status
+		}
+	}
+	return latest.Slice
+}
+
+// UnmatchedHook is the latest hook event no slice claimed, kept so `slis doctor`
+// can explain a status that never updates.
+type UnmatchedHook struct {
+	Event     string `json:"event"`
+	TimeNS    int64  `json:"time_ns"`
+	SessionID string `json:"session_id,omitempty"`
+	Cwd       string `json:"cwd"`
+}
+
+// unmatchedHookFile has no .json suffix so status scans skip it.
+const unmatchedHookFile = "unmatched-hook"
+
+func WriteUnmatchedHook(eventsDir string, hook UnmatchedHook) error {
+	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(hook)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(eventsDir, unmatchedHookFile), data, 0o644)
+}
+
+// ReadUnmatchedHook returns the latest unmatched hook, or ok=false when none
+// has been recorded.
+func ReadUnmatchedHook(eventsDir string) (hook UnmatchedHook, ok bool) {
+	data, err := os.ReadFile(filepath.Join(eventsDir, unmatchedHookFile))
+	if err != nil {
+		return UnmatchedHook{}, false
+	}
+	if err := json.Unmarshal(data, &hook); err != nil {
+		return UnmatchedHook{}, false
+	}
+	return hook, true
+}
+
 // ReadStatus returns the slice's most urgent session status, or SessNone.
 func ReadStatus(eventsDir, slice string) model.SessionStatus {
 	return ParseStatus(ReadStatusRecord(eventsDir, slice).Status)
