@@ -1,0 +1,61 @@
+internal/discovery/units_test.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 1-38
+internal/cli/registry.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 114-116
+internal/report/report.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 55,362
+internal/model/model.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 54-58
+tui-js/src/rpc/mutate.ts
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 351-354
+tui-js/src/rpc/types.ts
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 71
+tui-js/src/state/cluster.ts
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 25-29,36-67
+  s_324a1c7a3db4d6::t_4ad3c598ae1a79 68
+tui-js/src/util/shortcut-contract.ts
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 29
+tui-js/src/views/browser.tsx
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 27,37,202-210,662,817-822,963,966
+internal/cli/create.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 268
+internal/discovery/overrides.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 26-30,35-91,212,214,345-346
+tui-js/src/overlays/overlays.tsx
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 467,471,473-486
+docs/AGENT.md
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 57-60,438
+internal/cli/unit_test.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 1-72
+tui-js/src/overlays/useOverlays.tsx
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 56,113-119,190,531-532,740-747,1115
+internal/cli/adopt.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 373-377
+tui-js/src/state/cluster.test.ts
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 9,224-245
+  s_324a1c7a3db4d6::t_5adacf87e7d846 246-247
+tui-js/src/components/help.tsx
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 40
+internal/cli/rm.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 133-138
+skills/slis/SKILL.md
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 88-89
+internal/cli/unit.go
+  s_324a1c7a3db4d6::t_358ac8a6e57a65 1-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4b1bc21c65ced57773f2f500a296e7f033ca4fa9",
+  "prompts": {},
+  "sessions": {
+    "s_324a1c7a3db4d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d66d4952-b46b-4939-b87d-5faffc2ccbab",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
