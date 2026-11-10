@@ -24,7 +24,7 @@ import {
 import {
   buildRows,
   clampFocus,
-  clusterByStack,
+  clusterByUnit,
   firstSelectable,
   focusIndexForSlice,
   isGatherableStackSlice,
@@ -34,6 +34,7 @@ import {
   stepSelectable,
   type BrowserRow,
   type StackLeader,
+  type UnitLeader,
 } from "../state/cluster";
 import type { CockpitEntry } from "./cockpit.hints";
 import { isMethodNotFound } from "../rpc/client";
@@ -194,6 +195,15 @@ function StackHeader({ leader }: { leader: StackLeader }): ReactNode {
   return (
     <text wrapMode="none" fg={theme.textFaint} attributes={DIM}>
       {`  stack: ${root} → … (${leader.count} slices)`}
+    </text>
+  );
+}
+
+function UnitHeader({ leader }: { leader: UnitLeader }): ReactNode {
+  const count = leader.count === 1 ? "1 slice" : `${leader.count} slices`;
+  return (
+    <text wrapMode="none" fg={theme.textDim}>
+      {`◆ unit: ${leader.unit} (${count})`}
     </text>
   );
 }
@@ -649,10 +659,7 @@ export function Browser(props: BrowserProps): ReactNode {
     return list;
   }, [views, filter, search]);
 
-  const { ordered, leaders } = useMemo(() => {
-    const c = clusterByStack(filtered);
-    return { ordered: c.ordered, leaders: c.leaders };
-  }, [filtered]);
+  const { ordered, leaders, unitLeaders } = useMemo(() => clusterByUnit(filtered), [filtered]);
 
   const missing = useMemo(() => missingSliceNames(props.ls.missing), [props.ls.missing]);
   const rows: BrowserRow[] = useMemo(() => buildRows(ordered, missing), [ordered, missing]);
@@ -807,6 +814,12 @@ export function Browser(props: BrowserProps): ReactNode {
       if (focusedSlice) overlays.ungroup(focusedSlice.slice.name);
       return;
     }
+    if (name === "U") {
+      const targets = targetsFor();
+      const current = views.find((v) => v.slice.name === targets[0])?.slice.unit ?? "";
+      if (targets.length > 0) overlays.unit(targets, current, () => setSelected(new Set()));
+      return;
+    }
     if (name === "R") {
       const targets = targetsFor();
       if (targets.length > 0)
@@ -947,8 +960,10 @@ export function Browser(props: BrowserProps): ReactNode {
                 if (row.kind === "missing")
                   return <MissingRow key={`m-${row.name}`} name={row.name} />;
                 const leader = leaders.get(row.view.slice.name);
+                const unitLeader = unitLeaders.get(row.view.slice.name);
                 return (
                   <box key={row.view.slice.name} flexDirection="column">
+                    {unitLeader ? <UnitHeader leader={unitLeader} /> : null}
                     {leader ? <StackHeader leader={leader} /> : null}
                     <SliceRow
                       view={row.view}

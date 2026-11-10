@@ -53,6 +53,7 @@ import {
   submitSlice,
   summarySlice,
   syncSlice,
+  setSliceUnit,
   ungroupSlice,
   type MutateResult,
 } from "../rpc/mutate";
@@ -109,7 +110,13 @@ type Overlay =
   | { kind: "ciRerun"; slice: string }
   | { kind: "create"; text: string }
   | { kind: "adopt"; text: string }
-  | { kind: "group"; slices: string[]; text: string; onDone: () => void }
+  | {
+      kind: "group";
+      mode?: "unit";
+      slices: string[];
+      text: string;
+      onDone: () => void;
+    }
   | { kind: "candidates"; items: Candidate[]; sel: number }
   | {
       kind: "editorPicker";
@@ -180,6 +187,7 @@ export interface OverlayApi {
   adopt(): void;
   candidates(items: Candidate[]): void;
   group(slices: string[], onDone: () => void): void;
+  unit(slices: string[], currentUnit: string, onDone: () => void): void;
   conflictRadar(): void;
   summary(slice: string, ai: boolean): void;
   // F2 inline review: comment composer + pending-review overlay.
@@ -520,6 +528,8 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
     adopt: () => setOverlay({ kind: "adopt", text: "" }),
     candidates: (items) => setOverlay({ kind: "candidates", items, sel: 0 }),
     group: (slices, onDone) => setOverlay({ kind: "group", slices, text: "", onDone }),
+    unit: (slices, currentUnit, onDone) =>
+      setOverlay({ kind: "group", mode: "unit", slices, text: currentUnit, onDone }),
     conflictRadar: () => setOverlay({ kind: "conflicts", scroll: 0 }),
     summary: openSummary,
     comment: (ctx, onAdded) => setOverlay({ kind: "comment", ctx, text: "", onAdded }),
@@ -727,7 +737,14 @@ export function useOverlays(args: UseOverlaysArgs): OverlayApi {
         return;
       case "group":
         if (isCancel) close();
-        else if (isEnter) {
+        else if (isEnter && overlay.mode === "unit") {
+          const unit = overlay.text.trim();
+          const done = overlay.onDone;
+          runMutation(unit ? "Unit → " + unit : "Leave unit", () =>
+            setSliceUnit(unit, overlay.slices),
+          );
+          done();
+        } else if (isEnter) {
           const nm = overlay.text.trim();
           if (nm) {
             const done = overlay.onDone;
@@ -1095,7 +1112,7 @@ function renderOverlay(
     case "adopt":
       return <AdoptOverlay text={overlay.text} />;
     case "group":
-      return <GroupOverlay slices={overlay.slices} text={overlay.text} />;
+      return <GroupOverlay slices={overlay.slices} text={overlay.text} mode={overlay.mode} />;
     case "candidates":
       return <CandidatesOverlay items={overlay.items} sel={overlay.sel} />;
     case "editorPicker":

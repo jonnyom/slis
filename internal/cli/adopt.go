@@ -370,7 +370,11 @@ spans every repo. strip_prefix is applied exactly once.`,
 		if err := validateSliceName(raw); err != nil {
 			return err
 		}
-		return adoptBranch(cmd.Context(), ws, raw, noSession, move, createMissing)
+		if err := adoptBranch(cmd.Context(), ws, raw, noSession, move, createMissing); err != nil {
+			return err
+		}
+		joinCallerUnit(config.StatePaths(), config.SliceNameFromBranch(raw, ws.Grouping.StripPrefix))
+		return nil
 	},
 }
 

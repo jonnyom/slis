@@ -464,10 +464,26 @@ export function ReviewMessageOverlay({
 export function GroupOverlay({
   slices,
   text,
+  mode,
 }: {
   slices: string[];
   text: string;
+  mode?: "unit";
 }): ReactNode {
+  if (mode === "unit")
+    return (
+      <Card
+        title="Collect into unit"
+        subtitle={`selected: ${slices.join(", ")}`}
+        width={60}
+        hints={[
+          { key: "enter", label: "set unit (empty leaves unit)" },
+          { key: "esc", label: "cancel" },
+        ]}
+      >
+        <TextField id="unit-name" label="Unit name" lines={[text]} />
+      </Card>
+    );
   return (
     <Card
       title={slices.length === 1 ? "Group / rename slice" : "Group slices"}

@@ -52,6 +52,7 @@ type SliceDTO struct {
 	Members    []MemberDTO `json:"members"`
 	StackID    string      `json:"stack_id,omitempty"`
 	StackOrder int         `json:"stack_order,omitempty"`
+	Unit       string      `json:"unit,omitempty"`
 }
 
 // SkippedWorktreeDTO is a JSON-friendly representation of a worktree discovery
@@ -358,6 +359,7 @@ func ToSliceDTO(s model.Slice) SliceDTO {
 		Members:    members,
 		StackID:    s.StackID,
 		StackOrder: s.StackOrder,
+		Unit:       s.Unit,
 	}
 }
 

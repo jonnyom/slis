@@ -111,6 +111,9 @@ updates slis's registry — it never touches git.`,
 		if err := config.SaveRegistry(regPath, reg); err != nil {
 			return fmt.Errorf("save registry: %w", err)
 		}
+		if !all {
+			joinCallerUnit(config.StatePaths(), toImport[0].Slice)
+		}
 		fmt.Printf("registered %d worktree%s\n", len(toImport), plural(len(toImport)))
 		return nil
 	},

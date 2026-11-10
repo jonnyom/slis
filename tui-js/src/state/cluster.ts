@@ -22,10 +22,48 @@ export interface StackLeader {
   count: number;
 }
 
+export interface UnitLeader {
+  unit: string;
+  count: number;
+}
+
 export interface Clustered {
   ordered: SliceView[];
   // slice name → header shown above it (only for the leader of a group > 1).
   leaders: Map<string, StackLeader>;
+}
+
+export interface UnitClustered extends Clustered {
+  // slice name → unit header shown above it (the first slice of each unit).
+  unitLeaders: Map<string, UnitLeader>;
+}
+
+// clusterByUnit keeps slices of one unit adjacent (at the unit's first-appearance
+// position) under a unit header, then applies stack clustering inside each unit.
+// Slices with no unit are clustered by stack as before.
+export function clusterByUnit(views: SliceView[]): UnitClustered {
+  const buckets = new Map<string, SliceView[]>();
+  views.forEach((v, i) => {
+    const key = v.slice.unit
+      ? `unit:${v.slice.unit}`
+      : v.slice.stack_id
+        ? `stack:${v.slice.stack_id}`
+        : `\x00solo-${i}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(v);
+  });
+
+  const ordered: SliceView[] = [];
+  const leaders = new Map<string, StackLeader>();
+  const unitLeaders = new Map<string, UnitLeader>();
+  for (const bucket of buckets.values()) {
+    const c = clusterByStack(bucket);
+    const unit = bucket[0]!.slice.unit;
+    if (unit) unitLeaders.set(c.ordered[0]!.slice.name, { unit, count: c.ordered.length });
+    ordered.push(...c.ordered);
+    c.leaders.forEach((leader, name) => leaders.set(name, leader));
+  }
+  return { ordered, leaders, unitLeaders };
 }
 
 // clusterByStack reorders views so slices sharing a stack_id sit adjacently,

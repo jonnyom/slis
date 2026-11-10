@@ -51,6 +51,11 @@ type Slice struct {
 	// identity and grouping are never changed by them.
 	StackID    string
 	StackOrder int
+
+	// Unit is the optional name of the unit this slice belongs to: a user- or
+	// agent-assigned collection of related slices, shown together. Annotation
+	// only, set from the units section of overrides.yaml.
+	Unit string
 }
 
 // Repos returns the member repo names in sorted order.

@@ -265,6 +265,7 @@ var createCmd = &cobra.Command{
 					fmt.Printf("note: could not save slice registry: %v\n", saveErr)
 				}
 			}
+			joinCallerUnit(config.StatePaths(), sliceName)
 		}
 
 		if !noWorktrees && len(createdPlans) > 0 {

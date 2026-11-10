@@ -68,6 +68,7 @@ export interface Slice {
   partial?: boolean;
   stack_id?: string;
   stack_order?: number;
+  unit?: string;
   members: SliceMember[];
 }
 

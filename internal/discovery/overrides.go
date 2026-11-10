@@ -23,10 +23,72 @@ type Overrides map[string]map[string]string
 // in the gathered slice's representative tip); its worktree is never touched.
 type Folded map[string]map[string][]string
 
+// Units maps slice name -> unit name. A unit collects related slices (a feature
+// and the slices an agent spun off from it) so they are shown together. It is
+// annotation only: slice membership is never changed by it.
+type Units map[string]string
+
 // overridesFile is the on-disk YAML shape.
 type overridesFile struct {
 	Overrides Overrides `yaml:"overrides"`
 	Folded    Folded    `yaml:"folded,omitempty"`
+	Units     Units     `yaml:"units,omitempty"`
+}
+
+// ApplyUnits sets each slice's Unit from units. Slices with no entry keep an
+// empty Unit.
+func ApplyUnits(slices []model.Slice, units Units) []model.Slice {
+	for i := range slices {
+		slices[i].Unit = units[slices[i].Name]
+	}
+	return slices
+}
+
+// LoadUnits reads the units section of the file at path. A missing file (or
+// missing section) yields an empty Units and a nil error.
+func LoadUnits(path string) (Units, error) {
+	f, err := loadOverridesFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if f.Units == nil {
+		return Units{}, nil
+	}
+	return f.Units, nil
+}
+
+// SaveUnits writes units to path, preserving the overrides and folded sections.
+func SaveUnits(path string, units Units) error {
+	f, err := loadOverridesFile(path)
+	if err != nil {
+		return err
+	}
+	f.Units = units
+	return writeOverridesFile(path, f)
+}
+
+func loadOverridesFile(path string) (overridesFile, error) {
+	var f overridesFile
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return f, nil
+	}
+	if err != nil {
+		return f, err
+	}
+	err = yaml.Unmarshal(data, &f)
+	return f, err
+}
+
+func writeOverridesFile(path string, f overridesFile) error {
+	data, err := yaml.Marshal(f)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // ApplyFolds drops members whose branch has been folded into a gathered slice's
@@ -147,8 +209,9 @@ func Apply(slices []model.Slice, ov Overrides) []model.Slice {
 func Resolve(slices []model.Slice, overridesPath, stripPrefix string) []model.Slice {
 	ov, _ := LoadOverrides(overridesPath)
 	folded, _ := LoadFolded(overridesPath)
+	units, _ := LoadUnits(overridesPath)
 	retargetMovedOverrideMembers(slices, ov, stripPrefix, git.BranchRenamedFrom)
-	return ApplyFolds(Apply(slices, ov), folded)
+	return ApplyUnits(ApplyFolds(Apply(slices, ov), folded), units)
 }
 
 // branchBelongsToGroup reports whether branch still reads as work on the group's
@@ -279,14 +342,8 @@ func SaveOverrides(path string, ov Overrides) error {
 // SaveConfig writes both the overrides and folded sections to path atomically.
 // Use it when a mutation touches both (gather/scatter).
 func SaveConfig(path string, ov Overrides, folded Folded) error {
-	data, err := yaml.Marshal(overridesFile{Overrides: ov, Folded: folded})
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
+	units, _ := LoadUnits(path)
+	return writeOverridesFile(path, overridesFile{Overrides: ov, Folded: folded, Units: units})
 }
 
 // LoadFolded reads the folded section of the file at path. A missing file (or

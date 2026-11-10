@@ -6,6 +6,7 @@ import {
   buildRows,
   clampFocus,
   clusterByStack,
+  clusterByUnit,
   focusIndexForSlice,
   isGatherableStackSlice,
   missingSliceNames,
@@ -218,5 +219,29 @@ describe("searchAwareNav (M3 — n/N modal decision)", () => {
 
   test("the two modes diverge — search stepping reaches non-attention rows", () => {
     expect(searchAwareNav(true, rows, 1, 1)).not.toBe(searchAwareNav(false, rows, 1, 1));
+  });
+});
+
+describe("clusterByUnit", () => {
+  test("keeps a unit together under one header, stack-ordered inside", () => {
+    const views = [
+      view("alpha"),
+      view("lean", { unit: "latency", stack_id: "mw\u0000root", stack_order: 2 }),
+      view("beta", { stack_id: "web\u0000b", stack_order: 1 }),
+      view("latency", { unit: "latency", stack_id: "mw\u0000root", stack_order: 1 }),
+      view("gamma", { stack_id: "web\u0000b", stack_order: 2 }),
+    ];
+    const c = clusterByUnit(views);
+    expect(c.ordered.map((v) => v.slice.name)).toEqual([
+      "alpha",
+      "latency",
+      "lean",
+      "beta",
+      "gamma",
+    ]);
+    expect(c.unitLeaders.get("latency")).toEqual({ unit: "latency", count: 2 });
+    expect(c.unitLeaders.size).toBe(1);
+    expect(c.leaders.get("latency")?.count).toBe(2);
+    expect(c.leaders.get("beta")?.count).toBe(2);
   });
 });

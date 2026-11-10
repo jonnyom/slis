@@ -85,6 +85,8 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis rm <slice>` | mutate | no | Remove worktrees + kill the Slis session + delete merged branches (`--force`, `--dry-run`) |
 | `slis group <name> <slice>...` | mutate | no | Manually group slices under one name (writes `overrides.yaml`) |
 | `slis ungroup <name>` | mutate | no | Undo a manual grouping |
+| `slis unit <unit> <slice>...` | mutate | no | Collect related slices into a unit (shown together; members never merged). `--allow-from-slice` create/adopt/import inside a slice joins its unit automatically. `ls --json` exposes `unit` |
+| `slis ununit <slice>...` | mutate | no | Remove slices from their unit |
 | `slis gather <name> <slice>` | mutate | yes | Collapse the Graphite stack `<slice>` belongs to into one slice named `<name>`, represented by the stack **tip**; intermediate branches are folded (hidden as their own slices, worktrees untouched). Per repo. `--json` reports `{name, gathered:[{repo,tip,folded,linear}]}` |
 | `slis scatter <name>` | mutate | no | Undo a gather (folded branches reappear as their own slices) |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |

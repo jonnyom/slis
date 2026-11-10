@@ -348,6 +348,10 @@ export function ungroupSlice(name: string): Promise<MutateResult> {
   return run(["ungroup", name]);
 }
 
+export function setSliceUnit(unit: string, slices: string[]): Promise<MutateResult> {
+  return run(unit === "" ? ["ununit", ...slices] : ["unit", unit, ...slices]);
+}
+
 // Gather the Graphite stack `slice` belongs to into one slice named `name`
 // (represented by the stack tip; intermediates folded). Scatter reverses it.
 export function gatherStack(name: string, slice: string): Promise<MutateResult> {

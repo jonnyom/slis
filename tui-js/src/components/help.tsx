@@ -37,6 +37,7 @@ const BROWSER_GROUPS: BindingGroup[] = [
       ["w", "swap slice in / out ([s] stash dirty)"],
       ["space / A", "select one / all visible (batch ops)"],
       ["m / u", "group selected / ungroup focused"],
+      ["U", "collect selected into a unit (shown together)"],
       ["c", "create a new slice (worktrees per repo)"],
       ["i", "import discovered candidate worktrees"],
       ["I", "adopt an arbitrary branch as a slice"],

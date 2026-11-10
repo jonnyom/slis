@@ -130,6 +130,12 @@ func clearSliceState(sp config.Paths, name string, forgetRegistry bool) error {
 			_ = discovery.SaveOverrides(sp.Overrides, ov)
 		}
 	}
+	if units, err := discovery.LoadUnits(sp.Overrides); err == nil {
+		if _, present := units[name]; present {
+			delete(units, name)
+			_ = discovery.SaveUnits(sp.Overrides, units)
+		}
+	}
 	_ = notify.RemoveStatus(sp.EventsDir, name)
 
 	if !forgetRegistry {
