@@ -99,7 +99,8 @@ func TestHandleHookFollowsSessionOutsideItsSlice(t *testing.T) {
 func TestHandleHookRecordsUnmatchedEvent(t *testing.T) {
 	eventsDir := t.TempDir()
 	slices := []model.Slice{sliceWith("feature", t.TempDir())}
-	stray := t.TempDir()
+	stray := filepath.Join(t.TempDir(), ".slis", "worktrees", "removed-slice")
+	mkdirs(t, stray)
 
 	fireAt(t, stray, "s1", eventsDir, slices, "Stop", 7)
 
@@ -109,5 +110,16 @@ func TestHandleHookRecordsUnmatchedEvent(t *testing.T) {
 	want := notify.UnmatchedHook{Event: "Stop", TimeNS: 7, SessionID: "s1", Cwd: stray}
 	if got, ok := notify.ReadUnmatchedHook(eventsDir); !ok || got != want {
 		t.Errorf("unmatched = %+v (ok=%v), want %+v", got, ok, want)
+	}
+}
+
+func TestHandleHookIgnoresSessionsOutsideSlisWorktrees(t *testing.T) {
+	eventsDir := t.TempDir()
+	slices := []model.Slice{sliceWith("feature", t.TempDir())}
+
+	fireAt(t, t.TempDir(), "s1", eventsDir, slices, "Stop", 7)
+
+	if got, ok := notify.ReadUnmatchedHook(eventsDir); ok {
+		t.Errorf("recorded unmatched hook %+v for a session outside slis worktrees", got)
 	}
 }

@@ -84,6 +84,14 @@ func SliceForCwd(slices []model.Slice, cwd string) string {
 	return ""
 }
 
+// inSlisWorktrees reports whether cwd is inside the directory `slis create`
+// puts worktrees in. Only a miss there is worth reporting: sessions elsewhere
+// were never meant to belong to a slice.
+func inSlisWorktrees(cwd string) bool {
+	sep := string(os.PathSeparator)
+	return strings.Contains(cwd+sep, sep+filepath.Join(".slis", "worktrees")+sep)
+}
+
 func isWithin(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+string(os.PathSeparator))
 }
@@ -127,8 +135,8 @@ func holdsOtherSlice(slices []model.Slice, owner, root string) bool {
 
 // HandleHook decodes the Claude hook JSON from r, maps cwd → slice, and writes
 // the slice's status to eventsDir. A cwd outside every slice falls back to the
-// slice the session last reported for; an event no slice claims is recorded
-// for `slis doctor` and otherwise ignored. Decode errors are silently swallowed so a
+// slice the session last reported for. An event from slis's worktrees directory
+// that no slice claims is recorded for `slis doctor`; any other is ignored. Decode errors are silently swallowed so a
 // misconfigured or empty hook payload never crashes the parent process.
 //
 // When the status *changes* to waiting-input or done, HandleHook fires a desktop
@@ -159,6 +167,9 @@ func HandleHook(event string, r io.Reader, slices []model.Slice, eventsDir strin
 	sliceName := SliceForCwd(slices, cwd)
 	if sliceName == "" {
 		sliceName = notify.SliceForSession(eventsDir, hi.SessionID)
+	}
+	if sliceName == "" && !inSlisWorktrees(cwd) {
+		return nil
 	}
 	if sliceName == "" {
 		return notify.WriteUnmatchedHook(eventsDir, notify.UnmatchedHook{

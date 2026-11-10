@@ -224,6 +224,17 @@ func SliceForSession(eventsDir, sessionID string) string {
 	return latest.Slice
 }
 
+// HasStatusRecord reports whether any session of slice has ever reported a
+// status, including records too old to count towards its summary.
+func HasStatusRecord(eventsDir, slice string) bool {
+	for _, record := range readStoredRecords(eventsDir, false) {
+		if record.status.Slice == slice {
+			return true
+		}
+	}
+	return false
+}
+
 // UnmatchedHook is the latest hook event no slice claimed, kept so `slis doctor`
 // can explain a status that never updates.
 type UnmatchedHook struct {

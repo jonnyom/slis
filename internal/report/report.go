@@ -11,6 +11,7 @@ package report
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/jonnyom/slis/internal/forge"
 	"github.com/jonnyom/slis/internal/git"
 	"github.com/jonnyom/slis/internal/gt"
+	"github.com/jonnyom/slis/internal/hooks"
 	"github.com/jonnyom/slis/internal/model"
 	"github.com/jonnyom/slis/internal/notify"
 	"github.com/jonnyom/slis/internal/radar"
@@ -142,7 +144,9 @@ func SliceStatusDTOCtx(ctx context.Context, eventsDir, slice string) StatusDTO {
 	record := notify.ReadStatusRecord(eventsDir, slice)
 	summary := notify.ReadAllStatuses(eventsDir)[slice]
 	status := summary.Status
-	if status == model.SessNone {
+	if status == model.SessNone && notify.HasStatusRecord(eventsDir, slice) {
+		status = model.SessDone
+	} else if status == model.SessNone && !hooks.StopHookInstalled(claudeSettingsPath()) {
 		if _, err := sessionmanager.OpenStore(config.StatePaths().StateDir).Get(slice); err == nil {
 			status = model.SessRunning
 		} else if tmuxctl.SessionExistsCtx(ctx, slice) {
@@ -158,9 +162,18 @@ func SliceStatusDTOCtx(ctx context.Context, eventsDir, slice string) StatusDTO {
 	}
 }
 
+// claudeSettingsPath is where the slis hooks are installed. A package var so
+// tests can point it at a fixture.
+var claudeSettingsPath = func() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
 // SliceStatus returns the semantic hook status when one has been recorded. A
-// live tmux session is a conservative running fallback for older/broken hook
-// installations, matching the legacy TUI instead of labelling active work idle.
+// slice whose records have all expired went quiet, so it reads as done. Without
+// the slis hooks installed, a live session is a conservative running fallback,
+// matching the legacy TUI instead of labelling active work idle. With them
+// installed, a session that never reported is not claimed to be running.
 func SliceStatus(eventsDir, slice string) model.SessionStatus {
 	return parseStatusDTO(SliceStatusDTO(eventsDir, slice))
 }
