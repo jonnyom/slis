@@ -255,6 +255,29 @@ func MigrateExistingHooks(settingsPath, binPath string) ([]string, error) {
 	return changes, nil
 }
 
+// StopHookInstalled reports whether settingsPath runs any slis binary on Stop.
+// The path is not compared, so a status reader built elsewhere than the hook
+// binary still sees the hooks as installed.
+func StopHookInstalled(settingsPath string) bool {
+	settings, _, err := readSettings(settingsPath)
+	if err != nil {
+		return false
+	}
+	hooksMap, _ := settings["hooks"].(map[string]interface{})
+	groups, _ := hooksMap["Stop"].([]interface{})
+	for _, group := range groups {
+		gm, _ := group.(map[string]interface{})
+		inner, _ := gm["hooks"].([]interface{})
+		for _, hook := range inner {
+			hm, _ := hook.(map[string]interface{})
+			if command, _ := hm["command"].(string); slisHookForEvent(command, "Stop") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func readSettings(settingsPath string) (map[string]interface{}, bool, error) {
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {

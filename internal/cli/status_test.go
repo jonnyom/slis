@@ -108,6 +108,7 @@ func TestReadStatusSingleSlice(t *testing.T) {
 func TestSliceStatusFallsBackToPersistentSlisSession(t *testing.T) {
 	const slice = "status-live-fallback-test"
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 	if err := sessionmanager.OpenStore(config.StatePaths().StateDir).Save(sessionmanager.Group{ID: slice}); err != nil {
 		t.Fatal(err)
 	}
