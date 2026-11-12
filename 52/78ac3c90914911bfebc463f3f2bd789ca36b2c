@@ -1,0 +1,35 @@
+tui-js/src/term/runtime.test.ts
+  s_0dd1539ba6b0c1::t_0791808871b86d 3,32,55
+  s_0dd1539ba6b0c1::t_cd3a50e64b78d0 36-54
+  s_324a1c7a3db4d6::t_5442f999da1c8b 56-57
+tui-js/src/term/runtime.ts
+  s_0dd1539ba6b0c1::t_0791808871b86d 74
+  s_0dd1539ba6b0c1::t_4b42ee4512a167 76,79-81,85-93,95
+tui-js/src/app.tsx
+  s_0dd1539ba6b0c1::t_0791808871b86d 69,212
+  s_324a1c7a3db4d6::t_65bedc4b13eb9d 1162-1174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5278ac3c90914911bfebc463f3f2bd789ca36b2c",
+  "prompts": {},
+  "sessions": {
+    "s_0dd1539ba6b0c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a057b2-f5c3-7413-b6bb-440f325bf9f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_324a1c7a3db4d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d66d4952-b46b-4939-b87d-5faffc2ccbab",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
