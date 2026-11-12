@@ -108,6 +108,30 @@ function conflictPartners(conflicts: ConflictsResult | null, slice: string): str
   return [...set];
 }
 
+export function sliceRowPresentation(
+  view: SliceView,
+  focusRow: boolean,
+): { nameColor: string; nameBold: boolean; readyGlyph: string | null } {
+  const a = attention(view);
+  const ready = workState(view) === "ready";
+  let nameColor: string = theme.text;
+  let nameBold = false;
+  if (a.level === 3) {
+    nameColor = a.color;
+    nameBold = true;
+  } else if (a.level === 0) {
+    nameColor = theme.textDim;
+  }
+  if (ready) {
+    nameColor = theme.good;
+    nameBold = true;
+  } else if (focusRow) {
+    nameColor = theme.textBright;
+    nameBold = true;
+  }
+  return { nameColor, nameBold, readyGlyph: ready ? glyph.ready : null };
+}
+
 const SliceRow = memo(function SliceRow({
   view,
   focused,
@@ -123,20 +147,8 @@ const SliceRow = memo(function SliceRow({
   reviewRun?: ReviewRun;
   themeVersion: string;
 }): ReactNode {
-  const a = attention(view);
   const focusRow = focused && listFocused;
-  let nameColor: string = theme.text;
-  let nameBold = false;
-  if (a.level === 3) {
-    nameColor = a.color;
-    nameBold = true;
-  } else if (a.level === 0) {
-    nameColor = theme.textDim;
-  }
-  if (focusRow) {
-    nameColor = theme.textBright;
-    nameBold = true;
-  }
+  const { nameColor, nameBold, readyGlyph } = sliceRowPresentation(view, focusRow);
   return (
     <box width="100%" backgroundColor={focusRow ? theme.surfaceAlt : undefined} flexDirection="row">
       <text wrapMode="none">
@@ -151,6 +163,9 @@ const SliceRow = memo(function SliceRow({
           {" "}
           {view.slice.name}
         </span>
+        {readyGlyph ? (
+          <span fg={theme.good} attributes={BOLD}> {readyGlyph}</span>
+        ) : null}
         {view.status === "subagents" && (view.subagents ?? 0) > 0 ? (
           <span fg={theme.good}> {glyph.subagents}{view.subagents}</span>
         ) : null}
