@@ -1,0 +1,36 @@
+tui-js/src/term/typing-intent.ts
+  s_9c66b5340f0349::t_eade181aa6d357 68-72
+  s_9c66b5340f0349::t_e2b39bfd226f25 56-60,103-109,111
+  s_9c66b5340f0349::t_dccbf0aac95e91 1-55,61-67,73-102,110,112-121
+tui-js/src/term/tabs.typing.test.tsx
+  s_9c66b5340f0349::t_1e2856bccc34e2 116
+  s_9c66b5340f0349::t_ead07fe09d4bb1 1-3,6,8-43,45-68,74-78,80-92,97,107-115,117-119,131-142
+  s_9c66b5340f0349::t_82e3dd4aff0dc8 120-130
+  s_9c66b5340f0349::t_7d141d8015a202 4,69-73,95-96,103
+  s_9c66b5340f0349::t_d133c68055aa60 143-154
+  s_9c66b5340f0349::t_dccbf0aac95e91 5,7
+  s_9c66b5340f0349::t_db4b661875a6ce 155-164,189
+  s_9c66b5340f0349::t_60e08556d65df1 79,94,98-102,104-106,176-188
+  s_9c66b5340f0349::t_b35b0c86510f26 44,165-175
+  s_9c66b5340f0349::t_91c7caf2aafc84 93
+tui-js/src/term/tabs.tsx
+  s_9c66b5340f0349::t_dccbf0aac95e91 23,561-568,570,572,595
+  s_9c66b5340f0349::t_91cf0d0302ff9c 598
+  s_9c66b5340f0349::t_60072e86510156 516-517,536-537,553-560,593-594,596-597
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d5f8b396506502d00279f61313aab85d5d0ebbf6",
+  "prompts": {},
+  "sessions": {
+    "s_9c66b5340f0349": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05875-09ca-7291-8812-b9432623fe8a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
