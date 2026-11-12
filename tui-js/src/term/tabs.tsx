@@ -20,6 +20,7 @@ import {
 } from "./input";
 import { EmbeddedTerminalRenderable } from "./embedded";
 import { useDelayedSessionAttachment } from "./attachment";
+import { DockTypingInputGuard } from "./typing-intent";
 
 // Register <ghosttyTerminal> as an OpenTUI intrinsic element.
 extend({ ghosttyTerminal: EmbeddedTerminalRenderable });
@@ -512,6 +513,8 @@ export function TerminalLayer({
   // Keep the raw-input handler stable but reading live focus/active via refs.
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
   const activeRef = useRef(active);
   activeRef.current = active;
   const cycleTabsRef = useRef(tabBarTabs ?? tabs);
@@ -530,6 +533,8 @@ export function TerminalLayer({
   onBackRef.current = onBack;
   const onUnfocusRef = useRef(onUnfocus);
   onUnfocusRef.current = onUnfocus;
+  const onFocusRef = useRef(onFocus);
+  onFocusRef.current = onFocus;
   const onSelectTabRef = useRef(onSelectTab);
   onSelectTabRef.current = onSelectTab;
 
@@ -545,9 +550,26 @@ export function TerminalLayer({
   });
 
   useEffect(() => {
+    const writeToTerminal = (sequences: string[]) => {
+      const key = activeRef.current;
+      if (!key) return;
+      terminalRenderablesRef.current.get(key)?.followLatestOutput();
+      for (const sequence of sequences) {
+        managerRef.current.get(key)?.write(embeddedTerminalInputSequence(sequence));
+      }
+    };
+    const typingGuard = new DockTypingInputGuard({
+      canFocusTerminal: () => shownRef.current && Boolean(onUnfocusRef.current),
+      focusTerminal: () => onFocusRef.current(),
+      isTerminalFocused: () => focusedRef.current,
+      replayToSlis: (sequence) => renderer.stdin.emit("data", Buffer.from(sequence)),
+      useKittyKeyboard: () => renderer.useKittyKeyboard,
+      writeToTerminal: (sequence) => writeToTerminal([sequence]),
+    });
     const handler = (seq: string): boolean => {
-      if (!focusedRef.current) return false; // browser/cockpit own the keys
+      if (!typingGuard.terminalFocused) return typingGuard.handle(seq);
       if (onUnfocusRef.current && isUnfocusKeySequence(seq)) {
+        typingGuard.unfocus();
         onUnfocusRef.current();
         return true;
       }
@@ -568,9 +590,12 @@ export function TerminalLayer({
       }
       return true; // consume: everything reaches the PTY, nothing is parsed
     };
-    renderer.addInputHandler(handler);
-    return () => renderer.removeInputHandler(handler);
-  }, [renderer]);
+    renderer.prependInputHandler(handler);
+    return () => {
+      typingGuard.dispose();
+      renderer.removeInputHandler(handler);
+    };
+  }, [renderer, shown]);
 
   if (tabs.length === 0) return null;
 
