@@ -413,6 +413,13 @@ The headline automation signal: *which slice's Claude is waiting for input.*
   `resume` when no related agent process remains. Enter recreates or reuses the
   slice session, selects the tab matching `cwd`, and runs
   `claude --resume <session_id>`.
+- **Reaping idle tabs:** `slis session reap [--idle 24h] [--yes] [--json]` picks
+  Claude tabs in slices whose newest record is older than `--idle` and that have
+  no `running`/`subagents` record younger than 24 hours (an older one is a
+  crashed session). Without `--yes` it only lists them. JSON:
+  `[{ "slice", "tab", "idle_hours", "memory_mb", "resume_session_ids": [] }]`;
+  `memory_mb` is resident memory of the tab's process tree, so swapped-out
+  memory is not counted.
 - **Desktop notifications:** the `slis hook` process itself fires the banner when
   a slice's status *changes* to `waiting-input` or `done` (deduped — an unchanged
   status never re-fires; `→ running` is silent). This is independent of the TUI:

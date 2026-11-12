@@ -235,6 +235,20 @@ func HasStatusRecord(eventsDir, slice string) bool {
 	return false
 }
 
+func (status Status) Expired(now time.Time) bool {
+	return now.Sub(time.Unix(0, status.TimeNS)) > statusMaxAge
+}
+
+func SessionRecords(eventsDir, slice string) []Status {
+	var statuses []Status
+	for _, record := range readStoredRecords(eventsDir, false) {
+		if record.status.Slice == slice {
+			statuses = append(statuses, record.status)
+		}
+	}
+	return statuses
+}
+
 // UnmatchedHook is the latest hook event no slice claimed, kept so `slis doctor`
 // can explain a status that never updates.
 type UnmatchedHook struct {

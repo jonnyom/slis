@@ -19,7 +19,7 @@ func TestSessionCommandOwnsFullTerminalLifecycle(t *testing.T) {
 		}
 		names = append(names, command.Name())
 	}
-	want := []string{"activate-tab", "attach", "busy", "ensure", "ensure-tab", "history", "kill", "kill-tab", "list", "send", "start"}
+	want := []string{"activate-tab", "attach", "busy", "ensure", "ensure-tab", "history", "kill", "kill-tab", "list", "reap", "send", "start"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("session commands = %#v, want %#v", names, want)
 	}
