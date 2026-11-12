@@ -66,7 +66,7 @@ import {
   agentCmdline,
   agentTabID,
 } from "./term/agentpick";
-import { applySessionRuntimeLabels, SessionRuntimeRefresher } from "./term/runtime";
+import { reconcileSessionRuntimeTabs, SessionRuntimeRefresher } from "./term/runtime";
 import { availableEditors } from "./editor/detect";
 import { bulkLoadPlan, loadSlicesSequentially, type BulkPhase } from "./state/bulkload";
 import { BulkLoadOverlay } from "./components/bulkload";
@@ -209,7 +209,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const runtimeRefresher = useMemo(
     () => new SessionRuntimeRefresher(
       (signal) => listSlisSessions(true, signal),
-      (groups) => setTabs((currentTabs) => applySessionRuntimeLabels(currentTabs, groups)),
+      (groups) => setTabs((currentTabs) => reconcileSessionRuntimeTabs(currentTabs, groups)),
       (error) => pushToast(`Could not refresh terminal labels: ${String(error)}`, "ci-fail"),
     ),
     [pushToast],
@@ -1159,8 +1159,19 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
   const selectedTabID = selectedSession?.kind === "session" ? selectedSession.opts.tabID : undefined;
   useEffect(() => {
     if (!selectedGroupID || !selectedTabID) return;
-    void activateSlisTab(selectedGroupID, selectedTabID).then(undefined, (error: unknown) => {
-      overlaysRef.current?.error("Could not select terminal", String(error));
+    void activateSlisTab(selectedGroupID, selectedTabID).then(undefined, (activationError: unknown) => {
+      void listSlisSessions(true).then(
+        (groups) => {
+          const group = groups.find((candidate) => candidate.id === selectedGroupID);
+          const targetExists = group?.tabs.some((tab) => tab.id === selectedTabID);
+          if (targetExists) {
+            overlaysRef.current?.error("Could not select terminal", String(activationError));
+            return;
+          }
+          setTabs((currentTabs) => reconcileSessionRuntimeTabs(currentTabs, groups));
+        },
+        () => overlaysRef.current?.error("Could not select terminal", String(activationError)),
+      );
     });
   }, [selectedGroupID, selectedTabID]);
 

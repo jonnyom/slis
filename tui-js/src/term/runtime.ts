@@ -71,20 +71,28 @@ export class SessionRuntimeRefresher {
   }
 }
 
-export function applySessionRuntimeLabels(tabs: TabEntry[], groups: SessionGroup[]): TabEntry[] {
+export function reconcileSessionRuntimeTabs(tabs: TabEntry[], groups: SessionGroup[]): TabEntry[] {
   const labels = new Map<string, string>();
+  const liveTabs = new Set<string>();
   for (const group of groups) {
     for (const tab of group.tabs) {
-      if (tab.label) labels.set(`${group.id}:${tab.id}`, tab.label);
+      const key = `${group.id}:${tab.id}`;
+      liveTabs.add(key);
+      if (tab.label) labels.set(key, tab.label);
     }
   }
   let changed = false;
-  const updated = tabs.map((tab): TabEntry => {
-    if (tab.kind !== "session" || tab.opts.targetSession) return tab;
-    const runtimeLabel = labels.get(`${tab.slice}:${tab.opts.tabID}`);
-    if (!runtimeLabel || runtimeLabel === tab.opts.runtimeLabel) return tab;
+  const updated = tabs.flatMap((tab): TabEntry[] => {
+    if (tab.kind !== "session" || tab.opts.targetSession) return [tab];
+    const key = `${tab.slice}:${tab.opts.tabID}`;
+    if (!liveTabs.has(key)) {
+      changed = true;
+      return [];
+    }
+    const runtimeLabel = labels.get(key);
+    if (!runtimeLabel || runtimeLabel === tab.opts.runtimeLabel) return [tab];
     changed = true;
-    return { ...tab, opts: { ...tab.opts, runtimeLabel } };
+    return [{ ...tab, opts: { ...tab.opts, runtimeLabel } }];
   });
   return changed ? updated : tabs;
 }
