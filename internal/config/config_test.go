@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadWorkspace(t *testing.T) {
@@ -64,6 +65,35 @@ repos:
 	}
 	if ws.Processes.CPUWarnPct != 150 {
 		t.Errorf("default cpu_warn_pct = %v, want 150", ws.Processes.CPUWarnPct)
+	}
+}
+
+func TestSessionsReapAfterSurvivesSaveAndLoad(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "workspace.yaml")
+	if err := os.WriteFile(p, []byte(`
+root: ~/code
+repos:
+  web: { primary: ~/code/web, default_branch: main }
+sessions:
+  reap_after: 24h
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := LoadWorkspace(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveWorkspace(p, ws); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadWorkspace(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Sessions.ReapAfter != 24*time.Hour {
+		t.Fatalf("reap_after = %v, want 24h", reloaded.Sessions.ReapAfter)
 	}
 }
 

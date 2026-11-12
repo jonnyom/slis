@@ -91,6 +91,7 @@ Legend: **read** = no state change · **mutate** = changes git/worktrees/remote/
 | `slis scatter <name>` | mutate | no | Undo a gather (folded branches reappear as their own slices) |
 | `slis editor [set\|clear]` | mutate | no | Show/set/clear the editor used by `edit` |
 | `slis focus <slice>` | mutate | no | Open the slice's active Slis session tab (creates it if missing). This is what a clicked desktop notification runs |
+| `slis session reap [--idle 24h] [--yes]` | mutate | **yes** | List Claude tabs (with resident memory and `claude --resume` ids) in slices whose Claude sessions have all been quiet past `--idle`; `--yes` closes them. Frees each tab's Claude, LSP and MCP processes |
 | `slis review add <slice>` | mutate | no | Add a pending review comment on a line or range (`--repo --file --line [--end-line] --body [--hunk]`); branch is resolved from the slice member. Store only, never git |
 | `slis review rm <slice> <id>` | mutate | no | Remove one pending review comment by id (guarded to the named slice) |
 | `slis review clear <slice>` | mutate | no | Discard all of a slice's pending review comments |
@@ -122,6 +123,7 @@ sessions:
   harness: claude   # or "codex". Empty defaults to "claude".
   agent: ""         # explicit launch command; wins verbatim over harness.
   autostart: false  # launch the harness automatically when a session is attached.
+  reap_after: 24h   # optional: while the TUI is open, close Claude tabs quiet this long.
 ```
 
 - **`harness`** picks the binary and the launch shape: `claude` gets a
