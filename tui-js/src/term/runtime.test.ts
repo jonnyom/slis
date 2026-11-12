@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { applySessionRuntimeLabels, SessionRuntimeRefresher } from "./runtime";
+import { reconcileSessionRuntimeTabs, SessionRuntimeRefresher } from "./runtime";
 import type { SessionGroup } from "./slis";
 import type { TabEntry } from "./tabs";
 
@@ -29,8 +29,30 @@ test("runtime labels replace stale launch metadata", () => {
     tabs: [{ id: "root", kind: "root", title: "root", cwd: "/work", agent: "Codex", label: "Codex" }],
   }];
 
-  const updated = applySessionRuntimeLabels([tab], groups);
+  const updated = reconcileSessionRuntimeTabs([tab], groups);
   expect(updated[0]?.kind === "session" && updated[0].opts.runtimeLabel).toBe("Codex");
+});
+
+test("runtime removes a managed tab after its session group closes", () => {
+  const tab = {
+    kind: "session",
+    slice: "discarded-feature",
+    opts: {
+      slice: "discarded-feature",
+      kind: "agent",
+      tabID: "agent",
+      tabTitle: "agent",
+      members: [],
+      active: false,
+      wsRoot: "/work",
+      sessionOpts: {},
+      launchAgent: false,
+      agent: "claude",
+      harness: "claude",
+    },
+  } satisfies TabEntry;
+
+  expect(reconcileSessionRuntimeTabs([tab], [])).toEqual([]);
 });
 
 test("runtime refreshes never overlap and stop cancels the active refresh", async () => {
