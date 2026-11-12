@@ -1,0 +1,38 @@
+README.md
+  s_324a1c7a3db4d6::t_88ab2fe3e04a90 331,334-335
+  s_324a1c7a3db4d6::t_842e4cbcf40fd8 336
+internal/config/config_test.go
+  s_324a1c7a3db4d6::t_77a99007e4263c 7
+  s_324a1c7a3db4d6::t_7a0a84f1d89a6c 71-99
+docs/AGENT.md
+  s_324a1c7a3db4d6::t_41b837d77d56e1 471
+skills/slis/SKILL.md
+  s_324a1c7a3db4d6::t_1eb0faa8a09c86 126
+internal/config/config.go
+  s_324a1c7a3db4d6::t_a2ad3ff71002ff 8
+  s_324a1c7a3db4d6::t_38c4a5e35fafff 81
+  s_324a1c7a3db4d6::t_53a3e5916cf072 82
+internal/cli/session_reap.go
+  s_324a1c7a3db4d6::t_290f85b25eb89b 47-49,58,62-106
+  s_324a1c7a3db4d6::t_10401d58d5a9c0 4,8
+  s_324a1c7a3db4d6::t_b0881460811160 107
+internal/cli/rpc.go
+  s_324a1c7a3db4d6::t_2baf4f25f027a1 9
+  s_324a1c7a3db4d6::t_9adb0b46c01ebc 42-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9f7576d0c952941cd9d0da8c2d467b147bbe2368",
+  "prompts": {},
+  "sessions": {
+    "s_324a1c7a3db4d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d66d4952-b46b-4939-b87d-5faffc2ccbab",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jonny <jonathanomahony@gmail.com>"
+    }
+  }
+}
