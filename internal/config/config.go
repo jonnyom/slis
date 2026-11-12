@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -77,7 +78,8 @@ type Sessions struct {
 	//   "repos" — one window per repo worktree
 	//   "both"  — a root window first, then one per repo
 	// Empty defaults to "root" when members share a parent, otherwise "repos".
-	Layout string `yaml:"layout"`
+	Layout    string        `yaml:"layout"`
+	ReapAfter time.Duration `yaml:"reap_after,omitempty"`
 }
 
 // AgentSpec is one selectable coding agent: a display name and the argv launched

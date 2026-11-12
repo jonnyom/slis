@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -37,6 +38,9 @@ var rpcCmd = &cobra.Command{
 		manager, err := openSessionManager()
 		if err != nil {
 			return err
+		}
+		if ws.Sessions.ReapAfter > 0 {
+			go reapIdleClaudeTabsEvery(ctx, manager, ws.Sessions.ReapAfter, 15*time.Minute, os.Stderr)
 		}
 		srv := rpcserver.New(ws, sp, Version).WithSessionManager(manager)
 		return srv.Serve(ctx, os.Stdin, os.Stdout)

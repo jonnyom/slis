@@ -123,6 +123,7 @@ sessions:
   harness: claude   # or "codex". Empty defaults to "claude".
   agent: ""         # explicit launch command; wins verbatim over harness.
   autostart: false  # launch the harness automatically when a session is attached.
+  reap_after: 24h   # optional: while the TUI is open, close Claude tabs quiet this long.
 ```
 
 - **`harness`** picks the binary and the launch shape: `claude` gets a

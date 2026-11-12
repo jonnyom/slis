@@ -328,7 +328,11 @@ sessions:
   harness: codex       # claude (default) or codex
   layout: repos        # repos, root, or both
   autostart: false
+  reap_after: 24h      # optional: close Claude tabs quiet this long while the TUI is open
 ```
+
+Reaped conversations come back with `claude --continue` (or `claude --resume`)
+in the same worktree. `slis session reap` previews what would close.
 
 To launch a custom command, set `agent`. A non-empty value takes precedence for
 interactive sessions, while `harness` still selects the compatible integration

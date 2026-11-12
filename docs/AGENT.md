@@ -468,6 +468,7 @@ sessions:
   harness: claude   # "claude" (default when empty) or "codex"
   agent: ""         # explicit launch command; non-empty wins verbatim
   autostart: false  # launch the harness when a session is first attached
+  reap_after: 24h   # optional: while the TUI is open, close Claude tabs quiet this long (`slis session reap`)
   agents:           # optional: selectable agents (name + argv) → launch picker
     - { name: claude, cmd: [claude] }
     - { name: codex,  cmd: [codex] }

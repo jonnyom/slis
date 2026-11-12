@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"slices"
 	"sort"
@@ -42,28 +44,9 @@ var sessionReapCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		groups, err := sessionmanager.OpenStore(config.StatePaths().StateDir).List()
-		if err != nil {
-			return err
-		}
-		runtimes, err := manager.Runtimes(cmd.Context(), groups)
-		if err != nil {
-			return err
-		}
-		eventsDirectory := config.StatePaths().EventsDir
-		recordsBySlice := make(map[string][]notify.Status, len(groups))
-		for _, group := range groups {
-			recordsBySlice[group.ID] = notify.SessionRecords(eventsDirectory, group.ID)
-		}
-		candidates := idleClaudeTabs(groups, runtimes, recordsBySlice, time.Now(), sessionReapIdle)
-
-		var closeErrors []error
-		if sessionReapYes {
-			for _, candidate := range candidates {
-				if err := manager.KillTab(cmd.Context(), candidate.Slice, candidate.Tab); err != nil {
-					closeErrors = append(closeErrors, fmt.Errorf("close %s/%s: %w", candidate.Slice, candidate.Tab, err))
-				}
-			}
+		candidates, reapErr := reapIdleClaudeTabs(cmd.Context(), manager, sessionReapIdle, sessionReapYes)
+		if candidates == nil {
+			return reapErr
 		}
 		if sessionReapJSON {
 			if err := json.NewEncoder(cmd.OutOrStdout()).Encode(candidates); err != nil {
@@ -72,8 +55,54 @@ var sessionReapCmd = &cobra.Command{
 		} else {
 			printReapCandidates(cmd, candidates, sessionReapYes)
 		}
-		return errors.Join(closeErrors...)
+		return reapErr
 	},
+}
+
+func reapIdleClaudeTabs(ctx context.Context, manager *sessionmanager.Manager, idleFor time.Duration, closeTabs bool) ([]reapCandidate, error) {
+	groups, err := sessionmanager.OpenStore(config.StatePaths().StateDir).List()
+	if err != nil {
+		return nil, err
+	}
+	runtimes, err := manager.Runtimes(ctx, groups)
+	if err != nil {
+		return nil, err
+	}
+	eventsDirectory := config.StatePaths().EventsDir
+	recordsBySlice := make(map[string][]notify.Status, len(groups))
+	for _, group := range groups {
+		recordsBySlice[group.ID] = notify.SessionRecords(eventsDirectory, group.ID)
+	}
+	candidates := idleClaudeTabs(groups, runtimes, recordsBySlice, time.Now(), idleFor)
+	if !closeTabs {
+		return candidates, nil
+	}
+	var closeErrors []error
+	for _, candidate := range candidates {
+		if err := manager.KillTab(ctx, candidate.Slice, candidate.Tab); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close %s/%s: %w", candidate.Slice, candidate.Tab, err))
+		}
+	}
+	return candidates, errors.Join(closeErrors...)
+}
+
+func reapIdleClaudeTabsEvery(ctx context.Context, manager *sessionmanager.Manager, idleFor, interval time.Duration, report io.Writer) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		candidates, err := reapIdleClaudeTabs(ctx, manager, idleFor, true)
+		if err != nil {
+			fmt.Fprintln(report, "rpc: reap idle Claude tabs:", err)
+		}
+		for _, candidate := range candidates {
+			fmt.Fprintf(report, "rpc: reaped %s/%s (quiet %dh)\n", candidate.Slice, candidate.Tab, candidate.IdleHours)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func idleClaudeTabs(groups []sessionmanager.Group, runtimes []sessionmanager.TabRuntime, recordsBySlice map[string][]notify.Status, now time.Time, idleFor time.Duration) []reapCandidate {
