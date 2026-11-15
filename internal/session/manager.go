@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -115,6 +116,13 @@ func shouldStartLoginShell(loginShell string, processes []proc.ProcInfo) bool {
 
 func reconcileGroup(desired, previous Group) Group {
 	group := desired
+	group.Tabs = make([]Tab, 0, len(desired.Tabs))
+	for _, tab := range desired.Tabs {
+		if !slices.Contains(previous.Dismissed, tab.ID) {
+			group.Tabs = append(group.Tabs, tab)
+		}
+	}
+	group.Dismissed = previous.Dismissed
 	group.Deliveries = previous.Deliveries
 	for _, tab := range previous.Tabs {
 		if dynamicTabKind(tab.Kind) && !groupHasTab(group, tab.ID) {
@@ -165,6 +173,7 @@ func (manager *Manager) EnsureTab(ctx context.Context, groupID string, spec TabS
 		}
 	}
 	err = manager.store.Update(groupID, func(current *Group) error {
+		current.Dismissed = slices.DeleteFunc(current.Dismissed, func(id string) bool { return id == tab.ID })
 		for _, existing := range current.Tabs {
 			if existing.ID == tab.ID {
 				group = *current
@@ -453,6 +462,9 @@ func (manager *Manager) KillTab(ctx context.Context, groupID, tabID string) erro
 			}
 			if currentIndex < 0 {
 				return fmt.Errorf("%w: %s/%s", ErrTabNotFound, groupID, tabID)
+			}
+			if !dynamicTabKind(current.Tabs[currentIndex].Kind) && !slices.Contains(current.Dismissed, tabID) {
+				current.Dismissed = append(current.Dismissed, tabID)
 			}
 			current.Tabs = append(current.Tabs[:currentIndex], current.Tabs[currentIndex+1:]...)
 			for deliveryID, delivery := range current.Deliveries {

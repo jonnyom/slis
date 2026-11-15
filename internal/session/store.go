@@ -39,6 +39,9 @@ type Group struct {
 	ActiveTabID string              `json:"active_tab_id"`
 	Tabs        []Tab               `json:"tabs"`
 	Deliveries  map[string]Delivery `json:"deliveries,omitempty"`
+	// Dismissed lists planned tabs (root/repo) the user closed, so Ensure does
+	// not start them again. Opening one explicitly (EnsureTab) clears it.
+	Dismissed []string `json:"dismissed,omitempty"`
 }
 
 type Store struct {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -287,5 +288,68 @@ func TestManagerEnsurePreservesTabAddedDuringReconciliation(t *testing.T) {
 	}
 	if !groupHasTab(group, "review-42") {
 		t.Fatal("review tab was lost during reconciliation")
+	}
+}
+
+// Closing the planned root tab is a choice: the next Ensure (run whenever an
+// agent or shell is opened, or the dock is reopened) must not bring it back,
+// while asking for that tab explicitly still does.
+func TestManagerEnsureDoesNotResurrectClosedPlannedTab(t *testing.T) {
+	directory := t.TempDir()
+	binary := filepath.Join(directory, "zmx")
+	ensuredPath := filepath.Join(directory, "ensured")
+	script := "#!/bin/sh\nif [ \"$1\" = \"attach\" ]; then printf '%s\\n' \"$2\" >> \"$ZMX_TEST_ENSURED\"; fi\n"
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZMX_TEST_ENSURED", ensuredPath)
+	store := OpenStore(directory)
+	if err := store.Save(Group{
+		ID:          "feature",
+		ActiveTabID: "agent",
+		Tabs: []Tab{
+			{ID: "root", Kind: TabKindRoot, CWD: directory, PersistenceName: PersistenceName("feature", "root")},
+			{ID: "agent", Kind: TabKindAgent, CWD: directory, PersistenceName: PersistenceName("feature", "agent")},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, zmxctl.New(binary, "/tmp/slis-session-test"))
+	ctx := context.Background()
+	members := []model.SliceMember{{Repo: "api", WorktreePath: directory}}
+	options := LayoutOptions{Root: directory}
+
+	if err := manager.KillTab(ctx, "feature", "root"); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(ensuredPath)
+	group, err := manager.Ensure(ctx, "feature", members, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if groupHasTab(group, "root") {
+		t.Fatalf("closed root tab came back: %#v", group.Tabs)
+	}
+	if !groupHasTab(group, "agent") {
+		t.Fatalf("agent tab was lost: %#v", group.Tabs)
+	}
+	ensured, _ := os.ReadFile(ensuredPath)
+	if strings.Contains(string(ensured), PersistenceName("feature", "root")) {
+		t.Fatalf("a terminal was started for the closed root tab: %q", ensured)
+	}
+
+	group, err = manager.EnsureTab(ctx, "feature", TabSpec{ID: "root", Kind: TabKindRoot, Title: "root", CWD: directory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !groupHasTab(group, "root") {
+		t.Fatal("explicitly reopened root tab is missing")
+	}
+	group, err = manager.Ensure(ctx, "feature", members, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !groupHasTab(group, "root") {
+		t.Fatal("reopened root tab was dropped by the next Ensure")
 	}
 }
