@@ -13,26 +13,35 @@ export function hasFailingCi(view: SliceView | undefined): boolean {
   );
 }
 
-// The contextual list hint bar. A waiting-input slice signposts the answer key
-// (P1); a red-CI slice surfaces `v why` / `F fix` (M4); a slice that needs
-// restacking surfaces `R stack` (D3); and while a search is active `n/N` are
-// labelled `match` to reflect their search-repeat meaning (M3).
-export function listHints(focused: SliceView | undefined, searchActive: boolean): Hint[] {
+// The contextual list hint bar. Only everyday keys live here; the rest are one
+// `?` away. A waiting-input slice signposts the answer key (P1); a red-CI slice
+// surfaces `v why` / `F fix` (M4); a slice that needs restacking surfaces
+// `R stack` (D3); while a search is active `n/N` are labelled `match` (M3).
+// On a unit header the bar switches to the unit's own keys.
+export function listHints(
+  focused: SliceView | undefined,
+  searchActive: boolean,
+  onUnit = false,
+): Hint[] {
+  if (onUnit) {
+    return [
+      { key: "enter", label: "fold" },
+      { key: "space", label: "select all" },
+      { key: "U", label: "rename" },
+      { key: "j/k", label: "move" },
+    ];
+  }
   const waiting = focused?.status === "waiting-input";
   const hints: Hint[] = [
     { key: "enter", label: "open" },
     { key: "a", label: waiting ? "answer" : "agent" },
-    { key: "C", label: "default" },
-    { key: "L", label: "choose" },
-    { key: "V", label: "review" },
+    { key: "C/L", label: "launch" },
     { key: "t", label: "shell" },
-    { key: "s", label: "sessions" },
   ];
   if (hasFailingCi(focused)) hints.push({ key: "v", label: "why" }, { key: "F", label: "fix" });
   if (focused && needsRestack(focused)) hints.push({ key: "R", label: "stack" });
   hints.push({ key: "w", label: "swap" });
   if (searchActive) hints.push({ key: "n/N", label: "match" });
   else hints.push({ key: "space", label: "select" }, { key: "/", label: "search" });
-  hints.push({ key: ",", label: "config" });
   return hints;
 }

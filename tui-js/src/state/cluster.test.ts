@@ -7,6 +7,7 @@ import {
   clampFocus,
   clusterByStack,
   clusterByUnit,
+  collapsedUnitOf,
   focusIndexForSlice,
   isGatherableStackSlice,
   missingSliceNames,
@@ -16,6 +17,8 @@ import {
   selectableIndices,
   stackRootOf,
   stepSelectable,
+  unitHeaderIndex,
+  unitOfRow,
   type BrowserRow,
 } from "./cluster";
 
@@ -223,7 +226,7 @@ describe("searchAwareNav (M3 — n/N modal decision)", () => {
 });
 
 describe("clusterByUnit", () => {
-  test("keeps a unit together under one header, stack-ordered inside", () => {
+  test("keeps a unit together under one header, stack-ordered inside, after loose slices", () => {
     const views = [
       view("alpha"),
       view("lean", { unit: "latency", stack_id: "mw\u0000root", stack_order: 2 }),
@@ -234,14 +237,96 @@ describe("clusterByUnit", () => {
     const c = clusterByUnit(views);
     expect(c.ordered.map((v) => v.slice.name)).toEqual([
       "alpha",
-      "latency",
-      "lean",
       "beta",
       "gamma",
+      "latency",
+      "lean",
     ]);
     expect(c.unitLeaders.get("latency")).toEqual({ unit: "latency", count: 2 });
     expect(c.unitLeaders.size).toBe(1);
     expect(c.leaders.get("latency")?.count).toBe(2);
     expect(c.leaders.get("beta")?.count).toBe(2);
+  });
+});
+
+describe("unit rows", () => {
+  // The screenshot bug: a unit followed by an unrelated slice must not read as
+  // one block. The unit gets its own header row and its members are marked,
+  // with the last one closing the unit, so `after` is visibly outside it.
+  const views = [
+    view("before"),
+    view("rate", { unit: "platform" }),
+    view("rate-api", { unit: "platform" }),
+    view("after"),
+  ];
+  const c = clusterByUnit(views);
+  const opts = (collapsed: string[] = [], expandAll = false) => ({
+    unitLeaders: c.unitLeaders,
+    collapsed: new Set(collapsed),
+    expandAll,
+  });
+  const shape = (rows: BrowserRow[]) =>
+    rows.map((r) =>
+      r.kind === "unit"
+        ? `unit:${r.unit}${r.collapsed ? "+" : "-"}`
+        : r.kind === "slice"
+          ? `${r.view.slice.name}${r.unit ? (r.unit.last ? "└" : "├") : ""}`
+          : `missing:${r.name}`,
+    );
+
+  test("loose slices first, then the unit header and its members", () => {
+    expect(shape(buildRows(c.ordered, [], opts()))).toEqual([
+      "before",
+      "after",
+      "unit:platform-",
+      "rate├",
+      "rate-api└",
+    ]);
+  });
+
+  test("units sit below loose slices and close before the next unit", () => {
+    const two = clusterByUnit([
+      view("rate", { unit: "platform" }),
+      view("query-cost"),
+      view("arabic", { unit: "ai" }),
+    ]);
+    const rows = buildRows(two.ordered, [], {
+      unitLeaders: two.unitLeaders,
+      collapsed: new Set(),
+    });
+    expect(shape(rows)).toEqual(["query-cost", "unit:platform-", "rate└", "unit:ai-", "arabic└"]);
+  });
+
+  test("collapsed unit hides members but keeps the header selectable", () => {
+    const rows = buildRows(c.ordered, [], opts(["platform"]));
+    expect(shape(rows)).toEqual(["before", "after", "unit:platform+"]);
+    expect(selectableIndices(rows)).toEqual([0, 1, 2]);
+    expect(stepSelectable(rows, 0, 1)).toBe(1);
+    expect(collapsedUnitOf(rows, "rate-api")).toBe("platform");
+    expect(collapsedUnitOf(rows, "after")).toBeNull();
+  });
+
+  test("search expands every unit so matches stay visible", () => {
+    expect(shape(buildRows(c.ordered, [], opts(["platform"], true)))).toContain("rate├");
+  });
+
+  test("h from a member finds the unit and its header", () => {
+    const rows = buildRows(c.ordered, [], opts());
+    expect(unitOfRow(rows[4])).toBe("platform");
+    expect(unitOfRow(rows[2])).toBe("platform");
+    expect(unitOfRow(rows[0])).toBeNull();
+    expect(unitHeaderIndex(rows, "platform")).toBe(2);
+  });
+
+  test("a collapsed unit with a waiting member is an attention stop", () => {
+    const waiting = clusterByUnit([
+      view("calm"),
+      view("w", { unit: "u" }, { status: "waiting-input" }),
+    ]);
+    const rows = buildRows(waiting.ordered, [], {
+      unitLeaders: waiting.unitLeaders,
+      collapsed: new Set(["u"]),
+    });
+    expect(nextAttentionRow(rows, 0, 1)).toBe(1);
   });
 });

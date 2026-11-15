@@ -225,6 +225,7 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
 
   // The slice the browser has focused (for the lazy-mode background tick, G7).
   const browserFocusRef = useRef<string | null>(null);
+  const [collapsedUnits, setCollapsedUnits] = useState<ReadonlySet<string>>(() => new Set());
 
   const loadSlice = useCallback(
     (name: string): Promise<void> => {
@@ -1228,6 +1229,8 @@ export function App({ initialPrefs, initialThemeMode }: AppProps): ReactNode {
           onConfigureAgents={configureAgents}
           onFocusSlice={onFocusSlice}
           initialFocusSlice={browserFocusRef.current}
+          collapsedUnits={collapsedUnits}
+          onCollapsedUnitsChange={setCollapsedUnits}
           focusRequest={browserFocusRequest}
           onRefresh={manualRefresh}
           onToggleProcs={() => setProcsOpen(true)}

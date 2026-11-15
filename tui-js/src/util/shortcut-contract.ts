@@ -27,6 +27,7 @@ export const SHORTCUT_CONTEXTS = {
     { action: "group", keys: ["m"] },
     { action: "ungroup", keys: ["u"] },
     { action: "unit", keys: ["U"] },
+    { action: "collapse-unit", keys: ["h", "left"] },
     { action: "stack-actions", keys: ["R"] },
     { action: "conflicts", keys: ["!"] },
     { action: "copy-pr-stack", keys: ["Y"] },

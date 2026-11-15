@@ -25,6 +25,7 @@ import {
   buildRows,
   clampFocus,
   clusterByUnit,
+  collapsedUnitOf,
   firstSelectable,
   focusIndexForSlice,
   isGatherableStackSlice,
@@ -32,9 +33,11 @@ import {
   missingSliceNames,
   searchAwareNav,
   stepSelectable,
+  unitAttention,
+  unitHeaderIndex,
+  unitOfRow,
   type BrowserRow,
   type StackLeader,
-  type UnitLeader,
 } from "../state/cluster";
 import type { CockpitEntry } from "./cockpit.hints";
 import { isMethodNotFound } from "../rpc/client";
@@ -79,6 +82,10 @@ export interface BrowserProps {
   onConfigureAgents: () => void;
   onFocusSlice: (slice: string) => void;
   initialFocusSlice?: string | null;
+  // Collapsed unit names. Owned by the app so they survive the browser
+  // remounting when you open and leave a slice.
+  collapsedUnits: ReadonlySet<string>;
+  onCollapsedUnitsChange: (next: ReadonlySet<string>) => void;
   focusRequest?: { id: number; slice: string } | null;
   onRefresh: () => void;
   onToggleProcs: () => void;
@@ -138,6 +145,7 @@ const SliceRow = memo(function SliceRow({
   listFocused,
   selected,
   reviewRun,
+  tree,
   themeVersion: _themeVersion,
 }: {
   view: SliceView;
@@ -145,6 +153,8 @@ const SliceRow = memo(function SliceRow({
   listFocused: boolean;
   selected: boolean;
   reviewRun?: ReviewRun;
+  // Tree gutter for a unit member: "├" mid-unit, "└" on the last member.
+  tree?: string;
   themeVersion: string;
 }): ReactNode {
   const focusRow = focused && listFocused;
@@ -155,6 +165,7 @@ const SliceRow = memo(function SliceRow({
         <span fg={theme.focus} attributes={BOLD}>
           {focusRow ? glyph.focusBar : " "}
         </span>
+        {tree ? <span fg={theme.textFaint}>{`${tree} `}</span> : null}
         <span fg={selected ? theme.good : theme.textFaint}>
           {selected ? glyph.selected : " "}
         </span>
@@ -205,21 +216,58 @@ function MissingRow({ name }: { name: string }): ReactNode {
   );
 }
 
-function StackHeader({ leader }: { leader: StackLeader }): ReactNode {
+function StackHeader({ leader, inUnit }: { leader: StackLeader; inUnit: boolean }): ReactNode {
   const root = leader.root === "" ? "(stack)" : leader.root;
   return (
     <text wrapMode="none" fg={theme.textFaint} attributes={DIM}>
+      {inUnit ? <span fg={theme.textFaint}>{" │ "}</span> : null}
       {`  stack: ${root} → … (${leader.count} slices)`}
     </text>
   );
 }
 
-function UnitHeader({ leader }: { leader: UnitLeader }): ReactNode {
-  const count = leader.count === 1 ? "1 slice" : `${leader.count} slices`;
+// UnitHeader opens a unit: a disclosure caret, the unit name and its member
+// count. Collapsed, it rolls up the most urgent member state so a slice waiting
+// on you is never hidden behind a closed unit.
+function UnitHeader({
+  row,
+  focused,
+  listFocused,
+  selectedCount,
+}: {
+  row: Extract<BrowserRow, { kind: "unit" }>;
+  focused: boolean;
+  listFocused: boolean;
+  selectedCount: number;
+}): ReactNode {
+  const focusRow = focused && listFocused;
+  // Collapsed: show the most urgent member's glyph, and how many need you.
+  const urgent =
+    row.collapsed && unitAttention(row.members) < 99
+      ? [...row.members].sort((x, y) => attentionRank(x) - attentionRank(y))[0]
+      : undefined;
+  const waiting = row.collapsed ? row.members.filter((m) => attentionRank(m) < 99).length : 0;
+  const a = urgent ? attention(urgent) : undefined;
+  const count = row.members.length;
   return (
-    <text wrapMode="none" fg={theme.textDim}>
-      {`◆ unit: ${leader.unit} (${count})`}
-    </text>
+    <box width="100%" backgroundColor={focusRow ? theme.surfaceAlt : undefined} flexDirection="row">
+      <text wrapMode="none">
+        <span fg={theme.focus} attributes={BOLD}>
+          {focusRow ? glyph.focusBar : " "}
+        </span>
+        <span fg={theme.textDim}>{row.collapsed ? "▸ " : "▾ "}</span>
+        <span fg={focusRow ? theme.textBright : theme.text} attributes={BOLD}>
+          {row.unit}
+        </span>
+        <span fg={theme.textFaint}>{` ${count}`}</span>
+        {selectedCount > 0 ? (
+          <span fg={theme.good}>{` ${glyph.selected}${selectedCount}`}</span>
+        ) : null}
+        {a ? (
+          <span fg={a.color} attributes={a.bold ? BOLD : 0}>{` ${a.glyph}${waiting > 1 ? waiting : ""}`}</span>
+        ) : null}
+      </text>
+    </box>
   );
 }
 
@@ -675,9 +723,18 @@ export function Browser(props: BrowserProps): ReactNode {
   }, [views, filter, search]);
 
   const { ordered, leaders, unitLeaders } = useMemo(() => clusterByUnit(filtered), [filtered]);
+  const { collapsedUnits, onCollapsedUnitsChange } = props;
 
   const missing = useMemo(() => missingSliceNames(props.ls.missing), [props.ls.missing]);
-  const rows: BrowserRow[] = useMemo(() => buildRows(ordered, missing), [ordered, missing]);
+  const rows: BrowserRow[] = useMemo(
+    () =>
+      buildRows(ordered, missing, {
+        unitLeaders,
+        collapsed: collapsedUnits,
+        expandAll: search !== "",
+      }),
+    [ordered, missing, unitLeaders, collapsedUnits, search],
+  );
   const [focusIndex, setFocusIndex] = useState(() =>
     focusIndexForSlice(rows, props.initialFocusSlice),
   );
@@ -695,6 +752,13 @@ export function Browser(props: BrowserProps): ReactNode {
       setSearching(false);
       return;
     }
+    const hiddenIn = collapsedUnitOf(rows, request.slice);
+    if (hiddenIn) {
+      const next = new Set(collapsedUnits);
+      next.delete(hiddenIn);
+      onCollapsedUnitsChange(next);
+      return;
+    }
     const requestedIndex = rows.findIndex(
       (row) => row.kind === "slice" && row.view.slice.name === request.slice,
     );
@@ -710,6 +774,15 @@ export function Browser(props: BrowserProps): ReactNode {
 
   const focusRow = rows[focusIndex];
   const focusedSlice = focusRow?.kind === "slice" ? focusRow.view : undefined;
+  const focusedUnit = focusRow?.kind === "unit" ? focusRow : undefined;
+
+  const setUnitCollapsed = (unit: string, collapse: boolean) => {
+    if (collapsedUnits.has(unit) === collapse) return;
+    const next = new Set(collapsedUnits);
+    if (collapse) next.add(unit);
+    else next.delete(unit);
+    onCollapsedUnitsChange(next);
+  };
 
   useEffect(() => {
     if (focusedSlice) onFocusSlice(focusedSlice.slice.name);
@@ -719,8 +792,10 @@ export function Browser(props: BrowserProps): ReactNode {
     setSelected((s) => pruneSelection(s, views.map((v) => v.slice.name)));
   }, [views]);
 
+  // On a unit header, batch actions target the whole unit.
   const targetsFor = (): string[] => {
     if (selected.size > 0) return [...selected];
+    if (focusedUnit) return focusedUnit.members.map((m) => m.slice.name);
     return focusedSlice ? [focusedSlice.slice.name] : [];
   };
 
@@ -792,12 +867,41 @@ export function Browser(props: BrowserProps): ReactNode {
       if (prev !== null) setFocusIndex(prev);
       return;
     }
+    // Units fold like a tree: enter toggles the header, l/→ opens it, h/←
+    // closes it (from the header or any member, parking focus on the header).
+    if (focusedUnit && (name === "return" || name === "enter")) {
+      setUnitCollapsed(focusedUnit.unit, !focusedUnit.collapsed);
+      return;
+    }
+    if (focusedUnit && (name === "l" || name === "right")) {
+      setUnitCollapsed(focusedUnit.unit, false);
+      return;
+    }
+    if (name === "h" || name === "left") {
+      const unit = unitOfRow(focusRow);
+      if (unit && search === "") {
+        setUnitCollapsed(unit, true);
+        setFocusIndex(unitHeaderIndex(rows, unit));
+      }
+      return;
+    }
     if (name === "return" || name === "enter" || name === "l" || name === "right") {
       if (focusedSlice) props.onEnter(focusedSlice.slice.name);
       return;
     }
     if (name === "space") {
-      if (focusedSlice) setSelected((s) => toggleSelected(s, focusedSlice.slice.name));
+      if (focusedUnit) {
+        const names = focusedUnit.members.map((m) => m.slice.name);
+        const allOn = names.every((n) => selected.has(n));
+        setSelected((s) => {
+          const next = new Set(s);
+          for (const n of names) {
+            if (allOn) next.delete(n);
+            else next.add(n);
+          }
+          return next;
+        });
+      } else if (focusedSlice) setSelected((s) => toggleSelected(s, focusedSlice.slice.name));
       return;
     }
     if (name === "A") {
@@ -831,7 +935,8 @@ export function Browser(props: BrowserProps): ReactNode {
     }
     if (name === "U") {
       const targets = targetsFor();
-      const current = views.find((v) => v.slice.name === targets[0])?.slice.unit ?? "";
+      const current =
+        focusedUnit?.unit ?? views.find((v) => v.slice.name === targets[0])?.slice.unit ?? "";
       if (targets.length > 0) overlays.unit(targets, current, () => setSelected(new Set()));
       return;
     }
@@ -907,7 +1012,7 @@ export function Browser(props: BrowserProps): ReactNode {
 
   const leftW = Math.max(22, Math.min(32, Math.floor(props.width / 4)));
   const bodyH = props.height - 2;
-  const sliceCount = rows.filter((r) => r.kind === "slice").length;
+  const sliceCount = ordered.length;
   const workspaceEmpty = views.length === 0 && missing.length === 0;
 
   const counts = {
@@ -972,15 +1077,36 @@ export function Browser(props: BrowserProps): ReactNode {
               </text>
             ) : (
               rows.map((row, i) => {
+                // Each unit header opens with one blank line; that single gap is
+                // the only separator. Rows after the last unit (missing rows)
+                // take the same gap so they don't read as unit members.
                 if (row.kind === "missing")
-                  return <MissingRow key={`m-${row.name}`} name={row.name} />;
+                  return (
+                    <box key={`m-${row.name}`} marginTop={unitOfRow(rows[i - 1]) ? 1 : 0}>
+                      <MissingRow name={row.name} />
+                    </box>
+                  );
+                if (row.kind === "unit")
+                  return (
+                    <box
+                      key={`u-${row.unit}`}
+                      flexDirection="column"
+                      marginTop={i > 0 ? 1 : 0}
+                    >
+                      <UnitHeader
+                        row={row}
+                        focused={i === focusIndex}
+                        listFocused={hubFocus === "list"}
+                        selectedCount={row.members.filter((m) => selected.has(m.slice.name)).length}
+                      />
+                    </box>
+                  );
                 const leader = leaders.get(row.view.slice.name);
-                const unitLeader = unitLeaders.get(row.view.slice.name);
                 return (
                   <box key={row.view.slice.name} flexDirection="column">
-                    {unitLeader ? <UnitHeader leader={unitLeader} /> : null}
-                    {leader ? <StackHeader leader={leader} /> : null}
+                    {leader ? <StackHeader leader={leader} inUnit={!!row.unit} /> : null}
                     <SliceRow
+                      tree={row.unit ? (row.unit.last ? "└" : "├") : undefined}
                       view={row.view}
                       focused={i === focusIndex}
                       listFocused={hubFocus === "list"}
@@ -1008,7 +1134,9 @@ export function Browser(props: BrowserProps): ReactNode {
         </text>
       ) : (
         <HintBar
-          hints={hubFocus === "rail" ? RAIL_HINTS : listHints(focusedSlice, search !== "")}
+          hints={
+            hubFocus === "rail" ? RAIL_HINTS : listHints(focusedSlice, search !== "", !!focusedUnit)
+          }
           width={props.width - 1}
         />
       )}

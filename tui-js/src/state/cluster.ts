@@ -38,9 +38,9 @@ export interface UnitClustered extends Clustered {
   unitLeaders: Map<string, UnitLeader>;
 }
 
-// clusterByUnit keeps slices of one unit adjacent (at the unit's first-appearance
-// position) under a unit header, then applies stack clustering inside each unit.
-// Slices with no unit are clustered by stack as before.
+// clusterByUnit lists loose slices first (clustered by stack as before), then
+// each unit in first-appearance order, its members kept adjacent under a unit
+// header with stack clustering inside.
 export function clusterByUnit(views: SliceView[]): UnitClustered {
   const buckets = new Map<string, SliceView[]>();
   views.forEach((v, i) => {
@@ -56,7 +56,10 @@ export function clusterByUnit(views: SliceView[]): UnitClustered {
   const ordered: SliceView[] = [];
   const leaders = new Map<string, StackLeader>();
   const unitLeaders = new Map<string, UnitLeader>();
-  for (const bucket of buckets.values()) {
+  const all = [...buckets.values()];
+  const loose = all.filter((bucket) => !bucket[0]!.slice.unit);
+  const units = all.filter((bucket) => !!bucket[0]!.slice.unit);
+  for (const bucket of [...loose, ...units]) {
     const c = clusterByStack(bucket);
     const unit = bucket[0]!.slice.unit;
     if (unit) unitLeaders.set(c.ordered[0]!.slice.name, { unit, count: c.ordered.length });
@@ -137,9 +140,20 @@ export function nextAttentionIndex(
   return idxs[np]!;
 }
 
+// A browser row. Slices inside a unit carry `unit` so the list can draw them
+// under the unit header's tree gutter; `last` marks the closing member, which is
+// what tells the eye where the unit ends and the next slice begins.
 export type BrowserRow =
-  | { kind: "slice"; view: SliceView }
+  | { kind: "slice"; view: SliceView; unit?: { name: string; last: boolean } }
+  | { kind: "unit"; unit: string; members: SliceView[]; collapsed: boolean }
   | { kind: "missing"; name: string };
+
+export interface UnitRowOptions {
+  unitLeaders: Map<string, UnitLeader>;
+  collapsed: ReadonlySet<string>;
+  // Search shows every match, so a hit inside a collapsed unit stays visible.
+  expandAll?: boolean;
+}
 
 export function missingSliceNames(
   missing: { slice: string }[] | undefined,
@@ -155,18 +169,79 @@ export function missingSliceNames(
   return out;
 }
 
-export function buildRows(ordered: SliceView[], missing: string[]): BrowserRow[] {
-  const rows: BrowserRow[] = ordered.map((view) => ({ kind: "slice", view }));
+// buildRows lays the clustered slices out as rows. Each unit gets its own header
+// row (selectable, so it can be collapsed) followed by its members, which
+// clusterByUnit has already placed contiguously after the unit leader.
+export function buildRows(
+  ordered: SliceView[],
+  missing: string[],
+  units?: UnitRowOptions,
+): BrowserRow[] {
+  const rows: BrowserRow[] = [];
+  for (let i = 0; i < ordered.length; i++) {
+    const view = ordered[i]!;
+    const leader = units?.unitLeaders.get(view.slice.name);
+    if (!leader) {
+      rows.push({ kind: "slice", view });
+      continue;
+    }
+    const members = ordered.slice(i, i + leader.count);
+    const collapsed = !units!.expandAll && units!.collapsed.has(leader.unit);
+    rows.push({ kind: "unit", unit: leader.unit, members, collapsed });
+    if (!collapsed) {
+      members.forEach((member, j) =>
+        rows.push({
+          kind: "slice",
+          view: member,
+          unit: { name: leader.unit, last: j === members.length - 1 },
+        }),
+      );
+    }
+    i += members.length - 1;
+  }
   for (const name of missing) rows.push({ kind: "missing", name });
   return rows;
+}
+
+function isSelectable(row: BrowserRow | undefined): boolean {
+  return row?.kind === "slice" || row?.kind === "unit";
 }
 
 export function selectableIndices(rows: BrowserRow[]): number[] {
   const out: number[] = [];
   rows.forEach((r, i) => {
-    if (r.kind === "slice") out.push(i);
+    if (isSelectable(r)) out.push(i);
   });
   return out;
+}
+
+// unitAttention is the most urgent attention rank among a unit's members, so a
+// collapsed unit can still say "something in here needs you".
+export function unitAttention(members: SliceView[]): number {
+  return Math.min(99, ...members.map(attentionRank));
+}
+
+// unitOfRow names the unit a row belongs to: the header itself or a member.
+export function unitOfRow(row: BrowserRow | undefined): string | null {
+  if (row?.kind === "unit") return row.unit;
+  if (row?.kind === "slice") return row.unit?.name ?? null;
+  return null;
+}
+
+// unitHeaderIndex finds the header row of a unit, used to park focus on it when
+// the unit is collapsed from one of its members.
+export function unitHeaderIndex(rows: BrowserRow[], unit: string): number {
+  return rows.findIndex((row) => row.kind === "unit" && row.unit === unit);
+}
+
+// collapsedUnitOf reports the unit that hides a slice when collapsed, so a focus
+// request for that slice can expand it first.
+export function collapsedUnitOf(rows: BrowserRow[], sliceName: string): string | null {
+  for (const row of rows) {
+    if (row.kind === "unit" && row.collapsed && row.members.some((m) => m.slice.name === sliceName))
+      return row.unit;
+  }
+  return null;
 }
 
 export function firstSelectable(rows: BrowserRow[]): number {
@@ -211,7 +286,7 @@ export function stepSelectable(
 export function clampFocus(rows: BrowserRow[], current: number): number {
   const sel = selectableIndices(rows);
   if (sel.length === 0) return 0;
-  if (rows[current]?.kind === "slice") return current;
+  if (isSelectable(rows[current])) return current;
   const below = sel.filter((i) => i <= current);
   return below.length ? below[below.length - 1]! : sel[0]!;
 }
@@ -220,6 +295,7 @@ export function attentionRowIndices(rows: BrowserRow[]): number[] {
   const out: number[] = [];
   rows.forEach((r, i) => {
     if (r.kind === "slice" && attentionRank(r.view) < 99) out.push(i);
+    else if (r.kind === "unit" && r.collapsed && unitAttention(r.members) < 99) out.push(i);
   });
   return out;
 }

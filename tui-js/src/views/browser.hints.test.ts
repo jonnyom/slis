@@ -32,15 +32,18 @@ describe("hasFailingCi", () => {
 });
 
 describe("listHints (contextual browser hint bar)", () => {
-  test("baseline exposes separate agent and shell terminals", () => {
+  test("baseline keeps to everyday keys: agent, shell, swap, select, search", () => {
     const h = listHints(view(), false);
-    expect(keys(h)).toEqual(["enter", "a", "C", "L", "V", "t", "s", "w", "space", "/", ","]);
+    expect(keys(h)).toEqual(["enter", "a", "C/L", "t", "w", "space", "/"]);
     expect(label(h, "a")).toBe("agent");
-    expect(label(h, "C")).toBe("default");
-    expect(label(h, "L")).toBe("choose");
-    expect(label(h, "V")).toBe("review");
+    expect(label(h, "C/L")).toBe("launch");
     expect(label(h, "t")).toBe("shell");
-    expect(label(h, ",")).toBe("config");
+  });
+
+  test("a unit header shows the unit's own keys", () => {
+    const h = listHints(undefined, false, true);
+    expect(keys(h)).toEqual(["enter", "space", "U", "j/k"]);
+    expect(label(h, "enter")).toBe("fold");
   });
 
   test("P1 — waiting-input relabels the attach key `a answer`", () => {

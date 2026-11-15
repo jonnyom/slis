@@ -751,7 +751,7 @@ export function DiffView(props: DiffViewProps): ReactNode {
           {pane === "files"
             ? "j/k file · enter/tab review lines · c start comment"
             : `j/k ${activeLine?.side ?? diffSide} line${activeLine ? ` ${activeLine.line}` : ""}${mode === "split" ? " · h/l old/new side" : ""} · v/space range · c comment · n/p hunk`}
-          {hunkCount ? ` (${hunkCount})` : ""} · 2 PR comments · V review · a attach · C/L default/choose · t unified/split · b scope · esc back
+          {hunkCount ? ` (${hunkCount})` : ""} · 2 PR comments · V review · a attach · C/L launch · t unified/split · b scope · esc back
         </text>
       </box>
     </box>

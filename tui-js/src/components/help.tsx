@@ -13,58 +13,59 @@ interface BindingGroup {
   bindings: Binding[];
 }
 
+// Every row here must match a real handler (views/browser.tsx, views/cockpit.tsx,
+// components/diffview.tsx, app.tsx). Keep descriptions short enough to fit on
+// one line in the 84-column card: this screen is read at a glance.
 const BROWSER_GROUPS: BindingGroup[] = [
   {
     label: "navigate",
     bindings: [
-      ["tab", "toggle States rail / Slices list"],
-      ["j / k", "move down / up"],
-      ["1–8", "jump to filter"],
-      ["g / G", "first / last slice"],
-      ["n / N", "next / prev search match (while searching) · else attention slice"],
-      ["enter / l", "open slice cockpit"],
-      ["/", "search slices by name"],
-      ["r", "refresh workspace"],
-      ["T", "cycle colour theme"],
-      ["?", "toggle this help"],
-      ["q", "quit"],
+      ["j / k · g / G", "move · first / last"],
+      ["enter / l", "open the slice"],
+      ["tab · 1–8", "switch to the filters · jump to a filter"],
+      ["/", "search by name (n / N step through matches)"],
+      ["n / N", "next / previous slice that needs you"],
+      ["r · T", "refresh · cycle colour theme"],
+      ["? · q", "this help · quit"],
     ],
   },
   {
-    label: "act",
+    label: "slices",
     bindings: [
-      ["e / o", "open whole slice in editor"],
-      ["w", "swap slice in / out ([s] stash dirty)"],
-      ["space / A", "select one / all visible (batch ops)"],
-      ["m / u", "group selected / ungroup focused"],
-      ["U", "collect selected into a unit (shown together)"],
-      ["c", "create a new slice (worktrees per repo)"],
-      ["i", "import discovered candidate worktrees"],
-      ["I", "adopt an arbitrary branch as a slice"],
-      ["d", "clear finished slice(s): [y] remove · [f] force"],
+      ["space / A", "select one / all visible (actions use the selection)"],
+      ["c · i · I", "create a slice · import worktrees · adopt a branch"],
+      ["w", "swap into the primary checkouts, or back out"],
+      ["e / o", "open the slice in your editor"],
+      ["d", "clear finished slice(s)"],
+      ["m / u", "merge selected into one slice / split it back"],
+    ],
+  },
+  {
+    label: "units (related slices, listed last)",
+    bindings: [
+      ["U", "put selected slices in a unit (new or existing name)"],
+      ["U, empty name", "take selected slices out of their unit"],
+      ["enter", "on a unit header: fold / unfold"],
+      ["h / l", "fold / unfold the unit you're in"],
+    ],
+  },
+  {
+    label: "agents & terminals",
+    bindings: [
+      ["a", "show / hide the slice's agent"],
+      ["C · L · ,", "launch the default agent · pick one · set the default"],
+      ["t", "open a shell"],
+      ["s · P", "all sessions · all processes"],
     ],
   },
   {
     label: "stack & prs",
     bindings: [
-      ["R", "stack actions: restack / submit / merge / sync"],
-      ["V", "pending-review overlay: list comments · x delete · s send to agent"],
-      ["v", "open cockpit PRs panel + failing-CI log"],
-      ["F", "fix-ci: point the agent at failing CI"],
+      ["R", "restack / submit / merge / sync"],
+      ["v · F", "failing CI log · ask the agent to fix CI"],
+      ["V", "review comments (x delete · s send to agent)"],
       ["Y", "copy all PRs + diffs as Markdown"],
-      ["!", "conflict radar (files changed by >1 slice)"],
-    ],
-  },
-  {
-    label: "session",
-    bindings: [
-      ["a", "show or hide the slice's agent dock"],
-      ["C", "launch the default agent"],
-      ["L", "choose another agent for a separate persistent tab"],
-      [",", "configure the default launch agent"],
-      ["t", "open a separate persistent shell terminal"],
-      ["s", "all running Slis sessions: attach or close"],
-      ["P", "processes across all slices"],
+      ["!", "files changed by more than one slice"],
     ],
   },
 ];
@@ -73,92 +74,57 @@ const COCKPIT_GROUPS: BindingGroup[] = [
   {
     label: "navigate",
     bindings: [
-      ["tab", "next panel"],
-        ["1–5", "Stack / PRs / Reviews / Session / Processes"],
-      ["j / k", "move selection (Stack: any branch in the stack)"],
-      ["enter / l", "open rich diff (Stack panel)"],
-      ["enter", "zoom right pane full-width (other panels)"],
-      ["b", "cycle diff scope working → parent → trunk (member branch)"],
-      ["ctrl+d / ctrl+u", "scroll right pane"],
-      ["g / G", "top / bottom of right pane"],
-      ["T", "cycle colour theme"],
-      ["esc / h", "back to browser"],
-      ["q", "quit"],
+      ["tab / 1–5", "Stack · PRs · Reviews · Session · Processes"],
+      ["j / k", "move the selection"],
+      ["enter", "Stack: open diff · Session: attach · others: zoom"],
+      ["ctrl+d/u · g/G", "scroll the right pane · top / bottom"],
+      ["r · T", "refresh · cycle colour theme"],
+      ["esc · q", "back to the browser · quit"],
     ],
   },
   {
-    label: "stack review",
+    label: "slice",
     bindings: [
-      ["j / k", "select any branch → right pane shows its diff vs its stack parent"],
-      ["f", "browse the selected branch's files at that revision"],
-      ["j / k · l / enter", "in the file tree: move · expand dir / preview file"],
-      ["e", "in the file tree/file view: edit selection at the current line"],
-      ["o / E", "open selected repo worktree / whole slice workspace"],
-      ["h", "in the file tree: collapse dir (or its parent)"],
-      ["esc", "step back: file → tree → diff → browser"],
+      ["a", "show / hide the slice's agent"],
+      ["C · L · ,", "launch the default agent · pick one · set the default"],
+      ["t", "open a shell"],
+      ["e / E · o", "open the slice in your editor · open the repo"],
+      ["w · d", "swap in / out · clear finished slice"],
+      ["R · Y", "restack / submit / merge / sync · copy all PRs"],
+      ["s · S", "summary · AI summary"],
+      ["V · P", "review comments · all processes"],
     ],
   },
   {
-    label: "review",
+    label: "stack panel",
     bindings: [
-      ["c", "focus rich-diff lines, then comment on the selected line / range"],
-      ["V", "pending-review overlay: list comments · x delete · s send to agent"],
+      ["b", "diff against: working → parent → trunk"],
+      ["y", "copy the slice diff"],
+      ["f", "browse files (l open · h close · esc back)"],
+      ["e · c", "in a file: edit / comment at the cursor line"],
     ],
   },
   {
-    label: "act",
+    label: "other panels",
     bindings: [
-      ["e / o / E", "editor: contextual selection / repo worktree / whole slice"],
-      ["w", "swap slice in / out (live)"],
-      ["d", "clear this finished slice"],
-    ],
-  },
-  {
-    label: "stack & prs",
-    bindings: [
-      ["R", "stack actions: restack / submit / merge / sync"],
-      ["y (Stack) / Y", "copy focused diff / all PRs + diffs"],
-      ["y (PRs)", "copy focused PR URL"],
-      ["v", "failing CI log in right pane (PRs panel)"],
-      ["ctrl+r", "re-run failed CI runs (PRs panel)"],
-      ["F", "fix-ci: point the agent at failing CI (PRs panel)"],
-      ["O", "open focused PR in browser"],
-    ],
-  },
-  {
-    label: "session",
-    bindings: [
-      ["h / l", "collapse / expand process subtree"],
-      ["s", "cycle process sort cpu → mem → pid"],
-      ["x / X", "kill process / kill subtree (SIGTERM)"],
-      ["P", "processes across all slices"],
-      ["a", "show or hide the slice's agent dock"],
-      ["C", "launch the default agent"],
-      ["L", "choose another agent"],
-      [",", "configure the default launch agent"],
-      ["t", "open a separate persistent shell terminal"],
-      ["S", "force AI summary (s: summary outside Processes panel)"],
+      ["v · ctrl+r · F", "PRs: CI log · re-run failed CI · ask agent to fix"],
+      ["y · O", "PRs: copy URL · open in browser"],
+      ["n · m", "Reviews: start a review · message the run"],
+      ["x", "Session: close it · Processes: kill (X: tree)"],
+      ["h / l · s", "Processes: fold / unfold · cycle sort"],
     ],
   },
 ];
 
 const DIFF_BINDINGS: Binding[] = [
-  ["j / k", "move in the focused file list or diff lines"],
-  ["[ / ]  ·  p / n", "prev / next hunk"],
-  ["Tab / Enter", "move focus between the file list and diff lines"],
-  ["v / Space", "toggle multi-line selection, then extend it with j / k"],
-  ["c", "comment on the selected diff line / range (feeds the agent)"],
-  ["V", "pending-review overlay (list / delete / send)"],
-  ["C", "launch the default agent"],
-  ["L", "choose another agent"],
-  [",", "configure the default launch agent"],
-  ["a", "attach to the slice agent without leaving the diff"],
-  ["h / l", "in side-by-side mode, select old/deleted or new/added side"],
-  ["t", "toggle unified / side-by-side"],
+  ["j / k · tab", "move · switch file list / diff lines"],
+  ["n / p", "next / previous hunk (also ] / [)"],
+  ["v / space", "select a range, extend with j / k"],
+  ["c", "comment on the line or range (feeds the agent)"],
+  ["t · h / l", "unified / side-by-side · pick a side"],
   ["b", "cycle diff scope"],
-  ["ctrl+d / ctrl+u", "scroll diff"],
-  ["g / G", "top / bottom"],
-  ["esc", "back to the file list, then cockpit"],
+  ["2", "open this file's PR"],
+  ["esc", "back to the file list, then the cockpit"],
 ];
 
 function BindingRows({ bindings }: { bindings: Binding[] }): ReactNode {
@@ -196,31 +162,29 @@ function Legend(): ReactNode {
     [glyph.running, "agent working", theme.good],
     [glyph.subagents, "sub-agents working", theme.good],
     [glyph.done, "agent done", theme.focus],
-    [glyph.live, "live (swapped in)", theme.good],
+    [glyph.live, "swapped in", theme.good],
     [glyph.prOpen, "PR in review", theme.focus],
     [glyph.approved, "approved", theme.good],
     [glyph.changes, "changes requested", theme.bad],
-    [glyph.ready, "merged, ready to clear", theme.merged],
+    [glyph.ready, "merged", theme.merged],
     [glyph.restack, "needs restack", theme.attn],
-    [glyph.stale, "primary behind (stale)", theme.attn],
-    [glyph.overlap, "file overlap (>1 slice)", theme.attn],
+    [glyph.stale, "stale", theme.attn],
+    [glyph.overlap, "file overlap", theme.attn],
     [glyph.idle, "idle", theme.textDim],
   ];
+  // Each item is its own unwrapped text in a wrapping row, so a label like
+  // "needs restack" never splits across lines.
   return (
-    <text wrapMode="word">
+    <box flexDirection="row" flexWrap="wrap" width="100%">
       {items.map(([g, label, c], i) => (
-        <span key={i}>
+        <text key={i} wrapMode="none" marginRight={3}>
           <span fg={c} attributes={BOLD}>
             {g}
           </span>
-          <span fg={theme.textDim}>
-            {" "}
-            {label}
-            {i < items.length - 1 ? "   " : ""}
-          </span>
-        </span>
+          <span fg={theme.textDim}> {label}</span>
+        </text>
       ))}
-    </text>
+    </box>
   );
 }
 
@@ -240,7 +204,7 @@ export function Help({ view }: { view: "browser" | "cockpit" }): ReactNode {
       ) : null}
       <Legend />
       <text fg={theme.textDim} wrapMode="word">
-        in a terminal tab: ctrl+\ / ctrl+] switch tabs · ctrl+q returns here · ? / esc to close
+        in a terminal: ctrl+shift+← / → switch tabs · ctrl+q back · ctrl+g unfocus
       </text>
     </Card>
   );
