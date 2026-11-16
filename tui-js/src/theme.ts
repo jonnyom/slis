@@ -288,10 +288,16 @@ function changesRequested(view: SliceView): boolean {
   return !!view.prs && view.prs.some((p) => p.review_decision === "CHANGES_REQUESTED");
 }
 
+// Only the slice's own branches count: view.prs also lists the other branches
+// of their Graphite stacks, which may belong to unrelated work.
 function ciFailing(view: SliceView): boolean {
   return (
     !!view.prs &&
-    view.prs.some((p) => p.ci === "fail" || (p.ci_fail ?? 0) > 0)
+    view.prs.some(
+      (p) =>
+        view.slice.members.some((m) => m.repo === p.repo && m.branch === p.branch) &&
+        (p.ci === "fail" || (p.ci_fail ?? 0) > 0),
+    )
   );
 }
 
@@ -305,9 +311,17 @@ function anyOpenPr(view: SliceView): boolean {
 }
 
 export function attention(view: SliceView): Attention {
-  // 3 — needs you
+  // The agent's state comes first, so PR and CI state never hide it.
   if (view.status === "waiting-input")
     return { level: 3, color: theme.attn, glyph: glyph.waiting, bold: true };
+  if (view.status === "running")
+    return { level: 2, color: theme.good, glyph: glyph.running, bold: true };
+  if (view.status === "subagents")
+    return { level: 2, color: theme.good, glyph: glyph.subagents, bold: false };
+  if (view.status === "done")
+    return { level: 1, color: theme.focus, glyph: glyph.done, bold: false };
+
+  // 3 — needs you
   if (changesRequested(view))
     return { level: 3, color: theme.bad, glyph: glyph.changes, bold: true };
   if (ciFailing(view))
@@ -316,14 +330,8 @@ export function attention(view: SliceView): Attention {
   // 2 — active
   if (view.slice.active)
     return { level: 2, color: theme.good, glyph: glyph.live, bold: true };
-  if (view.status === "running")
-    return { level: 2, color: theme.good, glyph: glyph.running, bold: true };
-  if (view.status === "subagents")
-    return { level: 2, color: theme.good, glyph: glyph.subagents, bold: false };
 
   // 1 — info
-  if (view.status === "done")
-    return { level: 1, color: theme.focus, glyph: glyph.done, bold: false };
   if (allPrsMerged(view))
     return { level: 1, color: theme.merged, glyph: glyph.ready, bold: false };
   if (anyOpenPr(view))

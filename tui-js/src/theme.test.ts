@@ -67,16 +67,25 @@ describe("attention", () => {
     expect(a.glyph).toBe(glyph.changes);
   });
 
+  const member = { members: [{ repo: "r", branch: "b", worktree_path: "/w", tip_sha: "" }] };
+
   test("CI fail is needs-you (bad, ✗)", () => {
-    const a = attention(view({}, { prs: [pr({ ci: "fail" })] }));
+    const a = attention(view(member, { prs: [pr({ ci: "fail" })] }));
     expect(a.level).toBe(3);
     expect(a.color).toBe(theme.bad);
   });
 
   test("ci_fail count also triggers needs-you", () => {
-    const a = attention(view({}, { prs: [pr({ ci_fail: 2 })] }));
+    const a = attention(view(member, { prs: [pr({ ci_fail: 2 })] }));
     expect(a.level).toBe(3);
     expect(a.color).toBe(theme.bad);
+  });
+
+  test("CI failing on another branch of the stack is ignored", () => {
+    const a = attention(
+      view(member, { prs: [pr({ branch: "stack-neighbour", ci: "fail", state: "OPEN" })] }),
+    );
+    expect(a.glyph).toBe(glyph.prOpen);
   });
 
   test("live/swapped-in is active (good, ⇄)", () => {
@@ -155,6 +164,16 @@ describe("attention", () => {
   test("active beats info — live wins over an open PR", () => {
     const a = attention(view({ active: true }, { prs: [pr({ state: "OPEN" })] }));
     expect(a.level).toBe(2);
+  });
+
+  test("agent state beats CI — a running agent hides a failing check", () => {
+    const a = attention(view(member, { status: "running", prs: [pr({ ci: "fail" })] }));
+    expect(a.glyph).toBe(glyph.running);
+  });
+
+  test("agent state beats CI — a finished agent hides a failing check", () => {
+    const a = attention(view(member, { status: "done", prs: [pr({ ci: "fail" })] }));
+    expect(a.glyph).toBe(glyph.done);
   });
 });
 
